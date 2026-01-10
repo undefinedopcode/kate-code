@@ -5,6 +5,10 @@ A Kate text editor plugin that integrates Claude Code using the ACP (Agent Clien
 ## Features
 
 - **Real-time Chat Interface**: Qt WebEngineView-based chat with markdown rendering and message streaming
+- **Syntax Highlighting**: Code blocks with language-aware syntax highlighting via highlight.js
+  - Theme-aware: automatically adapts to your KDE dark/light theme
+  - Copy button on each code block for easy clipboard access
+- **Agent Mode Selector**: Dropdown to choose Claude's permission mode (e.g., default, plan mode)
 - **Inline Tool Call Display**: See what tools Claude is using with expandable details
   - Bash commands with full command and output display
   - File operations with path information
@@ -120,6 +124,20 @@ The plugin will be installed to:
 - Type your message in the input field at the bottom
 - Press **Enter** to send (Shift+Enter for newline)
 - Claude's response will stream in real-time with markdown formatting
+
+### Agent Mode
+
+Use the dropdown next to the input field to select Claude's operating mode:
+- **Default**: Standard interactive mode with tool permission prompts
+- **Plan Mode**: Claude will create a plan before executing tasks
+- Additional modes may be available depending on your claude-code configuration
+
+### Code Blocks
+
+When Claude shows code in responses:
+- **Syntax highlighting** is applied automatically based on the language
+- Click the **📋 copy button** in the top-right corner of any code block to copy to clipboard
+- Highlighting theme automatically matches your KDE color scheme (light/dark)
 
 ### Context Awareness
 

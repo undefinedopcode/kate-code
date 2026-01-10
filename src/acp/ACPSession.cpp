@@ -3,6 +3,7 @@
 
 #include <QDebug>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QUrl>
 #include <QUuid>
 
@@ -295,6 +296,11 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
     }
     else if (updateType == QStringLiteral("tool_call")) {
         // Tool call started - data is at root level, not nested
+
+        // DEBUG: Log full tool_call JSON to see format (especially for edits)
+        qDebug() << "[ACPSession] tool_call raw JSON:"
+                 << QJsonDocument(update).toJson(QJsonDocument::Compact);
+
         ToolCall toolCall;
         toolCall.id = update[QStringLiteral("toolCallId")].toString();
         toolCall.status = update[QStringLiteral("status")].toString();
@@ -320,9 +326,25 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             toolCall.filePath = toolCall.input[QStringLiteral("file_path")].toString();
         }
 
+        // Extract Edit/Write specific fields from content array
+        QJsonArray contentArray = update[QStringLiteral("content")].toArray();
+        if (!contentArray.isEmpty()) {
+            QJsonObject contentItem = contentArray[0].toObject();
+            QString type = contentItem[QStringLiteral("type")].toString();
+
+            if (type == QStringLiteral("diff")) {
+                // This is an Edit operation
+                toolCall.operationType = QStringLiteral("edit");
+                toolCall.oldText = contentItem[QStringLiteral("oldText")].toString();
+                toolCall.newText = contentItem[QStringLiteral("newText")].toString();
+                qDebug() << "[ACPSession] Edit detected - old:" << toolCall.oldText.length()
+                         << "chars, new:" << toolCall.newText.length() << "chars";
+            }
+        }
+
         qDebug() << "[ACPSession] Tool call - id:" << toolCall.id
                  << "name:" << toolCall.name << "status:" << toolCall.status
-                 << "file:" << toolCall.filePath;
+                 << "file:" << toolCall.filePath << "operation:" << toolCall.operationType;
 
         if (!m_currentMessageId.isEmpty()) {
             Q_EMIT toolCallAdded(m_currentMessageId, toolCall);
@@ -333,8 +355,15 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         QString toolCallId = update[QStringLiteral("toolCallId")].toString();
         QString status = update[QStringLiteral("status")].toString();
 
+        // DEBUG: Log full tool_call_update JSON to see format (especially for edits)
+        qDebug() << "[ACPSession] tool_call_update raw JSON:"
+                 << QJsonDocument(update).toJson(QJsonDocument::Compact);
+
         // Extract result text from content array
         QString result;
+        QString operationType;
+        QString newText;
+
         QJsonArray contentArray = update[QStringLiteral("content")].toArray();
         if (!contentArray.isEmpty()) {
             QJsonObject contentItem = contentArray[0].toObject();
@@ -342,11 +371,47 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             result = content[QStringLiteral("text")].toString();
         }
 
+        // Check for Write tool response in _meta.claudeCode.toolResponse
+        QJsonObject meta = update[QStringLiteral("_meta")].toObject();
+        QJsonObject claudeCode = meta[QStringLiteral("claudeCode")].toObject();
+        QString toolName = claudeCode[QStringLiteral("toolName")].toString();
+        QJsonObject toolResponse = claudeCode[QStringLiteral("toolResponse")].toObject();
+
+        qDebug() << "[ACPSession] DEBUG - toolName:" << toolName
+                 << "toolResponse.isEmpty:" << toolResponse.isEmpty()
+                 << "has _meta:" << !meta.isEmpty();
+
+        if (!toolResponse.isEmpty()) {
+            operationType = toolResponse[QStringLiteral("type")].toString();
+            newText = toolResponse[QStringLiteral("content")].toString();
+            QString filePath = toolResponse[QStringLiteral("filePath")].toString();
+
+            qDebug() << "[ACPSession] DEBUG - operationType:" << operationType
+                     << "filePath:" << filePath
+                     << "content length:" << newText.length();
+
+            if (operationType == QStringLiteral("create") && toolName == QStringLiteral("Write")) {
+                // Write tool result - show the actual file content
+                result = newText;
+                qDebug() << "[ACPSession] Write tool - created file" << filePath << "with" << newText.length() << "bytes";
+                // Fall through to emit toolCallUpdated below
+            } else {
+                qDebug() << "[ACPSession] DEBUG - NOT Write tool, operationType check:"
+                         << (operationType == QStringLiteral("create"))
+                         << "toolName check:" << (toolName == QStringLiteral("Write"));
+            }
+        }
+
         qDebug() << "[ACPSession] Tool call update - id:" << toolCallId
-                 << "status:" << status << "result length:" << result.length();
+                 << "status:" << status << "operation:" << operationType
+                 << "result length:" << result.length();
 
         if (!m_currentMessageId.isEmpty()) {
-            Q_EMIT toolCallUpdated(m_currentMessageId, toolCallId, status, result);
+            // Only emit update if we have a result OR status changed
+            // (Don't overwrite good results with empty ones from status-only updates)
+            if (!result.isEmpty() || !status.isEmpty()) {
+                Q_EMIT toolCallUpdated(m_currentMessageId, toolCallId, status, result);
+            }
         }
     }
     else if (updateType == QStringLiteral("plan")) {
@@ -376,6 +441,25 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         qDebug() << "[ACPSession] Mode changed to:" << newMode;
         m_currentMode = newMode;
         Q_EMIT modeChanged(newMode);
+    }
+    else if (updateType == QStringLiteral("available_commands_update")) {
+        // Available slash commands updated
+        qDebug() << "[ACPSession] available_commands_update raw payload:" << QJsonDocument(update).toJson(QJsonDocument::Compact);
+
+        QJsonArray commandsArray = update[QStringLiteral("availableCommands")].toArray();
+        QList<SlashCommand> commands;
+
+        for (const QJsonValue &value : commandsArray) {
+            QJsonObject cmdObj = value.toObject();
+            SlashCommand cmd;
+            cmd.name = cmdObj[QStringLiteral("name")].toString();
+            cmd.description = cmdObj[QStringLiteral("description")].toString();
+            commands.append(cmd);
+        }
+
+        qDebug() << "[ACPSession] Available commands updated:" << commands.size() << "commands";
+        m_availableCommands = commands;
+        Q_EMIT commandsAvailable(commands);
     }
 }
 

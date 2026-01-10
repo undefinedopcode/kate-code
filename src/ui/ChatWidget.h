@@ -21,9 +21,11 @@ public:
 
     // Context providers (callbacks to get current file/selection/project root from Kate)
     using ContextProvider = std::function<QString()>;
+    using FileListProvider = std::function<QStringList()>;
     void setFilePathProvider(ContextProvider provider);
     void setSelectionProvider(ContextProvider provider);
     void setProjectRootProvider(ContextProvider provider);
+    void setFileListProvider(FileListProvider provider);
 
 private Q_SLOTS:
     void onConnectClicked();
@@ -49,6 +51,7 @@ private:
     ContextProvider m_filePathProvider;
     ContextProvider m_selectionProvider;
     ContextProvider m_projectRootProvider;
+    FileListProvider m_fileListProvider;
 
     // UI components
     ChatWebView *m_chatWebView;

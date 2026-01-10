@@ -20,6 +20,7 @@ public:
     QString getCurrentFilePath() const;
     QString getCurrentSelection() const;
     QString getProjectRoot() const;
+    QStringList getProjectFiles() const;
 
 private:
     void createToolView();

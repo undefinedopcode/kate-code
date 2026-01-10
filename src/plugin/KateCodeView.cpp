@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QVBoxLayout>
+#include <functional>
 
 KateCodeView::KateCodeView(KateCodePlugin *plugin, KTextEditor::MainWindow *mainWindow)
     : QObject(mainWindow)
@@ -63,6 +64,7 @@ void KateCodeView::createToolView()
     m_chatWidget->setFilePathProvider([this]() { return getCurrentFilePath(); });
     m_chatWidget->setSelectionProvider([this]() { return getCurrentSelection(); });
     m_chatWidget->setProjectRootProvider([this]() { return getProjectRoot(); });
+    m_chatWidget->setFileListProvider([this]() { return getProjectFiles(); });
 }
 
 QString KateCodeView::getCurrentFilePath() const
@@ -150,4 +152,59 @@ QString KateCodeView::getProjectRoot() const
     // Fallback to document directory
     qDebug() << "[KateCode] No project root found, using document directory";
     return QFileInfo(filePath).absolutePath();
+}
+
+QStringList KateCodeView::getProjectFiles() const
+{
+    QString projectRoot = getProjectRoot();
+    if (projectRoot.isEmpty()) {
+        return QStringList();
+    }
+
+    QStringList files;
+    QDir rootDir(projectRoot);
+
+    // Directories to ignore
+    static const QStringList ignoredDirs = {
+        QStringLiteral(".git"),
+        QStringLiteral(".hg"),
+        QStringLiteral(".svn"),
+        QStringLiteral("node_modules"),
+        QStringLiteral("build"),
+        QStringLiteral("dist"),
+        QStringLiteral("target"),
+        QStringLiteral(".idea"),
+        QStringLiteral(".vscode"),
+        QStringLiteral("__pycache__"),
+        QStringLiteral(".pytest_cache"),
+        QStringLiteral(".tox"),
+        QStringLiteral("venv"),
+        QStringLiteral(".venv"),
+        QStringLiteral("env")
+    };
+
+    // Recursive function to scan directories
+    std::function<void(const QDir &, const QString &)> scanDir = [&](const QDir &dir, const QString &relativePath) {
+        // Get all entries
+        QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+
+        for (const QFileInfo &entry : entries) {
+            QString name = entry.fileName();
+            QString relPath = relativePath.isEmpty() ? name : relativePath + QStringLiteral("/") + name;
+
+            if (entry.isDir()) {
+                // Skip ignored directories
+                if (!ignoredDirs.contains(name)) {
+                    scanDir(QDir(entry.filePath()), relPath);
+                }
+            } else if (entry.isFile()) {
+                files.append(relPath);
+            }
+        }
+    };
+
+    scanDir(rootDir, QString());
+
+    qDebug() << "[KateCode] Found" << files.size() << "files in project";
+    return files;
 }
