@@ -148,23 +148,28 @@ void ChatWebView::showPermissionRequest(const PermissionRequest &request)
         optionsJson.append(option);
     }
 
-    QString inputJsonStr = QString::fromUtf8(QJsonDocument(request.input).toJson(QJsonDocument::Compact));
-    QString optionsJsonStr = QString::fromUtf8(QJsonDocument(optionsJson).toJson(QJsonDocument::Compact));
+    QByteArray inputJsonBytes = QJsonDocument(request.input).toJson(QJsonDocument::Compact);
+    QByteArray optionsJsonBytes = QJsonDocument(optionsJson).toJson(QJsonDocument::Compact);
 
-    qDebug() << "[ChatWebView] Input JSON length:" << inputJsonStr.length();
+    // Use Base64 encoding to safely pass JSON through JavaScript string literals
+    // This avoids all escaping issues with special characters, newlines, etc.
+    QString inputBase64 = QString::fromLatin1(inputJsonBytes.toBase64());
+    QString optionsBase64 = QString::fromLatin1(optionsJsonBytes.toBase64());
 
-    // Store JSON data in global variables first to avoid JavaScript syntax issues
-    // when embedding large JSON directly in function calls
+    qDebug() << "[ChatWebView] Input JSON length:" << inputJsonBytes.length() << "Base64:" << inputBase64.length();
+
     QString script = QStringLiteral(
-        "window._permInput = %1; "
-        "window._permOptions = %2; "
-        "showPermissionRequest(%3, '%4', window._permInput, window._permOptions);"
-    ).arg(inputJsonStr)
-     .arg(optionsJsonStr)
+        "try { "
+        "  window._permInput = JSON.parse(atob('%1')); "
+        "  window._permOptions = JSON.parse(atob('%2')); "
+        "  showPermissionRequest(%3, '%4', window._permInput, window._permOptions); "
+        "} catch(e) { "
+        "  console.error('Permission request error:', e); "
+        "}"
+    ).arg(inputBase64)
+     .arg(optionsBase64)
      .arg(request.requestId)
      .arg(escapeJsString(request.toolName));
-
-    qDebug() << "[ChatWebView] Executing JS (length: " << script.length() << ")";
 
     runJavaScript(script);
 }
