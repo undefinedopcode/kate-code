@@ -383,7 +383,7 @@ function applyColorScheme(cssVars) {
 }
 
 // Show inline permission request
-function showPermissionRequest(requestId, toolName, inputJson, options) {
+function showPermissionRequest(requestId, toolName, input, options) {
     console.log('showPermissionRequest called:', requestId, toolName);
     console.log('Options:', options);
 
@@ -391,6 +391,11 @@ function showPermissionRequest(requestId, toolName, inputJson, options) {
         console.error('Options is not an array:', options);
         return;
     }
+
+    // Convert input object to formatted JSON string for display
+    const inputDisplay = typeof input === 'object'
+        ? JSON.stringify(input, null, 2)
+        : String(input);
 
     let html = `
         <div class="permission-request" id="perm-${requestId}">
@@ -400,7 +405,7 @@ function showPermissionRequest(requestId, toolName, inputJson, options) {
             </div>
             <div class="permission-body">
                 <div class="permission-details">
-                    <pre>${escapeHtml(inputJson)}</pre>
+                    <pre>${escapeHtml(inputDisplay)}</pre>
                 </div>
                 <div class="permission-options">
     `;

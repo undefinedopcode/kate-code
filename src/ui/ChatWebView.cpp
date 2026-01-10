@@ -148,15 +148,16 @@ void ChatWebView::showPermissionRequest(const PermissionRequest &request)
         optionsJson.append(option);
     }
 
-    QString inputJson = QString::fromUtf8(QJsonDocument(request.input).toJson(QJsonDocument::Compact));
+    QString inputJsonStr = QString::fromUtf8(QJsonDocument(request.input).toJson(QJsonDocument::Compact));
     QString optionsJsonStr = QString::fromUtf8(QJsonDocument(optionsJson).toJson(QJsonDocument::Compact));
 
-    qDebug() << "[ChatWebView] Options JSON:" << optionsJsonStr;
+    qDebug() << "[ChatWebView] Input JSON length:" << inputJsonStr.length();
 
-    QString script = QStringLiteral("showPermissionRequest(%1, '%2', '%3', %4);")
+    // Pass input and options as JSON objects (not escaped strings) to avoid escaping issues with complex content
+    QString script = QStringLiteral("showPermissionRequest(%1, '%2', %3, %4);")
                          .arg(request.requestId)
                          .arg(escapeJsString(request.toolName))
-                         .arg(escapeJsString(inputJson))
+                         .arg(inputJsonStr)  // Pass JSON directly without quotes
                          .arg(optionsJsonStr);
 
     qDebug() << "[ChatWebView] Executing JS:" << script.left(200);
