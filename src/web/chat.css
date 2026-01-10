@@ -1,0 +1,600 @@
+/* Default color scheme (will be overridden by KDE colors) */
+:root {
+    --bg-primary: #1e1e1e;
+    --bg-secondary: #2d2d2d;
+    --fg-primary: #d4d4d4;
+    --fg-secondary: #808080;
+    --accent: #007acc;
+    --link: #4a9eff;
+    --positive: #4ec9b0;
+    --negative: #f48771;
+    --selection-bg: #264f78;
+    --selection-fg: #ffffff;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg-primary);
+    background-color: var(--bg-primary);
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* Todo list */
+#todos-container {
+    display: none;
+    position: sticky;
+    bottom: 0;
+    background-color: var(--bg-secondary);
+    border-top: 1px solid rgba(128, 128, 128, 0.2);
+    z-index: 10;
+}
+
+.todos-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 16px;
+    cursor: pointer;
+    user-select: none;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.todos-header:hover {
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
+.todos-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--fg-secondary);
+}
+
+.todos-toggle {
+    font-size: 10px;
+    color: var(--fg-secondary);
+}
+
+.todos-content {
+    padding: 8px 16px 12px 16px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.todos-content.collapsed {
+    display: none;
+}
+
+.todos-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.todo-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.todo-item.completed {
+    opacity: 0.6;
+}
+
+.todo-item.in_progress {
+    background-color: rgba(0, 122, 204, 0.15);
+    border-left: 3px solid var(--accent);
+}
+
+.todo-icon {
+    font-size: 14px;
+    min-width: 16px;
+    text-align: center;
+}
+
+.todo-item.completed .todo-icon {
+    color: var(--positive);
+}
+
+.todo-item.in_progress .todo-icon {
+    color: var(--accent);
+    animation: spin 2s linear infinite;
+}
+
+.todo-item.pending .todo-icon {
+    color: var(--fg-secondary);
+}
+
+.todo-text {
+    flex: 1;
+    line-height: 1.4;
+}
+
+.todo-item.completed .todo-text {
+    text-decoration: line-through;
+    color: var(--fg-secondary);
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+#messages {
+    flex: 1;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+.message {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.message-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.message-role {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.message-role.user {
+    color: var(--accent);
+}
+
+.message-role.assistant {
+    color: var(--positive);
+}
+
+.message-role.system {
+    color: var(--fg-secondary);
+}
+
+.message-timestamp {
+    font-size: 11px;
+    color: var(--fg-secondary);
+}
+
+.message-content {
+    padding: 12px;
+    background-color: var(--bg-secondary);
+    border-radius: 6px;
+    word-wrap: break-word;
+}
+
+/* Preserve whitespace for user/system messages */
+.message.user .message-content,
+.message.system .message-content {
+    white-space: pre-line;
+}
+
+.message.user .message-content {
+    background-color: rgba(0, 122, 204, 0.1);
+    border-left: 3px solid var(--accent);
+}
+
+/* Remove default margins on first/last children */
+.message-content > *:first-child {
+    margin-top: 0;
+}
+
+.message-content > *:last-child {
+    margin-bottom: 0;
+}
+
+.message.assistant .message-content {
+    background-color: var(--bg-secondary);
+}
+
+.message.streaming .message-content::after {
+    content: '▊';
+    animation: blink 1s infinite;
+    margin-left: 2px;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+/* Markdown styles in assistant messages */
+.message.assistant .message-content h1,
+.message.assistant .message-content h2,
+.message.assistant .message-content h3,
+.message.assistant .message-content h4,
+.message.assistant .message-content h5,
+.message.assistant .message-content h6 {
+    margin: 16px 0 8px 0;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.message.assistant .message-content h1 { font-size: 1.6em; }
+.message.assistant .message-content h2 { font-size: 1.4em; }
+.message.assistant .message-content h3 { font-size: 1.2em; }
+.message.assistant .message-content h4 { font-size: 1.1em; }
+.message.assistant .message-content h5,
+.message.assistant .message-content h6 { font-size: 1em; }
+
+.message.assistant .message-content h1:first-child,
+.message.assistant .message-content h2:first-child,
+.message.assistant .message-content h3:first-child {
+    margin-top: 0;
+}
+
+.message.assistant .message-content p {
+    margin: 8px 0;
+}
+
+.message.assistant .message-content p:first-child {
+    margin-top: 0;
+}
+
+.message.assistant .message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.message.assistant .message-content ul,
+.message.assistant .message-content ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.message.assistant .message-content li {
+    margin: 4px 0;
+}
+
+.message.assistant .message-content code {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    font-size: 0.9em;
+}
+
+.message.assistant .message-content pre {
+    background-color: rgba(0, 0, 0, 0.4);
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 12px 0;
+}
+
+.message.assistant .message-content pre code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
+.message.assistant .message-content blockquote {
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+    margin: 12px 0;
+    color: var(--fg-secondary);
+    font-style: italic;
+}
+
+.message.assistant .message-content a {
+    color: var(--link);
+    text-decoration: none;
+}
+
+.message.assistant .message-content a:hover {
+    text-decoration: underline;
+}
+
+.message.assistant .message-content table {
+    border-collapse: collapse;
+    margin: 12px 0;
+    width: 100%;
+}
+
+.message.assistant .message-content th,
+.message.assistant .message-content td {
+    border: 1px solid var(--bg-primary);
+    padding: 8px;
+    text-align: left;
+}
+
+.message.assistant .message-content th {
+    background-color: rgba(0, 0, 0, 0.3);
+    font-weight: 600;
+}
+
+.message.assistant .message-content hr {
+    border: none;
+    border-top: 1px solid var(--bg-primary);
+    margin: 16px 0;
+}
+
+.message.assistant .message-content strong {
+    font-weight: 600;
+}
+
+.message.assistant .message-content em {
+    font-style: italic;
+}
+
+/* Inline tool call badge */
+.tool-call-inline {
+    display: block;
+    margin: 8px 0;
+    border-radius: 6px;
+    border: 1px solid var(--positive);
+    background-color: rgba(78, 201, 176, 0.05);
+    font-size: 12px;
+    width: 100%;
+}
+
+.tool-call-inline.pending {
+    border-color: var(--accent);
+    background-color: rgba(0, 122, 204, 0.05);
+}
+
+.tool-call-inline.completed {
+    border-color: var(--positive);
+    background-color: rgba(78, 201, 176, 0.05);
+}
+
+.tool-call-inline.failed {
+    border-color: var(--negative);
+    background-color: rgba(244, 135, 113, 0.05);
+}
+
+.tool-call-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.tool-call-summary:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.tool-call-icon {
+    font-size: 12px;
+}
+
+.tool-call-name {
+    color: var(--positive);
+    font-weight: 500;
+}
+
+.tool-call-inline.pending .tool-call-name {
+    color: var(--accent);
+}
+
+.tool-call-inline.failed .tool-call-name {
+    color: var(--negative);
+}
+
+.tool-call-command {
+    color: var(--fg-primary);
+    font-size: 10px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    padding: 2px 6px;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 2px;
+    margin-left: 6px;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tool-call-file {
+    color: var(--fg-secondary);
+    font-size: 10px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    padding: 2px 4px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tool-call-toggle {
+    font-size: 10px;
+    color: var(--fg-secondary);
+    margin-left: auto;
+}
+
+.tool-call-details {
+    border-top: 1px solid rgba(128, 128, 128, 0.2);
+    padding: 12px;
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.tool-call-input {
+    margin-bottom: 12px;
+}
+
+.tool-call-input strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--fg-primary);
+    font-size: 11px;
+}
+
+.tool-call-input pre {
+    font-size: 11px;
+    color: var(--fg-primary);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    line-height: 1.4;
+}
+
+.tool-call-result-section {
+    margin-top: 12px;
+}
+
+.tool-call-result-section strong {
+    display: block;
+    margin-bottom: 4px;
+    color: var(--fg-primary);
+    font-size: 11px;
+}
+
+.tool-call-result {
+    font-size: 11px;
+    color: var(--fg-secondary);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    line-height: 1.4;
+}
+
+/* Permission request inline */
+.permission-request {
+    margin: 16px 0;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    background-color: rgba(0, 122, 204, 0.1);
+    overflow: hidden;
+}
+
+.permission-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background-color: rgba(0, 122, 204, 0.2);
+    border-bottom: 1px solid var(--accent);
+}
+
+.permission-icon {
+    font-size: 18px;
+}
+
+.permission-title {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.permission-body {
+    padding: 16px;
+}
+
+.permission-details {
+    margin-bottom: 16px;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    font-size: 11px;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.permission-details pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.permission-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.permission-option {
+    padding: 12px;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background-color: var(--bg-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.permission-option:hover {
+    background-color: var(--accent);
+    color: var(--bg-primary);
+    transform: translateX(4px);
+}
+
+.permission-option-label {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.permission-option-desc {
+    font-size: 12px;
+    color: var(--fg-secondary);
+}
+
+.permission-option:hover .permission-option-desc {
+    color: var(--bg-primary);
+    opacity: 0.8;
+}
+
+.empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    color: var(--fg-secondary);
+    font-size: 14px;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-secondary);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--fg-secondary);
+}

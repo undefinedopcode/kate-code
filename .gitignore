@@ -1,0 +1,40 @@
+# Build directories
+build/
+bin/
+
+# CMake files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+
+# Qt generated files
+*_autogen/
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# Compiled files
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+*.exe
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Kate session files
+*.kate-swp
+
+# Backup files
+*~
+*.bak
+*.orig
