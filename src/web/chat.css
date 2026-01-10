@@ -294,6 +294,16 @@ body {
     line-height: 1.5;
 }
 
+/* Syntax highlighting adjustments */
+.message.assistant .message-content pre code.hljs {
+    background-color: transparent;
+    padding: 0;
+}
+
+.message.assistant .message-content pre {
+    background-color: #282c34;
+}
+
 .message.assistant .message-content blockquote {
     border-left: 3px solid var(--accent);
     padding-left: 12px;

@@ -6,11 +6,29 @@ let bridge = null;
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Chat UI initialized');
 
-    // Configure marked.js
+    // Configure marked.js with syntax highlighting
     if (typeof marked !== 'undefined') {
         marked.setOptions({
             breaks: true,
-            gfm: true
+            gfm: true,
+            highlight: function(code, lang) {
+                if (typeof hljs !== 'undefined') {
+                    if (lang && hljs.getLanguage(lang)) {
+                        try {
+                            return hljs.highlight(code, { language: lang }).value;
+                        } catch (e) {
+                            console.error('Highlight error:', e);
+                        }
+                    }
+                    // Auto-detect language if not specified
+                    try {
+                        return hljs.highlightAuto(code).value;
+                    } catch (e) {
+                        console.error('Highlight auto error:', e);
+                    }
+                }
+                return code;
+            }
         });
     }
 
