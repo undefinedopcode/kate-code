@@ -23,9 +23,12 @@ ChatWidget::ChatWidget(QWidget *parent)
     auto *statusLayout = new QHBoxLayout();
     statusLayout->setContentsMargins(4, 4, 4, 4);
     m_statusLabel = new QLabel(QStringLiteral("Disconnected"), this);
+    m_newSessionButton = new QPushButton(QStringLiteral("New Session"), this);
+    m_newSessionButton->setEnabled(false);
     m_connectButton = new QPushButton(QStringLiteral("Connect"), this);
     statusLayout->addWidget(m_statusLabel);
     statusLayout->addStretch();
+    statusLayout->addWidget(m_newSessionButton);
     statusLayout->addWidget(m_connectButton);
     layout->addLayout(statusLayout);
 
@@ -43,6 +46,7 @@ ChatWidget::ChatWidget(QWidget *parent)
 
     // Connect signals
     connect(m_connectButton, &QPushButton::clicked, this, &ChatWidget::onConnectClicked);
+    connect(m_newSessionButton, &QPushButton::clicked, this, &ChatWidget::onNewSessionClicked);
     connect(m_inputWidget, &ChatInputWidget::messageSubmitted, this, &ChatWidget::onMessageSubmitted);
 
     // Connect ACP session signals
@@ -104,6 +108,26 @@ void ChatWidget::onConnectClicked()
     }
 }
 
+void ChatWidget::onNewSessionClicked()
+{
+    // Stop current session, clear chat, and start a new session
+    m_session->stop();
+    m_chatWebView->clearMessages();
+
+    // Get current project root
+    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+
+    // Add system message for new session
+    Message sysMsg;
+    sysMsg.id = QStringLiteral("sys_newsession");
+    sysMsg.role = QStringLiteral("system");
+    sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
+    sysMsg.timestamp = QDateTime::currentDateTime();
+    m_chatWebView->addMessage(sysMsg);
+
+    m_session->start(projectRoot);
+}
+
 void ChatWidget::onMessageSubmitted(const QString &message)
 {
     // Get current Kate context
@@ -125,6 +149,8 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
     case ConnectionStatus::Disconnected:
         statusText = QStringLiteral("Disconnected");
         m_connectButton->setText(QStringLiteral("Connect"));
+        m_connectButton->setEnabled(true);
+        m_newSessionButton->setEnabled(false);
         m_inputWidget->setEnabled(false);
         sysMsg.id = QStringLiteral("sys_disconnected");
         sysMsg.content = QStringLiteral("Disconnected from claude-code-acp");
@@ -133,6 +159,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
     case ConnectionStatus::Connecting:
         statusText = QStringLiteral("Connecting...");
         m_connectButton->setEnabled(false);
+        m_newSessionButton->setEnabled(false);
         sysMsg.id = QStringLiteral("sys_connecting");
         sysMsg.content = QStringLiteral("Initializing ACP protocol...");
         m_chatWebView->addMessage(sysMsg);
@@ -141,6 +168,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         statusText = QStringLiteral("Connected");
         m_connectButton->setText(QStringLiteral("Disconnect"));
         m_connectButton->setEnabled(true);
+        m_newSessionButton->setEnabled(true);
         m_inputWidget->setEnabled(true);
         sysMsg.id = QStringLiteral("sys_connected");
         sysMsg.content = QStringLiteral("Connected! Session ID: %1").arg(m_session->sessionId());
@@ -150,6 +178,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         statusText = QStringLiteral("Error");
         m_connectButton->setText(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
+        m_newSessionButton->setEnabled(false);
         break;
     }
 

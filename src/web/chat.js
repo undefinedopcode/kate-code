@@ -392,10 +392,22 @@ function showPermissionRequest(requestId, toolName, input, options) {
         return;
     }
 
-    // Convert input object to formatted JSON string for display
-    const inputDisplay = typeof input === 'object'
-        ? JSON.stringify(input, null, 2)
-        : String(input);
+    // Special handling for plan field - render as markdown
+    let detailsHtml = '';
+    if (typeof input === 'object' && input.plan) {
+        // Render plan as markdown
+        if (typeof marked !== 'undefined') {
+            detailsHtml = `<div class="permission-plan">${marked.parse(input.plan)}</div>`;
+        } else {
+            detailsHtml = `<pre>${escapeHtml(input.plan)}</pre>`;
+        }
+    } else {
+        // Show JSON for other inputs
+        const inputDisplay = typeof input === 'object'
+            ? JSON.stringify(input, null, 2)
+            : String(input);
+        detailsHtml = `<pre>${escapeHtml(inputDisplay)}</pre>`;
+    }
 
     let html = `
         <div class="permission-request" id="perm-${requestId}">
@@ -405,7 +417,7 @@ function showPermissionRequest(requestId, toolName, input, options) {
             </div>
             <div class="permission-body">
                 <div class="permission-details">
-                    <pre>${escapeHtml(inputDisplay)}</pre>
+                    ${detailsHtml}
                 </div>
                 <div class="permission-options">
     `;
