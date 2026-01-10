@@ -209,11 +209,18 @@ void ChatWebView::runJavaScript(const QString &script)
 QString ChatWebView::escapeJsString(const QString &str)
 {
     QString escaped = str;
+    // Order matters: backslash must be first
     escaped.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
     escaped.replace(QLatin1Char('\''), QStringLiteral("\\'"));
+    escaped.replace(QLatin1Char('"'), QStringLiteral("\\\""));
+    escaped.replace(QLatin1Char('`'), QStringLiteral("\\`"));
     escaped.replace(QLatin1Char('\n'), QStringLiteral("\\n"));
     escaped.replace(QLatin1Char('\r'), QStringLiteral("\\r"));
     escaped.replace(QLatin1Char('\t'), QStringLiteral("\\t"));
+    escaped.replace(QLatin1Char('\b'), QStringLiteral("\\b"));
+    escaped.replace(QLatin1Char('\f'), QStringLiteral("\\f"));
+    // Escape HTML script tags to prevent injection
+    escaped.replace(QStringLiteral("</"), QStringLiteral("<\\/"));
     return escaped;
 }
 
