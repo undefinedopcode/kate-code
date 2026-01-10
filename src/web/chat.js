@@ -2,44 +2,107 @@
 let messages = {};
 let bridge = null;
 
+// Helper to log to C++ via bridge
+function logToQt(message) {
+    if (window.bridge && window.bridge.logFromJS) {
+        window.bridge.logFromJS(message);
+    }
+    console.log(message);
+}
+
+// Configure marked.js with syntax highlighting
+function configureMarked() {
+    logToQt('Configuring marked.js...');
+    logToQt('marked available: ' + (typeof marked !== 'undefined'));
+    logToQt('hljs available: ' + (typeof hljs !== 'undefined'));
+
+    if (typeof marked === 'undefined') {
+        logToQt('ERROR: marked.js not loaded!');
+        return;
+    }
+
+    if (typeof hljs === 'undefined') {
+        logToQt('ERROR: highlight.js not loaded!');
+        return;
+    }
+
+    // marked.js v11+ requires using a custom renderer with hooks
+    const renderer = {
+        code(code, infostring) {
+            const lang = (infostring || '').match(/\S*/)[0];
+            logToQt('Renderer code() called - lang: ' + lang + ', code length: ' + code.length);
+
+            if (typeof hljs !== 'undefined') {
+                let highlighted;
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        highlighted = hljs.highlight(code, { language: lang }).value;
+                        logToQt('Highlighted with language: ' + lang);
+                    } catch (e) {
+                        logToQt('Highlight error: ' + e);
+                        highlighted = code;
+                    }
+                } else {
+                    // Auto-detect language if not specified
+                    try {
+                        const result = hljs.highlightAuto(code);
+                        highlighted = result.value;
+                        logToQt('Auto-detected language: ' + result.language);
+                    } catch (e) {
+                        logToQt('Highlight auto error: ' + e);
+                        highlighted = code;
+                    }
+                }
+
+                // Base64 encode the code to safely store in data attribute
+                const encodedCode = btoa(unescape(encodeURIComponent(code)));
+
+                return '<div class="code-block-wrapper">' +
+                       '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code">📋</button>' +
+                       '<pre><code class="hljs language-' + lang + '">' + highlighted + '</code></pre>' +
+                       '</div>';
+            }
+
+            const encodedCode = btoa(unescape(encodeURIComponent(code)));
+            return '<div class="code-block-wrapper">' +
+                   '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code">📋</button>' +
+                   '<pre><code>' + code + '</code></pre>' +
+                   '</div>';
+        }
+    };
+
+    marked.use({
+        breaks: true,
+        gfm: true,
+        renderer: renderer
+    });
+
+    logToQt('marked.js configured with custom renderer successfully');
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Chat UI initialized');
-
-    // Configure marked.js with syntax highlighting
-    if (typeof marked !== 'undefined') {
-        marked.setOptions({
-            breaks: true,
-            gfm: true,
-            highlight: function(code, lang) {
-                if (typeof hljs !== 'undefined') {
-                    if (lang && hljs.getLanguage(lang)) {
-                        try {
-                            return hljs.highlight(code, { language: lang }).value;
-                        } catch (e) {
-                            console.error('Highlight error:', e);
-                        }
-                    }
-                    // Auto-detect language if not specified
-                    try {
-                        return hljs.highlightAuto(code).value;
-                    } catch (e) {
-                        console.error('Highlight auto error:', e);
-                    }
-                }
-                return code;
-            }
-        });
-    }
 
     // Setup Qt WebChannel if available
     if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined') {
         new QWebChannel(qt.webChannelTransport, (channel) => {
             window.bridge = channel.objects.bridge;
-            console.log('Qt WebChannel bridge connected:', window.bridge);
+            logToQt('Qt WebChannel bridge connected');
+
+            // Now that bridge is ready, configure marked
+            configureMarked();
+
+            // If libraries aren't loaded yet, try again after a delay
+            if (typeof marked === 'undefined' || typeof hljs === 'undefined') {
+                logToQt('Libraries not ready, retrying in 500ms...');
+                setTimeout(configureMarked, 500);
+            }
         });
     } else {
         console.warn('QWebChannel or qt not available');
+        // Still try to configure marked even without bridge
+        configureMarked();
     }
 });
 
@@ -367,6 +430,43 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Copy code to clipboard
+function copyCode(button) {
+    // Decode base64 encoded code
+    const encodedCode = button.getAttribute('data-code-b64');
+    const code = decodeURIComponent(escape(atob(encodedCode)));
+
+    logToQt('Copying code, length: ' + code.length);
+
+    // Create a temporary textarea to copy from
+    const textarea = document.createElement('textarea');
+    textarea.value = code;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+
+    try {
+        document.execCommand('copy');
+
+        // Visual feedback
+        const originalText = button.textContent;
+        button.textContent = '✓';
+        button.classList.add('copied');
+
+        setTimeout(() => {
+            button.textContent = originalText;
+            button.classList.remove('copied');
+        }, 2000);
+
+        logToQt('Code copied to clipboard successfully');
+    } catch (err) {
+        logToQt('Failed to copy code: ' + err);
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
 // Apply color scheme
 function applyColorScheme(cssVars) {
     const root = document.documentElement;
@@ -380,6 +480,17 @@ function applyColorScheme(cssVars) {
     }
 
     console.log('Color scheme applied');
+}
+
+// Apply highlight.js theme
+function applyHighlightTheme(themePath) {
+    const linkElement = document.getElementById('highlight-theme');
+    if (linkElement) {
+        linkElement.href = themePath;
+        logToQt('Applied highlight theme: ' + themePath);
+    } else {
+        logToQt('ERROR: highlight-theme link element not found');
+    }
 }
 
 // Show inline permission request
@@ -480,3 +591,4 @@ window.updateTodos = updateTodos;
 window.applyColorScheme = applyColorScheme;
 window.toggleToolCall = toggleToolCall;
 window.showPermissionRequest = showPermissionRequest;
+window.copyCode = copyCode;

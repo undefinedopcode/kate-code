@@ -32,6 +32,7 @@ public:
     Colors colors() const { return m_colors; }
 
     QString generateCSSVariables() const;
+    bool isLightTheme() const;
 
 private:
     QColor parseKdeColor(const QString &colorString);

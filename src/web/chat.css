@@ -271,7 +271,7 @@ body {
 }
 
 .message.assistant .message-content code {
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: var(--inline-code-bg, rgba(0, 0, 0, 0.3));
     padding: 2px 5px;
     border-radius: 3px;
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
@@ -294,6 +294,40 @@ body {
     line-height: 1.5;
 }
 
+/* Code block with copy button */
+.code-block-wrapper {
+    position: relative;
+    margin: 12px 0;
+}
+
+.code-copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background-color: var(--bg-secondary);
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    color: var(--fg-secondary);
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0.7;
+    transition: opacity 0.2s, background-color 0.2s;
+    z-index: 1;
+}
+
+.code-copy-btn:hover {
+    opacity: 1;
+    background-color: var(--accent);
+    color: white;
+}
+
+.code-copy-btn.copied {
+    background-color: var(--positive);
+    color: white;
+    opacity: 1;
+}
+
 /* Syntax highlighting adjustments */
 .message.assistant .message-content pre code.hljs {
     background-color: transparent;
@@ -301,7 +335,12 @@ body {
 }
 
 .message.assistant .message-content pre {
-    background-color: #282c34;
+    background-color: var(--code-bg, #282c34);
+    margin: 0;
+}
+
+.code-block-wrapper pre {
+    margin: 0;
 }
 
 .message.assistant .message-content blockquote {
@@ -580,7 +619,7 @@ body {
 }
 
 .permission-plan code {
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: var(--inline-code-bg, rgba(0, 0, 0, 0.3));
     padding: 2px 5px;
     border-radius: 3px;
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
@@ -588,7 +627,7 @@ body {
 }
 
 .permission-plan pre {
-    background-color: #282c34;
+    background-color: var(--code-bg, #282c34);
     padding: 12px;
     border-radius: 4px;
     overflow-x: auto;

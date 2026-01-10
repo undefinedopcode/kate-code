@@ -48,6 +48,7 @@ public:
 
 public Q_SLOTS:
     void respondToPermission(int requestId, const QString &optionId);
+    void logFromJS(const QString &message);
 
 Q_SIGNALS:
     void permissionResponse(int requestId, const QString &optionId);

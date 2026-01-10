@@ -1,8 +1,0 @@
-{
-    "mcpServers": {
-        "kate-editor": {
-            "type": "sse",
-            "url": "http://localhost:3000/mcp/sse"
-        }
-    }
-}
