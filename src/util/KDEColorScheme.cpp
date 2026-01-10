@@ -86,6 +86,21 @@ QString KDEColorScheme::generateCSSVariables() const
     );
 }
 
+bool KDEColorScheme::isLightTheme() const
+{
+    // Calculate relative luminance of background color
+    // Formula: (0.299*R + 0.587*G + 0.114*B) / 255
+    double luminance = (0.299 * m_colors.backgroundNormal.red() +
+                        0.587 * m_colors.backgroundNormal.green() +
+                        0.114 * m_colors.backgroundNormal.blue()) / 255.0;
+
+    qDebug() << "[KDEColorScheme] Background luminance:" << luminance
+             << (luminance > 0.5 ? "(light theme)" : "(dark theme)");
+
+    // If luminance > 0.5, it's a light background
+    return luminance > 0.5;
+}
+
 QString KDEColorScheme::extractColorString(const QVariant &value, const QString &defaultValue)
 {
     if (value.metaType() == QMetaType::fromType<QStringList>()) {

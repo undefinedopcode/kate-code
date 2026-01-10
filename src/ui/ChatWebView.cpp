@@ -51,11 +51,27 @@ void ChatWebView::injectColorScheme()
 {
     KDEColorScheme colorScheme;
     QString cssVars = colorScheme.generateCSSVariables();
+    bool isLight = colorScheme.isLightTheme();
 
-    QString script = QStringLiteral("applyColorScheme('%1');").arg(cssVars);
+    // Choose the appropriate highlight.js theme and code background colors
+    QString hljsTheme = isLight ? QStringLiteral("vendor/atom-one-light.min.css")
+                                 : QStringLiteral("vendor/atom-one-dark.min.css");
+    QString codeBg = isLight ? QStringLiteral("#fafafa") : QStringLiteral("#282c34");
+    QString inlineCodeBg = isLight ? QStringLiteral("rgba(0, 0, 0, 0.08)")
+                                    : QStringLiteral("rgba(0, 0, 0, 0.3)");
+
+    // Add code background variables to CSS vars
+    QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2")
+                                        .arg(codeBg, inlineCodeBg);
+
+    QString script = QStringLiteral(
+        "applyColorScheme('%1'); "
+        "applyHighlightTheme('%2');"
+    ).arg(fullCssVars, hljsTheme);
+
     runJavaScript(script);
 
-    qDebug() << "[ChatWebView] Injected KDE color scheme";
+    qDebug() << "[ChatWebView] Injected KDE color scheme and highlight theme:" << hljsTheme;
 }
 
 void ChatWebView::addMessage(const Message &message)
@@ -238,4 +254,9 @@ QString ChatWebView::escapeJsString(const QString &str)
 void WebBridge::respondToPermission(int requestId, const QString &optionId)
 {
     Q_EMIT permissionResponse(requestId, optionId);
+}
+
+void WebBridge::logFromJS(const QString &message)
+{
+    qDebug() << "[JS]" << message;
 }
