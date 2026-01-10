@@ -27,6 +27,7 @@ public:
     QString sessionId() const { return m_sessionId; }
     QJsonArray availableModes() const { return m_availableModes; }
     QString currentMode() const { return m_currentMode; }
+    QList<SlashCommand> availableCommands() const { return m_availableCommands; }
 
 Q_SIGNALS:
     void statusChanged(ConnectionStatus status);
@@ -39,6 +40,7 @@ Q_SIGNALS:
     void permissionRequested(const PermissionRequest &request);
     void modesAvailable(const QJsonArray &modes);
     void modeChanged(const QString &modeId);
+    void commandsAvailable(const QList<SlashCommand> &commands);
     void errorOccurred(const QString &message);
 
 private Q_SLOTS:
@@ -60,6 +62,7 @@ private:
     QString m_workingDir;
     QString m_currentMode;
     QJsonArray m_availableModes;
+    QList<SlashCommand> m_availableCommands;
     QString m_currentMessageId;
 
     // Request tracking

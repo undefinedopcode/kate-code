@@ -124,13 +124,15 @@ void ChatWebView::addToolCall(const QString &messageId, const ToolCall &toolCall
 
     QString inputJson = QString::fromUtf8(QJsonDocument(toolCall.input).toJson(QJsonDocument::Compact));
 
-    QString script = QStringLiteral("addToolCall('%1', '%2', '%3', '%4', '%5', '%6');")
+    QString script = QStringLiteral("addToolCall('%1', '%2', '%3', '%4', '%5', '%6', '%7', '%8');")
                          .arg(escapeJsString(messageId),
                               escapeJsString(toolCall.id),
                               escapeJsString(toolCall.name),
                               escapeJsString(toolCall.status),
                               escapeJsString(toolCall.filePath),
-                              escapeJsString(inputJson));
+                              escapeJsString(inputJson),
+                              escapeJsString(toolCall.oldText),
+                              escapeJsString(toolCall.newText));
 
     runJavaScript(script);
 }

@@ -61,6 +61,7 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::permissionRequested, this, &ChatWidget::onPermissionRequested);
     connect(m_session, &ACPSession::modesAvailable, this, &ChatWidget::onModesAvailable);
     connect(m_session, &ACPSession::modeChanged, this, &ChatWidget::onModeChanged);
+    connect(m_session, &ACPSession::commandsAvailable, m_inputWidget, &ChatInputWidget::setAvailableCommands);
     connect(m_session, &ACPSession::errorOccurred, this, &ChatWidget::onError);
 
     // Connect web view permission responses back to ACP
@@ -89,6 +90,11 @@ void ChatWidget::setSelectionProvider(ContextProvider provider)
 void ChatWidget::setProjectRootProvider(ContextProvider provider)
 {
     m_projectRootProvider = provider;
+}
+
+void ChatWidget::setFileListProvider(FileListProvider provider)
+{
+    m_fileListProvider = provider;
 }
 
 void ChatWidget::onConnectClicked()
@@ -176,6 +182,12 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         sysMsg.id = QStringLiteral("sys_connected");
         sysMsg.content = QStringLiteral("Connected! Session ID: %1").arg(m_session->sessionId());
         m_chatWebView->addMessage(sysMsg);
+
+        // Populate file list for @-completion
+        if (m_fileListProvider) {
+            QStringList files = m_fileListProvider();
+            m_inputWidget->setAvailableFiles(files);
+        }
         break;
     case ConnectionStatus::Error:
         statusText = QStringLiteral("Error");
@@ -240,14 +252,11 @@ void ChatWidget::onPermissionModeChanged(const QString &mode)
 void ChatWidget::onModesAvailable(const QJsonArray &modes)
 {
     qDebug() << "[ChatWidget] Modes available:" << modes.size();
-    // TODO: Populate dropdown with available modes
-    // For now, we'll keep the hardcoded modes in ChatInputWidget
-    // In a future update, we can dynamically populate it
+    m_inputWidget->setAvailableModes(modes);
 }
 
 void ChatWidget::onModeChanged(const QString &modeId)
 {
     qDebug() << "[ChatWidget] Mode changed to:" << modeId;
-    // TODO: Update dropdown to reflect current mode
-    // For now, this is just logged
+    m_inputWidget->setCurrentMode(modeId);
 }

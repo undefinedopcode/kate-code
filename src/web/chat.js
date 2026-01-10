@@ -140,7 +140,7 @@ function finishMessage(id) {
 }
 
 // Add tool call to message
-function addToolCall(messageId, toolCallId, name, status, filePath, inputJson) {
+function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, oldText, newText) {
     if (!messages[messageId]) return;
 
     // Parse input to extract command for Bash tools
@@ -159,6 +159,8 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson) {
         existing.name = name || existing.name;
         existing.filePath = filePath || existing.filePath;
         existing.input = input;
+        existing.oldText = oldText || '';
+        existing.newText = newText || '';
     } else {
         // Add new tool call at current content length position
         const toolCall = {
@@ -168,7 +170,9 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson) {
             filePath: filePath || '',
             input: input,
             result: '',
-            position: messages[messageId].content.length
+            position: messages[messageId].content.length,
+            oldText: oldText || '',
+            newText: newText || ''
         };
         messages[messageId].toolCalls.push(toolCall);
     }
@@ -181,11 +185,33 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson) {
 function updateToolCall(messageId, toolCallId, status, result) {
     if (!messages[messageId]) return;
 
-    const toolCall = messages[messageId].toolCalls.find(tc => tc.id === toolCallId);
-    if (!toolCall) return;
+    let toolCall = messages[messageId].toolCalls.find(tc => tc.id === toolCallId);
 
-    toolCall.status = status;
-    toolCall.result = result || '';
+    if (!toolCall) {
+        // Tool call doesn't exist yet (happens with Write tool that only sends update)
+        // Create it now with the result
+        toolCall = {
+            id: toolCallId,
+            name: 'Write',  // Will be updated if we get more info
+            status: status || 'completed',
+            filePath: '',
+            input: {},
+            result: result || '',
+            position: messages[messageId].content.length,
+            oldText: '',
+            newText: ''
+        };
+        messages[messageId].toolCalls.push(toolCall);
+    } else {
+        // Update existing tool call
+        if (status) {
+            toolCall.status = status;
+        }
+        // Only update result if we have a non-empty one (don't overwrite with empty)
+        if (result) {
+            toolCall.result = result;
+        }
+    }
 
     updateMessageDOM(messageId);
 }
@@ -309,6 +335,15 @@ function renderToolCall(toolCall) {
             html += `<div class="tool-call-input"><strong>Command:</strong><pre>${escapeHtml(toolCall.input.command)}</pre></div>`;
         }
 
+        // Show Edit tool as unified diff
+        if (toolCall.name === 'Edit' && toolCall.oldText !== undefined && toolCall.newText !== undefined) {
+            const diff = generateUnifiedDiff(toolCall.oldText, toolCall.newText, fileName);
+            html += `<div class="tool-call-input">
+                <strong>Diff:</strong>
+                <pre class="diff">${diff}</pre>
+            </div>`;
+        }
+
         // Show result if available
         if (toolCall.result) {
             html += `<div class="tool-call-result-section"><strong>Result:</strong><pre class="tool-call-result">${escapeHtml(toolCall.result)}</pre></div>`;
@@ -319,6 +354,48 @@ function renderToolCall(toolCall) {
 
     html += '</div>';
     return html;
+}
+
+// Generate unified diff from old and new text with HTML syntax highlighting
+function generateUnifiedDiff(oldText, newText, fileName) {
+    const oldLines = oldText.split('\n');
+    const newLines = newText.split('\n');
+
+    // Simple line-by-line diff
+    let diff = [];
+    diff.push(`<span class="diff-header">--- ${escapeHtml(fileName || 'file')}</span>`);
+    diff.push(`<span class="diff-header">+++ ${escapeHtml(fileName || 'file')}</span>`);
+
+    let i = 0, j = 0;
+    const maxLines = Math.max(oldLines.length, newLines.length);
+
+    while (i < oldLines.length || j < newLines.length) {
+        const oldLine = i < oldLines.length ? oldLines[i] : undefined;
+        const newLine = j < newLines.length ? newLines[j] : undefined;
+
+        if (oldLine === newLine) {
+            // Lines match - context line
+            diff.push(`<span class="diff-context"> ${escapeHtml(oldLine || '')}</span>`);
+            i++;
+            j++;
+        } else if (oldLine !== undefined && newLine !== undefined) {
+            // Lines differ - show both as removal and addition
+            diff.push(`<span class="diff-remove">-${escapeHtml(oldLine)}</span>`);
+            diff.push(`<span class="diff-add">+${escapeHtml(newLine)}</span>`);
+            i++;
+            j++;
+        } else if (oldLine !== undefined) {
+            // Only old line exists - removal
+            diff.push(`<span class="diff-remove">-${escapeHtml(oldLine)}</span>`);
+            i++;
+        } else {
+            // Only new line exists - addition
+            diff.push(`<span class="diff-add">+${escapeHtml(newLine)}</span>`);
+            j++;
+        }
+    }
+
+    return diff.join('');
 }
 
 // Toggle tool call expansion

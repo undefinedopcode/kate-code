@@ -537,6 +537,45 @@ body {
     line-height: 1.4;
 }
 
+/* Unified diff display */
+pre.diff {
+    font-size: 11px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 0;
+    padding: 0;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    line-height: 1.5;
+    color: var(--fg-primary);
+}
+
+/* Diff line types */
+pre.diff span {
+    display: block;
+    padding: 2px 8px;
+}
+
+pre.diff .diff-header {
+    color: var(--fg-secondary);
+    font-weight: 600;
+}
+
+pre.diff .diff-context {
+    color: var(--fg-primary);
+}
+
+pre.diff .diff-remove {
+    background-color: rgba(244, 135, 113, 0.2);
+    color: #ff8080;
+}
+
+pre.diff .diff-add {
+    background-color: rgba(78, 201, 176, 0.2);
+    color: #80ffaa;
+}
+
 /* Permission request inline */
 .permission-request {
     margin: 16px 0;

@@ -20,6 +20,11 @@ struct ToolCall {
     QString result;
     QString filePath;  // File path if tool operates on a file
     int contentPosition = 0;
+
+    // Edit/Write specific fields
+    QString oldText;  // For Edit tool - original text
+    QString newText;  // For Edit tool - new text
+    QString operationType;  // "create", "edit", etc.
 };
 
 struct Message {
@@ -44,4 +49,9 @@ struct PermissionRequest {
     QJsonObject input;
     QList<QJsonObject> options;
     QString sessionId;
+};
+
+struct SlashCommand {
+    QString name;
+    QString description;
 };
