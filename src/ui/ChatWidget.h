@@ -26,6 +26,7 @@ public:
 
 private Q_SLOTS:
     void onConnectClicked();
+    void onNewSessionClicked();
     void onMessageSubmitted(const QString &message);
     void onStatusChanged(ConnectionStatus status);
     void onMessageAdded(const Message &message);
@@ -49,5 +50,6 @@ private:
     ChatWebView *m_chatWebView;
     ChatInputWidget *m_inputWidget;
     QPushButton *m_connectButton;
+    QPushButton *m_newSessionButton;
     QLabel *m_statusLabel;
 };

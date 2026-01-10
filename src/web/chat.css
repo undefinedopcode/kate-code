@@ -546,6 +546,79 @@ body {
     word-break: break-word;
 }
 
+/* Markdown-rendered plan in permission requests */
+.permission-plan {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.permission-plan h1,
+.permission-plan h2,
+.permission-plan h3 {
+    margin: 12px 0 8px 0;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.permission-plan h1 { font-size: 1.4em; }
+.permission-plan h2 { font-size: 1.2em; }
+.permission-plan h3 { font-size: 1.1em; }
+
+.permission-plan p {
+    margin: 8px 0;
+}
+
+.permission-plan ul,
+.permission-plan ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.permission-plan li {
+    margin: 4px 0;
+}
+
+.permission-plan code {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+    font-size: 0.9em;
+}
+
+.permission-plan pre {
+    background-color: #282c34;
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 12px 0;
+}
+
+.permission-plan pre code {
+    background-color: transparent;
+    padding: 0;
+    font-size: 0.85em;
+}
+
+.permission-plan table {
+    border-collapse: collapse;
+    margin: 12px 0;
+    width: 100%;
+}
+
+.permission-plan th,
+.permission-plan td {
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    padding: 6px 8px;
+    text-align: left;
+}
+
+.permission-plan th {
+    background-color: rgba(0, 0, 0, 0.3);
+    font-weight: 600;
+}
+
 .permission-options {
     display: flex;
     flex-direction: column;
