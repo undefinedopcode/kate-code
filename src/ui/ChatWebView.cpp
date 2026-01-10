@@ -153,14 +153,18 @@ void ChatWebView::showPermissionRequest(const PermissionRequest &request)
 
     qDebug() << "[ChatWebView] Input JSON length:" << inputJsonStr.length();
 
-    // Pass input and options as JSON objects (not escaped strings) to avoid escaping issues with complex content
-    QString script = QStringLiteral("showPermissionRequest(%1, '%2', %3, %4);")
-                         .arg(request.requestId)
-                         .arg(escapeJsString(request.toolName))
-                         .arg(inputJsonStr)  // Pass JSON directly without quotes
-                         .arg(optionsJsonStr);
+    // Store JSON data in global variables first to avoid JavaScript syntax issues
+    // when embedding large JSON directly in function calls
+    QString script = QStringLiteral(
+        "window._permInput = %1; "
+        "window._permOptions = %2; "
+        "showPermissionRequest(%3, '%4', window._permInput, window._permOptions);"
+    ).arg(inputJsonStr)
+     .arg(optionsJsonStr)
+     .arg(request.requestId)
+     .arg(escapeJsString(request.toolName));
 
-    qDebug() << "[ChatWebView] Executing JS:" << script.left(200);
+    qDebug() << "[ChatWebView] Executing JS (length: " << script.length() << ")";
 
     runJavaScript(script);
 }
