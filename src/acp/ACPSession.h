@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ACPModels.h"
+#include <QJsonArray>
 #include <QObject>
 #include <QString>
 
@@ -14,15 +15,18 @@ public:
     explicit ACPSession(QObject *parent = nullptr);
     ~ACPSession() override;
 
-    void start(const QString &workingDir);
+    void start(const QString &workingDir, const QString &permissionMode = QStringLiteral("default"));
     void stop();
 
     void sendMessage(const QString &content, const QString &filePath = QString(), const QString &selection = QString());
     void sendPermissionResponse(int requestId, const QJsonObject &outcome);
+    void setMode(const QString &modeId);
 
     bool isConnected() const { return m_status == ConnectionStatus::Connected; }
     ConnectionStatus status() const { return m_status; }
     QString sessionId() const { return m_sessionId; }
+    QJsonArray availableModes() const { return m_availableModes; }
+    QString currentMode() const { return m_currentMode; }
 
 Q_SIGNALS:
     void statusChanged(ConnectionStatus status);
@@ -33,6 +37,8 @@ Q_SIGNALS:
     void toolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result);
     void todosUpdated(const QList<TodoItem> &todos);
     void permissionRequested(const PermissionRequest &request);
+    void modesAvailable(const QJsonArray &modes);
+    void modeChanged(const QString &modeId);
     void errorOccurred(const QString &message);
 
 private Q_SLOTS:
@@ -52,6 +58,8 @@ private:
     ConnectionStatus m_status;
     QString m_sessionId;
     QString m_workingDir;
+    QString m_currentMode;
+    QJsonArray m_availableModes;
     QString m_currentMessageId;
 
     // Request tracking

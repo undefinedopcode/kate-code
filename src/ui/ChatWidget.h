@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../acp/ACPModels.h"
+#include <QJsonArray>
 #include <QWidget>
 #include <functional>
 
@@ -28,6 +29,7 @@ private Q_SLOTS:
     void onConnectClicked();
     void onNewSessionClicked();
     void onMessageSubmitted(const QString &message);
+    void onPermissionModeChanged(const QString &mode);
     void onStatusChanged(ConnectionStatus status);
     void onMessageAdded(const Message &message);
     void onMessageUpdated(const QString &messageId, const QString &content);
@@ -36,6 +38,8 @@ private Q_SLOTS:
     void onToolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result);
     void onTodosUpdated(const QList<TodoItem> &todos);
     void onPermissionRequested(const PermissionRequest &request);
+    void onModesAvailable(const QJsonArray &modes);
+    void onModeChanged(const QString &modeId);
     void onError(const QString &message);
 
 private:

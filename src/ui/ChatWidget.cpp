@@ -48,6 +48,7 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_connectButton, &QPushButton::clicked, this, &ChatWidget::onConnectClicked);
     connect(m_newSessionButton, &QPushButton::clicked, this, &ChatWidget::onNewSessionClicked);
     connect(m_inputWidget, &ChatInputWidget::messageSubmitted, this, &ChatWidget::onMessageSubmitted);
+    connect(m_inputWidget, &ChatInputWidget::permissionModeChanged, this, &ChatWidget::onPermissionModeChanged);
 
     // Connect ACP session signals
     connect(m_session, &ACPSession::statusChanged, this, &ChatWidget::onStatusChanged);
@@ -58,6 +59,8 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::toolCallUpdated, this, &ChatWidget::onToolCallUpdated);
     connect(m_session, &ACPSession::todosUpdated, this, &ChatWidget::onTodosUpdated);
     connect(m_session, &ACPSession::permissionRequested, this, &ChatWidget::onPermissionRequested);
+    connect(m_session, &ACPSession::modesAvailable, this, &ChatWidget::onModesAvailable);
+    connect(m_session, &ACPSession::modeChanged, this, &ChatWidget::onModeChanged);
     connect(m_session, &ACPSession::errorOccurred, this, &ChatWidget::onError);
 
     // Connect web view permission responses back to ACP
@@ -226,4 +229,25 @@ void ChatWidget::onError(const QString &message)
     // Log errors to console instead of showing popups
     // Many "errors" from ACP are just informational stderr output
     qWarning() << "[ChatWidget] ACP error:" << message;
+}
+
+void ChatWidget::onPermissionModeChanged(const QString &mode)
+{
+    qDebug() << "[ChatWidget] User changed mode to:" << mode;
+    m_session->setMode(mode);
+}
+
+void ChatWidget::onModesAvailable(const QJsonArray &modes)
+{
+    qDebug() << "[ChatWidget] Modes available:" << modes.size();
+    // TODO: Populate dropdown with available modes
+    // For now, we'll keep the hardcoded modes in ChatInputWidget
+    // In a future update, we can dynamically populate it
+}
+
+void ChatWidget::onModeChanged(const QString &modeId)
+{
+    qDebug() << "[ChatWidget] Mode changed to:" << modeId;
+    // TODO: Update dropdown to reflect current mode
+    // For now, this is just logged
 }
