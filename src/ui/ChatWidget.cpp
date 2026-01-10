@@ -7,7 +7,6 @@
 #include <QDir>
 #include <QHBoxLayout>
 #include <QLabel>
-#include <QMessageBox>
 #include <QPushButton>
 #include <QVBoxLayout>
 
@@ -195,5 +194,7 @@ void ChatWidget::onPermissionRequested(const PermissionRequest &request)
 
 void ChatWidget::onError(const QString &message)
 {
-    QMessageBox::warning(this, QStringLiteral("Error"), message);
+    // Log errors to console instead of showing popups
+    // Many "errors" from ACP are just informational stderr output
+    qWarning() << "[ChatWidget] ACP error:" << message;
 }
