@@ -1,17 +1,43 @@
 #include "ChatInputWidget.h"
 
+#include <QComboBox>
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QPushButton>
 #include <QTextEdit>
+#include <QVBoxLayout>
 
 ChatInputWidget::ChatInputWidget(QWidget *parent)
     : QWidget(parent)
 {
-    auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4, 4, 4, 4);
-    layout->setSpacing(4);
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(4, 4, 4, 4);
+    mainLayout->setSpacing(4);
+
+    // Mode selector row
+    auto *modeLayout = new QHBoxLayout();
+    modeLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *modeLabel = new QLabel(QStringLiteral("Mode:"), this);
+    m_modeComboBox = new QComboBox(this);
+    m_modeComboBox->addItem(QStringLiteral("Default"), QStringLiteral("default"));
+    m_modeComboBox->addItem(QStringLiteral("Plan"), QStringLiteral("plan"));
+    m_modeComboBox->addItem(QStringLiteral("Accept Edits"), QStringLiteral("acceptEdits"));
+    m_modeComboBox->addItem(QStringLiteral("Don't Ask"), QStringLiteral("dontAsk"));
+    m_modeComboBox->setMinimumWidth(150);
+
+    modeLayout->addWidget(modeLabel);
+    modeLayout->addWidget(m_modeComboBox);
+    modeLayout->addStretch();
+
+    mainLayout->addLayout(modeLayout);
+
+    // Input row
+    auto *inputLayout = new QHBoxLayout();
+    inputLayout->setContentsMargins(0, 0, 0, 0);
+    inputLayout->setSpacing(4);
 
     // Multiline text input
     m_textEdit = new QTextEdit(this);
@@ -25,10 +51,14 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     m_sendButton->setMinimumWidth(80);
     m_sendButton->setMinimumHeight(50);
 
-    layout->addWidget(m_textEdit, 1);
-    layout->addWidget(m_sendButton);
+    inputLayout->addWidget(m_textEdit, 1);
+    inputLayout->addWidget(m_sendButton);
+
+    mainLayout->addLayout(inputLayout);
 
     connect(m_sendButton, &QPushButton::clicked, this, &ChatInputWidget::onSendClicked);
+    connect(m_modeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &ChatInputWidget::onModeChanged);
 }
 
 ChatInputWidget::~ChatInputWidget()
@@ -39,6 +69,7 @@ void ChatInputWidget::setEnabled(bool enabled)
 {
     m_textEdit->setEnabled(enabled);
     m_sendButton->setEnabled(enabled);
+    m_modeComboBox->setEnabled(enabled);
 }
 
 void ChatInputWidget::clear()
@@ -49,6 +80,11 @@ void ChatInputWidget::clear()
 QString ChatInputWidget::text() const
 {
     return m_textEdit->toPlainText();
+}
+
+QString ChatInputWidget::permissionMode() const
+{
+    return m_modeComboBox->currentData().toString();
 }
 
 bool ChatInputWidget::eventFilter(QObject *obj, QEvent *event)
@@ -75,4 +111,11 @@ void ChatInputWidget::onSendClicked()
         Q_EMIT messageSubmitted(message);
         m_textEdit->clear();
     }
+}
+
+void ChatInputWidget::onModeChanged(int index)
+{
+    Q_UNUSED(index);
+    QString mode = m_modeComboBox->currentData().toString();
+    Q_EMIT permissionModeChanged(mode);
 }

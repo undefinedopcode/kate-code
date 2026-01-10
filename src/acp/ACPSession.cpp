@@ -27,8 +27,10 @@ ACPSession::~ACPSession()
     stop();
 }
 
-void ACPSession::start(const QString &workingDir)
+void ACPSession::start(const QString &workingDir, const QString &permissionMode)
 {
+    Q_UNUSED(permissionMode);  // Modes are now discovered from agent
+
     if (m_status != ConnectionStatus::Disconnected) {
         return;
     }
@@ -59,6 +61,22 @@ void ACPSession::sendPermissionResponse(int requestId, const QJsonObject &outcom
 
     m_service->sendResponse(requestId, result);
     qDebug() << "[ACPSession] Sent permission response for request:" << requestId;
+}
+
+void ACPSession::setMode(const QString &modeId)
+{
+    if (m_sessionId.isEmpty()) {
+        qWarning() << "[ACPSession] Cannot set mode: no active session";
+        return;
+    }
+
+    qDebug() << "[ACPSession] Setting mode to:" << modeId;
+
+    QJsonObject params;
+    params[QStringLiteral("sessionId")] = m_sessionId;
+    params[QStringLiteral("modeId")] = modeId;
+
+    m_service->sendRequest(QStringLiteral("session/set_mode"), params);
 }
 
 void ACPSession::sendMessage(const QString &content, const QString &filePath, const QString &selection)
@@ -221,12 +239,24 @@ void ACPSession::handleSessionNewResponse(int id, const QJsonObject &result)
     m_sessionId = result[QStringLiteral("sessionId")].toString();
     qDebug() << "[ACPSession] Session created with ID:" << m_sessionId;
 
+    // Parse available modes
+    m_availableModes = result[QStringLiteral("availableModes")].toArray();
+    m_currentMode = result[QStringLiteral("currentModeId")].toString();
+
+    qDebug() << "[ACPSession] Available modes:" << m_availableModes.size();
+    qDebug() << "[ACPSession] Current mode:" << m_currentMode;
+
     if (m_sessionId.isEmpty()) {
         qWarning() << "[ACPSession] ERROR: Session ID is empty! Full result:" << result;
         m_status = ConnectionStatus::Error;
         Q_EMIT errorOccurred(QStringLiteral("Failed to get session ID from ACP"));
     } else {
         m_status = ConnectionStatus::Connected;
+        // Emit modes available signal
+        Q_EMIT modesAvailable(m_availableModes);
+        if (!m_currentMode.isEmpty()) {
+            Q_EMIT modeChanged(m_currentMode);
+        }
     }
 
     Q_EMIT statusChanged(m_status);
@@ -339,6 +369,13 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
 
         qDebug() << "[ACPSession] Plan update with" << todos.size() << "entries";
         Q_EMIT todosUpdated(todos);
+    }
+    else if (updateType == QStringLiteral("current_mode_update")) {
+        // Agent changed the mode
+        QString newMode = update[QStringLiteral("modeId")].toString();
+        qDebug() << "[ACPSession] Mode changed to:" << newMode;
+        m_currentMode = newMode;
+        Q_EMIT modeChanged(newMode);
     }
 }
 
