@@ -2,6 +2,95 @@
 let messages = {};
 let bridge = null;
 
+// Map file extensions to highlight.js language identifiers
+const extToLanguage = {
+    // Web
+    'js': 'javascript', 'mjs': 'javascript', 'cjs': 'javascript',
+    'ts': 'typescript', 'tsx': 'typescript', 'jsx': 'javascript',
+    'html': 'xml', 'htm': 'xml', 'xhtml': 'xml',
+    'css': 'css', 'scss': 'scss', 'sass': 'scss', 'less': 'less',
+    'json': 'json', 'json5': 'json',
+    // Systems
+    'c': 'c', 'h': 'c',
+    'cpp': 'cpp', 'cxx': 'cpp', 'cc': 'cpp', 'hpp': 'cpp', 'hxx': 'cpp',
+    'rs': 'rust',
+    'go': 'go',
+    'zig': 'zig',
+    // JVM
+    'java': 'java', 'kt': 'kotlin', 'kts': 'kotlin', 'scala': 'scala',
+    // Scripting
+    'py': 'python', 'pyw': 'python', 'pyi': 'python',
+    'rb': 'ruby', 'rake': 'ruby',
+    'php': 'php',
+    'pl': 'perl', 'pm': 'perl',
+    'lua': 'lua',
+    'sh': 'bash', 'bash': 'bash', 'zsh': 'bash', 'fish': 'fish',
+    'ps1': 'powershell', 'psm1': 'powershell',
+    // Config/Data
+    'yaml': 'yaml', 'yml': 'yaml',
+    'toml': 'ini', 'ini': 'ini', 'conf': 'ini',
+    'xml': 'xml', 'svg': 'xml', 'xsd': 'xml', 'xsl': 'xml',
+    'md': 'markdown', 'markdown': 'markdown',
+    'sql': 'sql',
+    // Build/DevOps
+    'cmake': 'cmake', 'makefile': 'makefile', 'mk': 'makefile',
+    'dockerfile': 'dockerfile',
+    'gradle': 'gradle', 'groovy': 'groovy',
+    // Other
+    'swift': 'swift',
+    'cs': 'csharp',
+    'fs': 'fsharp', 'fsx': 'fsharp',
+    'ex': 'elixir', 'exs': 'elixir',
+    'erl': 'erlang', 'hrl': 'erlang',
+    'hs': 'haskell',
+    'ml': 'ocaml', 'mli': 'ocaml',
+    'clj': 'clojure', 'cljs': 'clojure', 'cljc': 'clojure',
+    'lisp': 'lisp', 'cl': 'lisp', 'el': 'lisp',
+    'r': 'r',
+    'dart': 'dart',
+    'v': 'verilog', 'sv': 'verilog',
+    'vhd': 'vhdl', 'vhdl': 'vhdl',
+    'tex': 'latex', 'latex': 'latex',
+    'diff': 'diff', 'patch': 'diff',
+    'qml': 'qml',
+    // Qt/KDE
+    'pro': 'qmake', 'pri': 'qmake',
+    'ui': 'xml', 'rc': 'xml', 'qrc': 'xml'
+};
+
+// Get highlight.js language from file path
+function getLanguageFromPath(filePath) {
+    if (!filePath) return null;
+    const fileName = filePath.split('/').pop().toLowerCase();
+
+    // Handle special filenames
+    if (fileName === 'makefile' || fileName === 'gnumakefile') return 'makefile';
+    if (fileName === 'dockerfile') return 'dockerfile';
+    if (fileName === 'cmakelists.txt') return 'cmake';
+
+    const ext = fileName.split('.').pop();
+    return extToLanguage[ext] || null;
+}
+
+// Highlight code using highlight.js
+function highlightCode(code, language) {
+    if (typeof hljs === 'undefined') {
+        return escapeHtml(code);
+    }
+
+    try {
+        if (language && hljs.getLanguage(language)) {
+            return hljs.highlight(code, { language: language }).value;
+        } else {
+            // Auto-detect if no language specified
+            return hljs.highlightAuto(code).value;
+        }
+    } catch (e) {
+        logToQt('Highlight error: ' + e);
+        return escapeHtml(code);
+    }
+}
+
 // Helper to log to C++ via bridge
 function logToQt(message) {
     if (window.bridge && window.bridge.logFromJS) {
@@ -140,7 +229,7 @@ function finishMessage(id) {
 }
 
 // Add tool call to message
-function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, oldText, newText) {
+function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, oldText, newText, editsJson) {
     if (!messages[messageId]) return;
 
     // Parse input to extract command for Bash tools
@@ -149,6 +238,14 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, o
         input = inputJson ? JSON.parse(inputJson) : {};
     } catch (e) {
         console.warn('Failed to parse tool input JSON:', e);
+    }
+
+    // Parse edits array
+    let edits = [];
+    try {
+        edits = editsJson ? JSON.parse(editsJson) : [];
+    } catch (e) {
+        console.warn('Failed to parse edits JSON:', e);
     }
 
     // Check if tool call already exists (avoid duplicates)
@@ -161,6 +258,7 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, o
         existing.input = input;
         existing.oldText = oldText || '';
         existing.newText = newText || '';
+        existing.edits = edits.length > 0 ? edits : existing.edits;
     } else {
         // Add new tool call at current content length position
         const toolCall = {
@@ -172,7 +270,8 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, o
             result: '',
             position: messages[messageId].content.length,
             oldText: oldText || '',
-            newText: newText || ''
+            newText: newText || '',
+            edits: edits
         };
         messages[messageId].toolCalls.push(toolCall);
     }
@@ -335,17 +434,55 @@ function renderToolCall(toolCall) {
             html += `<div class="tool-call-input"><strong>Command:</strong><pre>${escapeHtml(toolCall.input.command)}</pre></div>`;
         }
 
-        // Show Edit tool as unified diff
-        if (toolCall.name === 'Edit' && toolCall.oldText !== undefined && toolCall.newText !== undefined) {
-            const diff = generateUnifiedDiff(toolCall.oldText, toolCall.newText, fileName);
+        // Show Edit tool as unified diff(s)
+        if (toolCall.name === 'Edit') {
+            // Check if we have multiple edits array
+            if (toolCall.edits && toolCall.edits.length > 0) {
+                html += `<div class="tool-call-input">
+                    <strong>Diff${toolCall.edits.length > 1 ? 's' : ''}:</strong>`;
+
+                for (let i = 0; i < toolCall.edits.length; i++) {
+                    const edit = toolCall.edits[i];
+                    const editFileName = edit.filePath || fileName || `edit ${i + 1}`;
+                    const diff = generateUnifiedDiff(edit.oldText, edit.newText, editFileName);
+
+                    if (toolCall.edits.length > 1) {
+                        html += `<div class="edit-section">
+                            <div class="edit-header">Edit ${i + 1} of ${toolCall.edits.length}${edit.filePath ? ': ' + escapeHtml(edit.filePath) : ''}</div>
+                            <pre class="diff">${diff}</pre>
+                        </div>`;
+                    } else {
+                        html += `<pre class="diff">${diff}</pre>`;
+                    }
+                }
+
+                html += `</div>`;
+            } else if (toolCall.oldText !== undefined && toolCall.newText !== undefined) {
+                // Backward compatibility: single edit with oldText/newText
+                const diff = generateUnifiedDiff(toolCall.oldText, toolCall.newText, fileName);
+                html += `<div class="tool-call-input">
+                    <strong>Diff:</strong>
+                    <pre class="diff">${diff}</pre>
+                </div>`;
+            }
+        }
+
+        // Show Write tool content with syntax highlighting
+        if (toolCall.name === 'Write' && toolCall.newText) {
+            const language = getLanguageFromPath(toolCall.filePath);
+            const highlighted = highlightCode(toolCall.newText, language);
+            const encodedCode = btoa(unescape(encodeURIComponent(toolCall.newText)));
             html += `<div class="tool-call-input">
-                <strong>Diff:</strong>
-                <pre class="diff">${diff}</pre>
+                <strong>Content:</strong>
+                <div class="code-block-wrapper">
+                    <button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="${encodedCode}" title="Copy code">📋</button>
+                    <pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre>
+                </div>
             </div>`;
         }
 
-        // Show result if available
-        if (toolCall.result) {
+        // Show result if available (skip for Write since we show content above)
+        if (toolCall.result && toolCall.name !== 'Write') {
             html += `<div class="tool-call-result-section"><strong>Result:</strong><pre class="tool-call-result">${escapeHtml(toolCall.result)}</pre></div>`;
         }
 
@@ -620,6 +757,37 @@ function applyHighlightTheme(themePath) {
     } else {
         logToQt('ERROR: highlight-theme link element not found');
     }
+}
+
+// Apply custom highlight.js CSS from Kate theme
+function applyCustomHighlightCSS(cssText) {
+    // Disable all existing stylesheets that contain highlight.js themes
+    const allStyleSheets = document.styleSheets;
+    for (let i = 0; i < allStyleSheets.length; i++) {
+        const sheet = allStyleSheets[i];
+        if (sheet.href && (sheet.href.includes('atom-one') || sheet.href.includes('highlight'))) {
+            sheet.disabled = true;
+            logToQt('Disabled bundled highlight theme: ' + sheet.href);
+        }
+    }
+
+    // Remove the link element (fallback theme)
+    const linkElement = document.getElementById('highlight-theme');
+    if (linkElement) {
+        linkElement.remove();
+    }
+
+    // Create or update style element for custom CSS
+    let styleElement = document.getElementById('kate-highlight-theme');
+    if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = 'kate-highlight-theme';
+        document.head.appendChild(styleElement);
+    }
+
+    styleElement.textContent = cssText;
+    logToQt('Applied Kate theme CSS: ' + cssText.length + ' bytes');
+    logToQt('CSS preview: ' + cssText.substring(0, 200));
 }
 
 // Show inline permission request

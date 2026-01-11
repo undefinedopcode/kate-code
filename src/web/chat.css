@@ -576,6 +576,25 @@ pre.diff .diff-add {
     color: #80ffaa;
 }
 
+/* Multiple edits styling */
+.edit-section {
+    margin-top: 12px;
+}
+
+.edit-section:first-child {
+    margin-top: 8px;
+}
+
+.edit-header {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-secondary);
+    margin-bottom: 4px;
+    padding: 4px 8px;
+    background-color: rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+}
+
 /* Permission request inline */
 .permission-request {
     margin: 16px 0;

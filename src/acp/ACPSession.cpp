@@ -355,18 +355,34 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
 
         // Extract Edit/Write specific fields from content array
         QJsonArray contentArray = update[QStringLiteral("content")].toArray();
-        if (!contentArray.isEmpty()) {
-            QJsonObject contentItem = contentArray[0].toObject();
+        for (int i = 0; i < contentArray.size(); ++i) {
+            QJsonObject contentItem = contentArray[i].toObject();
             QString type = contentItem[QStringLiteral("type")].toString();
 
             if (type == QStringLiteral("diff")) {
                 // This is an Edit operation
                 toolCall.operationType = QStringLiteral("edit");
-                toolCall.oldText = contentItem[QStringLiteral("oldText")].toString();
-                toolCall.newText = contentItem[QStringLiteral("newText")].toString();
-                qDebug() << "[ACPSession] Edit detected - old:" << toolCall.oldText.length()
-                         << "chars, new:" << toolCall.newText.length() << "chars";
+
+                EditDiff edit;
+                edit.oldText = contentItem[QStringLiteral("oldText")].toString();
+                edit.newText = contentItem[QStringLiteral("newText")].toString();
+                edit.filePath = contentItem[QStringLiteral("filePath")].toString();
+
+                toolCall.edits.append(edit);
+
+                // Keep backward compatibility with single-edit fields
+                if (i == 0) {
+                    toolCall.oldText = edit.oldText;
+                    toolCall.newText = edit.newText;
+                }
+
+                qDebug() << "[ACPSession] Edit" << i + 1 << "detected - old:" << edit.oldText.length()
+                         << "chars, new:" << edit.newText.length() << "chars";
             }
+        }
+
+        if (!toolCall.edits.isEmpty()) {
+            qDebug() << "[ACPSession] Total edits in tool call:" << toolCall.edits.size();
         }
 
         qDebug() << "[ACPSession] Tool call - id:" << toolCall.id

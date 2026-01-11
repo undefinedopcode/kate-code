@@ -18,6 +18,7 @@ find_package(KF6 ${REQUIRED_KF_VERSION} REQUIRED COMPONENTS
     TextEditor
     CoreAddons
     XmlGui
+    SyntaxHighlighting
 )
 
 find_package(Qt6 REQUIRED COMPONENTS
