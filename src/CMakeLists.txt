@@ -17,6 +17,7 @@ set(katecode_SRCS
 
     # Util layer
     util/KDEColorScheme.cpp
+    util/KateThemeConverter.cpp
 )
 
 # Qt resources
@@ -29,6 +30,7 @@ target_link_libraries(katecode
     KF6::I18n
     KF6::CoreAddons
     KF6::XmlGui
+    KF6::SyntaxHighlighting
     Qt6::Core
     Qt6::Widgets
     Qt6::WebEngineWidgets

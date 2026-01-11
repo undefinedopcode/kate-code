@@ -1,5 +1,6 @@
 #include "ChatWebView.h"
 #include "../util/KDEColorScheme.h"
+#include "../util/KateThemeConverter.h"
 
 #include <QDebug>
 #include <QJsonArray>
@@ -53,25 +54,79 @@ void ChatWebView::injectColorScheme()
     QString cssVars = colorScheme.generateCSSVariables();
     bool isLight = colorScheme.isLightTheme();
 
-    // Choose the appropriate highlight.js theme and code background colors
-    QString hljsTheme = isLight ? QStringLiteral("vendor/atom-one-light.min.css")
-                                 : QStringLiteral("vendor/atom-one-dark.min.css");
-    QString codeBg = isLight ? QStringLiteral("#fafafa") : QStringLiteral("#282c34");
-    QString inlineCodeBg = isLight ? QStringLiteral("rgba(0, 0, 0, 0.08)")
-                                    : QStringLiteral("rgba(0, 0, 0, 0.3)");
+    // Try to load Kate's current theme for syntax highlighting
+    QString kateThemeCSS = KateThemeConverter::getCurrentThemeCSS();
 
-    // Add code background variables to CSS vars
-    QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2")
-                                        .arg(codeBg, inlineCodeBg);
+    QString hljsTheme;
+    QString codeBg;
+    QString inlineCodeBg;
 
-    QString script = QStringLiteral(
-        "applyColorScheme('%1'); "
-        "applyHighlightTheme('%2');"
-    ).arg(fullCssVars, hljsTheme);
+    if (!kateThemeCSS.isEmpty()) {
+        // Use Kate theme - inject custom CSS directly
+        qDebug() << "[ChatWebView] Using Kate theme CSS (" << kateThemeCSS.length() << "bytes)";
 
-    runJavaScript(script);
+        // Try to extract background color from Kate theme
+        QString themeName = KateThemeConverter::getCurrentKateTheme();
+        QJsonObject themeJson = KateThemeConverter::loadKateTheme(themeName);
 
-    qDebug() << "[ChatWebView] Injected KDE color scheme and highlight theme:" << hljsTheme;
+        if (!themeJson.isEmpty()) {
+            QJsonObject editorColors = themeJson[QStringLiteral("editor-colors")].toObject();
+            QString kateCodeBg = editorColors[QStringLiteral("BackgroundColor")].toString();
+
+            if (!kateCodeBg.isEmpty()) {
+                codeBg = kateCodeBg;
+                qDebug() << "[ChatWebView] Using Kate background color:" << codeBg;
+            } else {
+                codeBg = isLight ? QStringLiteral("#fafafa") : QStringLiteral("#282c34");
+                qDebug() << "[ChatWebView] No Kate background, using fallback:" << codeBg;
+            }
+        } else {
+            codeBg = isLight ? QStringLiteral("#fafafa") : QStringLiteral("#282c34");
+            qDebug() << "[ChatWebView] No theme JSON, using fallback:" << codeBg;
+        }
+
+        inlineCodeBg = isLight ? QStringLiteral("rgba(0, 0, 0, 0.08)")
+                                : QStringLiteral("rgba(0, 0, 0, 0.3)");
+
+        // Escape the CSS for JavaScript string literal
+        QString escapedCSS = kateThemeCSS;
+        escapedCSS.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
+        escapedCSS.replace(QLatin1Char('\''), QStringLiteral("\\'"));
+        escapedCSS.replace(QLatin1Char('\n'), QStringLiteral("\\n"));
+        escapedCSS.replace(QLatin1Char('\r'), QStringLiteral("\\r"));
+
+        // Add code background variables to CSS vars
+        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2")
+                                            .arg(codeBg, inlineCodeBg);
+
+        QString script = QStringLiteral(
+            "applyColorScheme('%1'); "
+            "applyCustomHighlightCSS('%2');"
+        ).arg(fullCssVars, escapedCSS);
+
+        runJavaScript(script);
+    } else {
+        // Fallback to bundled highlight.js themes
+        qDebug() << "[ChatWebView] Kate theme not available, using fallback";
+
+        hljsTheme = isLight ? QStringLiteral("vendor/atom-one-light.min.css")
+                            : QStringLiteral("vendor/atom-one-dark.min.css");
+        codeBg = isLight ? QStringLiteral("#fafafa") : QStringLiteral("#282c34");
+        inlineCodeBg = isLight ? QStringLiteral("rgba(0, 0, 0, 0.08)")
+                                : QStringLiteral("rgba(0, 0, 0, 0.3)");
+
+        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2")
+                                            .arg(codeBg, inlineCodeBg);
+
+        QString script = QStringLiteral(
+            "applyColorScheme('%1'); "
+            "applyHighlightTheme('%2');"
+        ).arg(fullCssVars, hljsTheme);
+
+        runJavaScript(script);
+    }
+
+    qDebug() << "[ChatWebView] Injected KDE color scheme and syntax highlighting";
 }
 
 void ChatWebView::addMessage(const Message &message)
@@ -124,7 +179,18 @@ void ChatWebView::addToolCall(const QString &messageId, const ToolCall &toolCall
 
     QString inputJson = QString::fromUtf8(QJsonDocument(toolCall.input).toJson(QJsonDocument::Compact));
 
-    QString script = QStringLiteral("addToolCall('%1', '%2', '%3', '%4', '%5', '%6', '%7', '%8');")
+    // Serialize edits array to JSON
+    QJsonArray editsArray;
+    for (const EditDiff &edit : toolCall.edits) {
+        QJsonObject editObj;
+        editObj[QStringLiteral("oldText")] = edit.oldText;
+        editObj[QStringLiteral("newText")] = edit.newText;
+        editObj[QStringLiteral("filePath")] = edit.filePath;
+        editsArray.append(editObj);
+    }
+    QString editsJson = QString::fromUtf8(QJsonDocument(editsArray).toJson(QJsonDocument::Compact));
+
+    QString script = QStringLiteral("addToolCall('%1', '%2', '%3', '%4', '%5', '%6', '%7', '%8', '%9');")
                          .arg(escapeJsString(messageId),
                               escapeJsString(toolCall.id),
                               escapeJsString(toolCall.name),
@@ -132,7 +198,8 @@ void ChatWebView::addToolCall(const QString &messageId, const ToolCall &toolCall
                               escapeJsString(toolCall.filePath),
                               escapeJsString(inputJson),
                               escapeJsString(toolCall.oldText),
-                              escapeJsString(toolCall.newText));
+                              escapeJsString(toolCall.newText),
+                              escapeJsString(editsJson));
 
     runJavaScript(script);
 }

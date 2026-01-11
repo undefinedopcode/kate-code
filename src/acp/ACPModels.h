@@ -12,6 +12,12 @@ enum class ConnectionStatus {
     Error
 };
 
+struct EditDiff {
+    QString oldText;  // Original text
+    QString newText;  // New text
+    QString filePath; // Optional file path for this specific edit
+};
+
 struct ToolCall {
     QString id;
     QString name;
@@ -22,9 +28,10 @@ struct ToolCall {
     int contentPosition = 0;
 
     // Edit/Write specific fields
-    QString oldText;  // For Edit tool - original text
-    QString newText;  // For Edit tool - new text
+    QString oldText;  // For Edit tool - original text (deprecated, use edits)
+    QString newText;  // For Edit tool - new text (deprecated, use edits)
     QString operationType;  // "create", "edit", etc.
+    QList<EditDiff> edits;  // Multiple edits for Edit tool
 };
 
 struct Message {
