@@ -80,7 +80,7 @@ void ACPSession::setMode(const QString &modeId)
     m_service->sendRequest(QStringLiteral("session/set_mode"), params);
 }
 
-void ACPSession::sendMessage(const QString &content, const QString &filePath, const QString &selection)
+void ACPSession::sendMessage(const QString &content, const QString &filePath, const QString &selection, const QList<ContextChunk> &contextChunks)
 {
     if (m_status != ConnectionStatus::Connected) {
         qWarning() << "[ACPSession] Cannot send message: not connected";
@@ -142,6 +142,33 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
         resource[QStringLiteral("uri")] = QUrl::fromLocalFile(filePath).toString();
         resource[QStringLiteral("text")] = QStringLiteral("(current file)");
         resource[QStringLiteral("mimeType")] = QStringLiteral("text/plain");
+
+        resourceBlock[QStringLiteral("resource")] = resource;
+        promptBlocks.append(resourceBlock);
+    }
+
+    // Add context chunks as embedded resources
+    for (const ContextChunk &chunk : contextChunks) {
+        QJsonObject resourceBlock;
+        resourceBlock[QStringLiteral("type")] = QStringLiteral("resource");
+
+        QJsonObject resource;
+        resource[QStringLiteral("uri")] = QUrl::fromLocalFile(chunk.filePath).toString();
+        resource[QStringLiteral("text")] = chunk.content;
+
+        // Guess MIME type from file extension
+        QString mimeType = QStringLiteral("text/plain");
+        if (chunk.filePath.endsWith(QStringLiteral(".cpp")) || chunk.filePath.endsWith(QStringLiteral(".h")) ||
+            chunk.filePath.endsWith(QStringLiteral(".cc")) || chunk.filePath.endsWith(QStringLiteral(".cxx"))) {
+            mimeType = QStringLiteral("text/x-c++");
+        } else if (chunk.filePath.endsWith(QStringLiteral(".py"))) {
+            mimeType = QStringLiteral("text/x-python");
+        } else if (chunk.filePath.endsWith(QStringLiteral(".js"))) {
+            mimeType = QStringLiteral("text/javascript");
+        } else if (chunk.filePath.endsWith(QStringLiteral(".rs"))) {
+            mimeType = QStringLiteral("text/x-rust");
+        }
+        resource[QStringLiteral("mimeType")] = mimeType;
 
         resourceBlock[QStringLiteral("resource")] = resource;
         promptBlocks.append(resourceBlock);

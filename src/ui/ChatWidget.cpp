@@ -5,6 +5,7 @@
 #include "../acp/ACPSession.h"
 
 #include <QDir>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
@@ -37,6 +38,15 @@ ChatWidget::ChatWidget(QWidget *parent)
     m_chatWebView->setMinimumHeight(200);
     m_chatWebView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     layout->addWidget(m_chatWebView, 1);
+
+    // Context chips container (for displaying added context chunks)
+    m_contextChipsContainer = new QWidget(this);
+    auto *chipsLayout = new QHBoxLayout(m_contextChipsContainer);
+    chipsLayout->setContentsMargins(4, 2, 4, 2);
+    chipsLayout->setSpacing(4);
+    chipsLayout->addStretch();
+    m_contextChipsContainer->setVisible(false);  // Hidden until chunks are added
+    layout->addWidget(m_contextChipsContainer);
 
     // Message input
     m_inputWidget = new ChatInputWidget(this);
@@ -143,8 +153,11 @@ void ChatWidget::onMessageSubmitted(const QString &message)
     QString filePath = m_filePathProvider ? m_filePathProvider() : QString();
     QString selection = m_selectionProvider ? m_selectionProvider() : QString();
 
-    // Send message with context
-    m_session->sendMessage(message, filePath, selection);
+    // Send message with context (including added context chunks)
+    m_session->sendMessage(message, filePath, selection, m_contextChunks);
+
+    // Clear context chunks after sending
+    clearContextChunks();
 }
 
 void ChatWidget::onStatusChanged(ConnectionStatus status)
@@ -259,4 +272,112 @@ void ChatWidget::onModeChanged(const QString &modeId)
 {
     qDebug() << "[ChatWidget] Mode changed to:" << modeId;
     m_inputWidget->setCurrentMode(modeId);
+}
+
+void ChatWidget::addContextChunk(const QString &filePath, int startLine, int endLine, const QString &content)
+{
+    ContextChunk chunk;
+    chunk.filePath = filePath;
+    chunk.startLine = startLine;
+    chunk.endLine = endLine;
+    chunk.content = content;
+    chunk.id = QString::number(m_nextChunkId++);
+
+    m_contextChunks.append(chunk);
+    updateContextChipsDisplay();
+
+    qDebug() << "[ChatWidget] Added context chunk:" << filePath << "lines" << startLine << "-" << endLine;
+}
+
+void ChatWidget::removeContextChunk(const QString &id)
+{
+    for (int i = 0; i < m_contextChunks.size(); ++i) {
+        if (m_contextChunks[i].id == id) {
+            m_contextChunks.removeAt(i);
+            updateContextChipsDisplay();
+            qDebug() << "[ChatWidget] Removed context chunk:" << id;
+            return;
+        }
+    }
+}
+
+void ChatWidget::clearContextChunks()
+{
+    m_contextChunks.clear();
+    updateContextChipsDisplay();
+    qDebug() << "[ChatWidget] Cleared all context chunks";
+}
+
+void ChatWidget::onRemoveContextChunk(const QString &id)
+{
+    removeContextChunk(id);
+}
+
+void ChatWidget::updateContextChipsDisplay()
+{
+    // Clear existing chips
+    QLayout *layout = m_contextChipsContainer->layout();
+    QLayoutItem *item;
+    while ((item = layout->takeAt(0)) != nullptr) {
+        if (item->widget()) {
+            delete item->widget();
+        }
+        delete item;
+    }
+
+    if (m_contextChunks.isEmpty()) {
+        m_contextChipsContainer->setVisible(false);
+        return;
+    }
+
+    m_contextChipsContainer->setVisible(true);
+
+    // Add chips for each context chunk
+    for (const ContextChunk &chunk : m_contextChunks) {
+        QFileInfo fileInfo(chunk.filePath);
+        QString label = QStringLiteral("%1:%2-%3")
+                           .arg(fileInfo.fileName())
+                           .arg(chunk.startLine)
+                           .arg(chunk.endLine);
+
+        auto *chipWidget = new QWidget(this);
+        auto *chipLayout = new QHBoxLayout(chipWidget);
+        chipLayout->setContentsMargins(6, 2, 6, 2);
+        chipLayout->setSpacing(4);
+
+        auto *chipLabel = new QLabel(label, chipWidget);
+        chipLabel->setStyleSheet(QStringLiteral("QLabel { color: palette(text); }"));
+
+        auto *removeButton = new QPushButton(QStringLiteral("×"), chipWidget);
+        removeButton->setFixedSize(16, 16);
+        removeButton->setStyleSheet(QStringLiteral(
+            "QPushButton { "
+            "border: none; "
+            "background: transparent; "
+            "color: palette(text); "
+            "font-weight: bold; "
+            "} "
+            "QPushButton:hover { "
+            "background: rgba(255, 0, 0, 0.3); "
+            "}"));
+
+        connect(removeButton, &QPushButton::clicked, this, [this, id = chunk.id]() {
+            onRemoveContextChunk(id);
+        });
+
+        chipLayout->addWidget(chipLabel);
+        chipLayout->addWidget(removeButton);
+
+        chipWidget->setStyleSheet(QStringLiteral(
+            "QWidget { "
+            "background-color: palette(alternate-base); "
+            "border: 1px solid palette(mid); "
+            "border-radius: 3px; "
+            "}"));
+
+        layout->addWidget(chipWidget);
+    }
+
+    // Add stretch to keep chips left-aligned
+    qobject_cast<QHBoxLayout*>(layout)->addStretch();
 }

@@ -1,0 +1,11 @@
+<!DOCTYPE kpartgui>
+<kpartgui name="katecode" version="1">
+<MenuBar>
+  <Menu name="tools">
+    <Action name="kate_code_add_context"/>
+  </Menu>
+</MenuBar>
+<Menu name="ktexteditor_popup">
+  <Action name="kate_code_add_context"/>
+</Menu>
+</kpartgui>

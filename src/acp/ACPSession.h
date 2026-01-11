@@ -18,7 +18,7 @@ public:
     void start(const QString &workingDir, const QString &permissionMode = QStringLiteral("default"));
     void stop();
 
-    void sendMessage(const QString &content, const QString &filePath = QString(), const QString &selection = QString());
+    void sendMessage(const QString &content, const QString &filePath = QString(), const QString &selection = QString(), const QList<ContextChunk> &contextChunks = QList<ContextChunk>());
     void sendPermissionResponse(int requestId, const QJsonObject &outcome);
     void setMode(const QString &modeId);
 

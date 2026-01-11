@@ -55,3 +55,11 @@ struct SlashCommand {
     QString name;
     QString description;
 };
+
+struct ContextChunk {
+    QString filePath;
+    int startLine;
+    int endLine;
+    QString content;
+    QString id;  // Unique identifier for removal
+};

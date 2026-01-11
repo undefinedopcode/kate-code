@@ -22,6 +22,9 @@ public:
     QString getProjectRoot() const;
     QStringList getProjectFiles() const;
 
+private Q_SLOTS:
+    void addSelectionToContext();
+
 private:
     void createToolView();
 
