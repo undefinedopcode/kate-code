@@ -356,46 +356,98 @@ function renderToolCall(toolCall) {
     return html;
 }
 
-// Generate unified diff from old and new text with HTML syntax highlighting
+// Generate unified diff using Myers' diff algorithm (similar to git diff)
 function generateUnifiedDiff(oldText, newText, fileName) {
     const oldLines = oldText.split('\n');
     const newLines = newText.split('\n');
 
-    // Simple line-by-line diff
-    let diff = [];
-    diff.push(`<span class="diff-header">--- ${escapeHtml(fileName || 'file')}</span>`);
-    diff.push(`<span class="diff-header">+++ ${escapeHtml(fileName || 'file')}</span>`);
+    // Compute LCS-based diff using Myers' algorithm
+    const diff = computeDiff(oldLines, newLines);
 
-    let i = 0, j = 0;
-    const maxLines = Math.max(oldLines.length, newLines.length);
+    let result = [];
+    result.push(`<span class="diff-header">--- ${escapeHtml(fileName || 'file')}</span>`);
+    result.push(`<span class="diff-header">+++ ${escapeHtml(fileName || 'file')}</span>`);
 
-    while (i < oldLines.length || j < newLines.length) {
-        const oldLine = i < oldLines.length ? oldLines[i] : undefined;
-        const newLine = j < newLines.length ? newLines[j] : undefined;
+    // Render diff with context
+    const contextLines = 3;
+    let i = 0;
 
-        if (oldLine === newLine) {
-            // Lines match - context line
-            diff.push(`<span class="diff-context"> ${escapeHtml(oldLine || '')}</span>`);
+    while (i < diff.length) {
+        // Find next change
+        while (i < diff.length && diff[i].type === 'equal') {
             i++;
+        }
+
+        if (i >= diff.length) break;
+
+        // Start of hunk - show context before
+        const hunkStart = Math.max(0, i - contextLines);
+
+        // Find end of continuous changes
+        let j = i;
+        while (j < diff.length && (diff[j].type !== 'equal' ||
+               (j + 1 < diff.length && diff[j + 1].type !== 'equal' && j < i + 20))) {
             j++;
-        } else if (oldLine !== undefined && newLine !== undefined) {
-            // Lines differ - show both as removal and addition
-            diff.push(`<span class="diff-remove">-${escapeHtml(oldLine)}</span>`);
-            diff.push(`<span class="diff-add">+${escapeHtml(newLine)}</span>`);
-            i++;
-            j++;
-        } else if (oldLine !== undefined) {
-            // Only old line exists - removal
-            diff.push(`<span class="diff-remove">-${escapeHtml(oldLine)}</span>`);
-            i++;
-        } else {
-            // Only new line exists - addition
-            diff.push(`<span class="diff-add">+${escapeHtml(newLine)}</span>`);
-            j++;
+        }
+
+        // Show context after
+        const hunkEnd = Math.min(diff.length, j + contextLines);
+
+        // Render hunk
+        for (let k = hunkStart; k < hunkEnd; k++) {
+            const item = diff[k];
+            if (item.type === 'equal') {
+                result.push(`<span class="diff-context"> ${escapeHtml(item.value)}</span>`);
+            } else if (item.type === 'delete') {
+                result.push(`<span class="diff-remove">-${escapeHtml(item.value)}</span>`);
+            } else if (item.type === 'insert') {
+                result.push(`<span class="diff-add">+${escapeHtml(item.value)}</span>`);
+            }
+        }
+
+        i = hunkEnd;
+    }
+
+    return result.join('');
+}
+
+// Compute diff using LCS (Longest Common Subsequence) approach
+function computeDiff(oldLines, newLines) {
+    const n = oldLines.length;
+    const m = newLines.length;
+
+    // Build LCS table using dynamic programming
+    const lcs = Array(n + 1).fill(null).map(() => Array(m + 1).fill(0));
+
+    for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= m; j++) {
+            if (oldLines[i - 1] === newLines[j - 1]) {
+                lcs[i][j] = lcs[i - 1][j - 1] + 1;
+            } else {
+                lcs[i][j] = Math.max(lcs[i - 1][j], lcs[i][j - 1]);
+            }
         }
     }
 
-    return diff.join('');
+    // Backtrack to build diff
+    const diff = [];
+    let i = n, j = m;
+
+    while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
+            diff.unshift({ type: 'equal', value: oldLines[i - 1] });
+            i--;
+            j--;
+        } else if (j > 0 && (i === 0 || lcs[i][j - 1] >= lcs[i - 1][j])) {
+            diff.unshift({ type: 'insert', value: newLines[j - 1] });
+            j--;
+        } else if (i > 0) {
+            diff.unshift({ type: 'delete', value: oldLines[i - 1] });
+            i--;
+        }
+    }
+
+    return diff;
 }
 
 // Toggle tool call expansion

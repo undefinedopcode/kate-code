@@ -27,6 +27,11 @@ public:
     void setProjectRootProvider(ContextProvider provider);
     void setFileListProvider(FileListProvider provider);
 
+    // Context chunk management
+    void addContextChunk(const QString &filePath, int startLine, int endLine, const QString &content);
+    void removeContextChunk(const QString &id);
+    void clearContextChunks();
+
 private Q_SLOTS:
     void onConnectClicked();
     void onNewSessionClicked();
@@ -43,8 +48,10 @@ private Q_SLOTS:
     void onModesAvailable(const QJsonArray &modes);
     void onModeChanged(const QString &modeId);
     void onError(const QString &message);
+    void onRemoveContextChunk(const QString &id);
 
 private:
+    void updateContextChipsDisplay();
     ACPSession *m_session;
 
     // Context providers
@@ -53,10 +60,15 @@ private:
     ContextProvider m_projectRootProvider;
     FileListProvider m_fileListProvider;
 
+    // Context chunks
+    QList<ContextChunk> m_contextChunks;
+    int m_nextChunkId = 0;
+
     // UI components
     ChatWebView *m_chatWebView;
     ChatInputWidget *m_inputWidget;
     QPushButton *m_connectButton;
     QPushButton *m_newSessionButton;
     QLabel *m_statusLabel;
+    QWidget *m_contextChipsContainer;
 };

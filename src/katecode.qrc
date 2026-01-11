@@ -1,6 +1,7 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
     <qresource prefix="/katecode">
+        <file>katecodeui.rc</file>
         <file>web/chat.html</file>
         <file>web/chat.css</file>
         <file>web/chat.js</file>

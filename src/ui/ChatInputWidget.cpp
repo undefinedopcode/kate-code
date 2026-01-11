@@ -93,6 +93,11 @@ void CommandTextEdit::keyPressEvent(QKeyEvent *e)
         return;
     }
 
+    // Log Ctrl+V paste events
+    if (e->modifiers().testFlag(Qt::ControlModifier) && e->key() == Qt::Key_V) {
+        qDebug() << "[ChatInputWidget] Ctrl+V detected - paste event";
+    }
+
     // Don't trigger completer on modifier keys
     const bool ctrlOrShift = e->modifiers().testFlag(Qt::ControlModifier) ||
                             e->modifiers().testFlag(Qt::ShiftModifier);

@@ -2,9 +2,12 @@
 #include "KateCodePlugin.h"
 #include "../ui/ChatWidget.h"
 
+#include <KActionCollection>
 #include <KLocalizedString>
 #include <KTextEditor/Document>
 #include <KTextEditor/View>
+#include <KXMLGUIFactory>
+#include <QAction>
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
@@ -20,6 +23,23 @@ KateCodeView::KateCodeView(KateCodePlugin *plugin, KTextEditor::MainWindow *main
     , m_chatWidget(nullptr)
 {
     createToolView();
+
+    // Load UI definition file from Qt resources
+    setXMLFile(QStringLiteral(":/katecode/katecodeui.rc"));
+    qDebug() << "[KateCodeView] Loaded UI file from resources: :/katecode/katecodeui.rc";
+
+    // Create context menu action for adding selection to context
+    QAction *addContextAction = new QAction(QIcon::fromTheme(QStringLiteral("list-add")),
+                                           i18n("Add to Claude Context..."),
+                                           this);
+    actionCollection()->addAction(QStringLiteral("kate_code_add_context"), addContextAction);
+    actionCollection()->setDefaultShortcut(addContextAction, Qt::CTRL | Qt::ALT | Qt::Key_A);
+    connect(addContextAction, &QAction::triggered, this, &KateCodeView::addSelectionToContext);
+    qDebug() << "[KateCodeView] Registered action: kate_code_add_context with shortcut Ctrl+Alt+A";
+
+    // Register the action with Kate's editor context menu
+    m_mainWindow->guiFactory()->addClient(this);
+    qDebug() << "[KateCodeView] Added XMLGUI client to Kate";
 }
 
 KateCodeView::~KateCodeView()
@@ -207,4 +227,39 @@ QStringList KateCodeView::getProjectFiles() const
 
     qDebug() << "[KateCode] Found" << files.size() << "files in project";
     return files;
+}
+
+void KateCodeView::addSelectionToContext()
+{
+    KTextEditor::View *view = m_mainWindow->activeView();
+    if (!view || !view->document()) {
+        qWarning() << "[KateCode] No active view or document";
+        return;
+    }
+
+    QString selection = view->selectionText();
+    if (selection.isEmpty()) {
+        qWarning() << "[KateCode] No text selected";
+        return;
+    }
+
+    QString filePath = view->document()->url().toLocalFile();
+    if (filePath.isEmpty()) {
+        qWarning() << "[KateCode] No file path for document";
+        return;
+    }
+
+    // Get line numbers for the selection
+    auto selectionRange = view->selectionRange();
+    int startLine = selectionRange.start().line() + 1;  // Convert to 1-based
+    int endLine = selectionRange.end().line() + 1;
+
+    // Add to chat widget's context
+    if (m_chatWidget) {
+        m_chatWidget->addContextChunk(filePath, startLine, endLine, selection);
+        qDebug() << "[KateCode] Added selection to context:" << filePath
+                 << "lines" << startLine << "-" << endLine;
+    } else {
+        qWarning() << "[KateCode] Chat widget not available";
+    }
 }
