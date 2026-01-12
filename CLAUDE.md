@@ -105,6 +105,34 @@ Settings > Configure Kate > Plugins > Enable "Kate Code"
 - CSS uses CSS variables for theming (ready for KDE color injection in Phase 4)
 - Responsive layout with message bubbles, tool call display, and streaming indicator
 
+## Current Investigation: Edit Diff Syntax Highlighting
+
+### Problem
+Edit tool diffs in the chat UI are not showing syntax highlighting for code (tested with Go files).
+
+### Investigation Status
+Added debug logging to `src/web/chat.js` in `generateUnifiedDiff()` function to trace:
+1. Whether `fileName` is being passed correctly from C++
+2. Whether `getLanguageFromPath()` returns the correct language (e.g., "go")
+3. Whether `highlightCode()` produces HTML with `<span class="hljs-...">` tags
+4. Whether `splitHighlightedLines()` correctly splits highlighted HTML
+
+### Relevant Code Flow
+1. C++ `ChatWebView::addToolCall()` passes `edit.filePath` in the edits JSON array
+2. JS `renderToolCall()` extracts `edit.filePath` and passes to `generateUnifiedDiff()`
+3. JS `generateUnifiedDiff()` calls `getLanguageFromPath()` then `highlightCode()`
+4. JS `splitHighlightedLines()` splits highlighted HTML by newlines while preserving span tags
+
+### Files to Check
+- `src/web/chat.js` - lines 576-660 (diff generation with highlighting)
+- `src/ui/ChatWebView.cpp` - lines 184-213 (addToolCall passing filePath)
+- `src/web/chat.css` - lines 584-590 (ensure hljs spans are inline in diffs)
+
+### Next Steps
+1. Rebuild and install plugin: `cmake --build build && cmake --install build --prefix ~/.local`
+2. Restart Kate, make an edit request to a .go file
+3. Check terminal output for debug messages starting with `generateUnifiedDiff:`
+4. Verify if fileName/language are populated, and if highlighted HTML is generated
 
 <claude-mem-context>
 # Recent Activity

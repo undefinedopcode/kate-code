@@ -91,6 +91,83 @@ function highlightCode(code, language) {
     }
 }
 
+// Split highlighted HTML into lines while preserving HTML tag structure
+// Handles tags that span multiple lines by closing and reopening them at line boundaries
+function splitHighlightedLines(html, expectedCount) {
+    const lines = [];
+    let currentLine = '';
+    let openTags = [];  // Stack of open tag names
+
+    let i = 0;
+    while (i < html.length) {
+        const char = html[i];
+
+        if (char === '\n') {
+            // Close all open tags for this line
+            let closingTags = '';
+            for (let t = openTags.length - 1; t >= 0; t--) {
+                closingTags += '</span>';
+            }
+            lines.push(currentLine + closingTags);
+
+            // Start new line with reopened tags
+            currentLine = '';
+            for (let t = 0; t < openTags.length; t++) {
+                // Re-open with the same class - we need to track full opening tag
+                currentLine += `<span class="${openTags[t]}">`;
+            }
+            i++;
+        } else if (char === '<') {
+            // Parse HTML tag
+            const tagEnd = html.indexOf('>', i);
+            if (tagEnd === -1) {
+                currentLine += char;
+                i++;
+                continue;
+            }
+
+            const tagContent = html.substring(i + 1, tagEnd);
+            const fullTag = html.substring(i, tagEnd + 1);
+
+            if (tagContent.startsWith('/')) {
+                // Closing tag
+                openTags.pop();
+                currentLine += fullTag;
+            } else if (tagContent.startsWith('span')) {
+                // Opening span tag - extract class
+                const classMatch = tagContent.match(/class="([^"]+)"/);
+                const className = classMatch ? classMatch[1] : '';
+                openTags.push(className);
+                currentLine += fullTag;
+            } else {
+                // Other tag (shouldn't happen with hljs output)
+                currentLine += fullTag;
+            }
+            i = tagEnd + 1;
+        } else {
+            currentLine += char;
+            i++;
+        }
+    }
+
+    // Don't forget the last line (if no trailing newline)
+    if (currentLine || lines.length < expectedCount) {
+        // Close any remaining open tags
+        let closingTags = '';
+        for (let t = openTags.length - 1; t >= 0; t--) {
+            closingTags += `</span>`;
+        }
+        lines.push(currentLine + closingTags);
+    }
+
+    // Ensure we have the expected number of lines
+    while (lines.length < expectedCount) {
+        lines.push('');
+    }
+
+    return lines;
+}
+
 // Helper to log to C++ via bridge
 function logToQt(message) {
     if (window.bridge && window.bridge.logFromJS) {
@@ -495,12 +572,43 @@ function renderToolCall(toolCall) {
 }
 
 // Generate unified diff using Myers' diff algorithm (similar to git diff)
+// With syntax highlighting based on file type
 function generateUnifiedDiff(oldText, newText, fileName) {
     const oldLines = oldText.split('\n');
     const newLines = newText.split('\n');
+    const language = getLanguageFromPath(fileName);
+
+    logToQt('generateUnifiedDiff: fileName=' + fileName + ', language=' + language +
+            ', oldLines=' + oldLines.length + ', newLines=' + newLines.length);
 
     // Compute LCS-based diff using Myers' algorithm
-    const diff = computeDiff(oldLines, newLines);
+    // Also track original line indices for highlighted lookup
+    const diff = computeDiffWithIndices(oldLines, newLines);
+
+    // Pre-highlight both old and new text blocks
+    let highlightedOld = oldLines.map(l => escapeHtml(l));
+    let highlightedNew = newLines.map(l => escapeHtml(l));
+
+    if (language) {
+        try {
+            const oldHighlighted = highlightCode(oldText, language);
+            const newHighlighted = highlightCode(newText, language);
+            logToQt('Diff highlight: oldHighlighted length=' + oldHighlighted.length +
+                    ', sample=' + oldHighlighted.substring(0, 200));
+            highlightedOld = splitHighlightedLines(oldHighlighted, oldLines.length);
+            highlightedNew = splitHighlightedLines(newHighlighted, newLines.length);
+            logToQt('Diff highlight: split into ' + highlightedOld.length + ' old lines, ' +
+                    highlightedNew.length + ' new lines');
+            if (highlightedNew.length > 0) {
+                logToQt('First highlighted new line: ' + highlightedNew[0]);
+            }
+        } catch (e) {
+            logToQt('Diff highlight error: ' + e);
+            // Fall back to escaped plain text (already set above)
+        }
+    } else {
+        logToQt('Diff highlight: no language detected, using plain text');
+    }
 
     let result = [];
     result.push(`<span class="diff-header">--- ${escapeHtml(fileName || 'file')}</span>`);
@@ -531,15 +639,19 @@ function generateUnifiedDiff(oldText, newText, fileName) {
         // Show context after
         const hunkEnd = Math.min(diff.length, j + contextLines);
 
-        // Render hunk
+        // Render hunk with highlighted content
         for (let k = hunkStart; k < hunkEnd; k++) {
             const item = diff[k];
             if (item.type === 'equal') {
-                result.push(`<span class="diff-context"> ${escapeHtml(item.value)}</span>`);
+                // Context lines - use old index (both are the same content)
+                const content = highlightedOld[item.oldIndex] || '';
+                result.push(`<span class="diff-context"> ${content}</span>`);
             } else if (item.type === 'delete') {
-                result.push(`<span class="diff-remove">-${escapeHtml(item.value)}</span>`);
+                const content = highlightedOld[item.oldIndex] || '';
+                result.push(`<span class="diff-remove">-${content}</span>`);
             } else if (item.type === 'insert') {
-                result.push(`<span class="diff-add">+${escapeHtml(item.value)}</span>`);
+                const content = highlightedNew[item.newIndex] || '';
+                result.push(`<span class="diff-add">+${content}</span>`);
             }
         }
 
@@ -550,7 +662,8 @@ function generateUnifiedDiff(oldText, newText, fileName) {
 }
 
 // Compute diff using LCS (Longest Common Subsequence) approach
-function computeDiff(oldLines, newLines) {
+// Returns diff items with original line indices for highlighted lookup
+function computeDiffWithIndices(oldLines, newLines) {
     const n = oldLines.length;
     const m = newLines.length;
 
@@ -567,20 +680,20 @@ function computeDiff(oldLines, newLines) {
         }
     }
 
-    // Backtrack to build diff
+    // Backtrack to build diff with line indices
     const diff = [];
     let i = n, j = m;
 
     while (i > 0 || j > 0) {
         if (i > 0 && j > 0 && oldLines[i - 1] === newLines[j - 1]) {
-            diff.unshift({ type: 'equal', value: oldLines[i - 1] });
+            diff.unshift({ type: 'equal', value: oldLines[i - 1], oldIndex: i - 1, newIndex: j - 1 });
             i--;
             j--;
         } else if (j > 0 && (i === 0 || lcs[i][j - 1] >= lcs[i - 1][j])) {
-            diff.unshift({ type: 'insert', value: newLines[j - 1] });
+            diff.unshift({ type: 'insert', value: newLines[j - 1], newIndex: j - 1 });
             j--;
         } else if (i > 0) {
-            diff.unshift({ type: 'delete', value: oldLines[i - 1] });
+            diff.unshift({ type: 'delete', value: oldLines[i - 1], oldIndex: i - 1 });
             i--;
         }
     }

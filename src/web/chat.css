@@ -555,8 +555,8 @@ pre.diff {
     color: var(--fg-primary);
 }
 
-/* Diff line types */
-pre.diff span {
+/* Diff line types - only direct children are block-level lines */
+pre.diff > span {
     display: block;
     padding: 2px 8px;
 }
@@ -567,17 +567,26 @@ pre.diff .diff-header {
 }
 
 pre.diff .diff-context {
+    /* Inherit syntax highlighting colors, fallback to primary */
     color: var(--fg-primary);
 }
 
 pre.diff .diff-remove {
-    background-color: rgba(244, 135, 113, 0.2);
-    color: #ff8080;
+    background-color: rgba(244, 135, 113, 0.25);
+    /* Don't set color - let syntax highlighting show through */
 }
 
 pre.diff .diff-add {
-    background-color: rgba(78, 201, 176, 0.2);
-    color: #80ffaa;
+    background-color: rgba(78, 201, 176, 0.25);
+    /* Don't set color - let syntax highlighting show through */
+}
+
+/* Ensure hljs spans inside diff lines are inline, not block */
+pre.diff .diff-context span,
+pre.diff .diff-remove span,
+pre.diff .diff-add span {
+    display: inline;
+    padding: 0;
 }
 
 /* Multiple edits styling */

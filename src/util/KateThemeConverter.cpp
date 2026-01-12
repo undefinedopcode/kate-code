@@ -413,10 +413,11 @@ QString KateThemeConverter::convertToHighlightJsCSS(const QJsonObject &kateTheme
         }
 
         // Generate CSS rule with higher specificity and !important to override bundled themes
-        // Target the span elements inside pre code.hljs
+        // Target the span elements inside pre code.hljs and also pre.diff (for edit diffs)
         QStringList specificSelectors;
         for (const QString &selector : hljsClasses) {
             specificSelectors << QStringLiteral("pre code.hljs ") + selector;
+            specificSelectors << QStringLiteral("pre.diff ") + selector;
         }
 
         stream << specificSelectors.join(QStringLiteral(", ")) << " {\n";
