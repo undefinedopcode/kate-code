@@ -9,5 +9,6 @@
         <file>web/vendor/highlight.min.js</file>
         <file>web/vendor/atom-one-dark.min.css</file>
         <file>web/vendor/atom-one-light.min.css</file>
+        <file>web/vendor/shades-of-purple.min.css</file>
     </qresource>
 </RCC>

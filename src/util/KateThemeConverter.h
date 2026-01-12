@@ -2,6 +2,7 @@
 
 #include <QString>
 #include <QJsonObject>
+#include <QPair>
 
 namespace KSyntaxHighlighting {
     class Theme;
@@ -12,6 +13,9 @@ class KateThemeConverter
 public:
     // Get the current Kate color theme name from Kate's config
     static QString getCurrentKateTheme();
+
+    // Get Kate's editor font family and size
+    static QPair<QString, int> getEditorFont();
 
     // Find and load a Kate theme by name
     // Searches user themes (~/.local/share) first, then system themes, then built-in themes

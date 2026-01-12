@@ -54,6 +54,11 @@ void ChatWebView::injectColorScheme()
     QString cssVars = colorScheme.generateCSSVariables();
     bool isLight = colorScheme.isLightTheme();
 
+    // Get Kate's editor font
+    QPair<QString, int> editorFont = KateThemeConverter::getEditorFont();
+    QString fontFamily = editorFont.first;
+    int fontSize = editorFont.second;
+
     // Try to load Kate's current theme for syntax highlighting
     QString kateThemeCSS = KateThemeConverter::getCurrentThemeCSS();
 
@@ -95,9 +100,11 @@ void ChatWebView::injectColorScheme()
         escapedCSS.replace(QLatin1Char('\n'), QStringLiteral("\\n"));
         escapedCSS.replace(QLatin1Char('\r'), QStringLiteral("\\r"));
 
-        // Add code background variables to CSS vars
-        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2")
-                                            .arg(codeBg, inlineCodeBg);
+        // Add code background and font variables to CSS vars
+        // Don't quote font family here - quotes will be added in CSS usage
+        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px")
+                                            .arg(codeBg, inlineCodeBg, fontFamily)
+                                            .arg(fontSize);
 
         QString script = QStringLiteral(
             "applyColorScheme('%1'); "
@@ -115,8 +122,9 @@ void ChatWebView::injectColorScheme()
         inlineCodeBg = isLight ? QStringLiteral("rgba(0, 0, 0, 0.08)")
                                 : QStringLiteral("rgba(0, 0, 0, 0.3)");
 
-        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2")
-                                            .arg(codeBg, inlineCodeBg);
+        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px")
+                                            .arg(codeBg, inlineCodeBg, fontFamily)
+                                            .arg(fontSize);
 
         QString script = QStringLiteral(
             "applyColorScheme('%1'); "

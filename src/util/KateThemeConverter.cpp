@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTextStream>
 #include <QDebug>
 
 #include <KSyntaxHighlighting/Repository>
@@ -24,6 +25,70 @@ QString KateThemeConverter::getCurrentKateTheme()
 
     qDebug() << "[KateThemeConverter] Current Kate theme:" << themeName;
     return themeName;
+}
+
+QPair<QString, int> KateThemeConverter::getEditorFont()
+{
+    // Read Kate's config file directly (QSettings has issues with complex font strings)
+    QString kateConfigPath = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/katerc");
+
+    QFile file(kateConfigPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qDebug() << "[KateThemeConverter] Could not open katerc";
+        return QPair<QString, int>(QStringLiteral("monospace"), 11);
+    }
+
+    QTextStream in(&file);
+    QString fontString;
+    bool inRendererSection = false;
+
+    // Read line by line to find the font
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+
+        if (line == QStringLiteral("[KTextEditor Renderer]")) {
+            inRendererSection = true;
+            continue;
+        }
+
+        if (inRendererSection) {
+            // Check if we've left the section
+            if (line.startsWith(QLatin1Char('['))) {
+                break;
+            }
+
+            // Look for Text Font= line
+            if (line.startsWith(QStringLiteral("Text Font="))) {
+                fontString = line.mid(10); // Skip "Text Font="
+                qDebug() << "[KateThemeConverter] Found font string:" << fontString;
+                break;
+            }
+        }
+    }
+
+    file.close();
+
+    if (fontString.isEmpty()) {
+        qDebug() << "[KateThemeConverter] No editor font configured, using default";
+        return QPair<QString, int>(QStringLiteral("monospace"), 11);
+    }
+
+    // Parse the Qt font string format: "Family,PointSize,..."
+    QStringList parts = fontString.split(QLatin1Char(','));
+    if (parts.size() < 2) {
+        qDebug() << "[KateThemeConverter] Invalid font string format:" << fontString;
+        return QPair<QString, int>(QStringLiteral("monospace"), 11);
+    }
+
+    QString family = parts[0];
+    bool ok;
+    int pointSize = parts[1].toInt(&ok);
+    if (!ok || pointSize <= 0) {
+        pointSize = 11; // Default size
+    }
+
+    qDebug() << "[KateThemeConverter] Editor font:" << family << "size:" << pointSize;
+    return QPair<QString, int>(family, pointSize);
 }
 
 QJsonObject KateThemeConverter::loadKateTheme(const QString &themeName)
