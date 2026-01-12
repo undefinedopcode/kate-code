@@ -6,6 +6,7 @@
 
 class KateCodePlugin;
 class ChatWidget;
+class DiffHighlightManager;
 class QWidget;
 
 class KateCodeView : public QObject, public KXMLGUIClient
@@ -25,11 +26,19 @@ public:
 private Q_SLOTS:
     void addSelectionToContext();
 
+    // Quick Actions
+    void explainCode();
+    void findBugs();
+    void suggestImprovements();
+    void addTests();
+
 private:
+    void sendQuickAction(const QString &prompt);
     void createToolView();
 
     KateCodePlugin *m_plugin;
     KTextEditor::MainWindow *m_mainWindow;
     QWidget *m_toolView;
     ChatWidget *m_chatWidget;
+    DiffHighlightManager *m_diffHighlightManager;
 };

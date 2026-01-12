@@ -1,11 +1,25 @@
 <!DOCTYPE kpartgui>
-<kpartgui name="katecode" version="1">
+<kpartgui name="katecode" version="2">
 <MenuBar>
   <Menu name="tools">
+    <text>Claude Code</text>
+    <Action name="kate_code_explain"/>
+    <Action name="kate_code_find_bugs"/>
+    <Action name="kate_code_improvements"/>
+    <Action name="kate_code_add_tests"/>
+    <Separator/>
     <Action name="kate_code_add_context"/>
   </Menu>
 </MenuBar>
 <Menu name="ktexteditor_popup">
-  <Action name="kate_code_add_context"/>
+  <Menu name="kate_code_quick_actions">
+    <text>Claude Code</text>
+    <Action name="kate_code_explain"/>
+    <Action name="kate_code_find_bugs"/>
+    <Action name="kate_code_improvements"/>
+    <Action name="kate_code_add_tests"/>
+    <Separator/>
+    <Action name="kate_code_add_context"/>
+  </Menu>
 </Menu>
 </kpartgui>
