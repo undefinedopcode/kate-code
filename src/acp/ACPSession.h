@@ -18,6 +18,10 @@ public:
     void start(const QString &workingDir, const QString &permissionMode = QStringLiteral("default"));
     void stop();
 
+    // Session management - called after initializeComplete signal
+    void createNewSession();
+    void loadSession(const QString &sessionId);
+
     void sendMessage(const QString &content, const QString &filePath = QString(), const QString &selection = QString(), const QList<ContextChunk> &contextChunks = QList<ContextChunk>());
     void sendPermissionResponse(int requestId, const QJsonObject &outcome);
     void setMode(const QString &modeId);
@@ -43,6 +47,12 @@ Q_SIGNALS:
     void commandsAvailable(const QList<SlashCommand> &commands);
     void errorOccurred(const QString &message);
 
+    // Emitted after initialize completes, before session creation
+    void initializeComplete();
+
+    // Emitted if session/load fails (caller should fall back to createNewSession)
+    void sessionLoadFailed(const QString &error);
+
 private Q_SLOTS:
     void onConnected();
     void onDisconnected(int exitCode);
@@ -53,6 +63,7 @@ private Q_SLOTS:
 private:
     void handleInitializeResponse(int id, const QJsonObject &result);
     void handleSessionNewResponse(int id, const QJsonObject &result);
+    void handleSessionLoadResponse(int id, const QJsonObject &result, const QJsonObject &error);
     void handleSessionUpdate(const QJsonObject &params);
     void handlePermissionRequest(const QJsonObject &params, int requestId);
 
@@ -68,6 +79,7 @@ private:
     // Request tracking
     int m_initializeRequestId;
     int m_sessionNewRequestId;
+    int m_sessionLoadRequestId;
     int m_promptRequestId;
 
     // Message counter

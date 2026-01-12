@@ -14,10 +14,13 @@ set(katecode_SRCS
     ui/ChatWebView.cpp
     ui/ChatInputWidget.cpp
     ui/PermissionDialog.cpp
+    ui/SessionSelectionDialog.cpp
 
     # Util layer
     util/KDEColorScheme.cpp
     util/KateThemeConverter.cpp
+    util/DiffHighlightManager.cpp
+    util/SessionStore.cpp
 )
 
 # Qt resources
