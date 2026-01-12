@@ -1,6 +1,8 @@
 #include "KateCodeView.h"
 #include "KateCodePlugin.h"
+#include "../acp/ACPModels.h"
 #include "../ui/ChatWidget.h"
+#include "../util/DiffHighlightManager.h"
 
 #include <KActionCollection>
 #include <KLocalizedString>
@@ -21,8 +23,17 @@ KateCodeView::KateCodeView(KateCodePlugin *plugin, KTextEditor::MainWindow *main
     , m_mainWindow(mainWindow)
     , m_toolView(nullptr)
     , m_chatWidget(nullptr)
+    , m_diffHighlightManager(nullptr)
 {
     createToolView();
+
+    // Create diff highlight manager for showing pending edits in editor
+    m_diffHighlightManager = new DiffHighlightManager(m_mainWindow, this);
+
+    // Editor diff highlighting disabled - diffs are shown inline in tool call UI instead
+    // If re-enabling, connect ChatWidget::toolCallHighlightRequested/toolCallClearRequested
+    // to m_diffHighlightManager->highlightToolCall() and clearToolCallHighlights()
+    Q_UNUSED(m_diffHighlightManager);
 
     // Load UI definition file from Qt resources
     setXMLFile(QStringLiteral(":/katecode/katecodeui.rc"));
@@ -37,6 +48,40 @@ KateCodeView::KateCodeView(KateCodePlugin *plugin, KTextEditor::MainWindow *main
     connect(addContextAction, &QAction::triggered, this, &KateCodeView::addSelectionToContext);
     qDebug() << "[KateCodeView] Registered action: kate_code_add_context with shortcut Ctrl+Alt+A";
 
+    // Quick Action: Explain Code
+    QAction *explainAction = new QAction(QIcon::fromTheme(QStringLiteral("help-about")),
+                                         i18n("Explain Code"),
+                                         this);
+    actionCollection()->addAction(QStringLiteral("kate_code_explain"), explainAction);
+    actionCollection()->setDefaultShortcut(explainAction, Qt::CTRL | Qt::ALT | Qt::Key_E);
+    connect(explainAction, &QAction::triggered, this, &KateCodeView::explainCode);
+
+    // Quick Action: Find Bugs
+    QAction *findBugsAction = new QAction(QIcon::fromTheme(QStringLiteral("tools-report-bug")),
+                                          i18n("Find Bugs"),
+                                          this);
+    actionCollection()->addAction(QStringLiteral("kate_code_find_bugs"), findBugsAction);
+    actionCollection()->setDefaultShortcut(findBugsAction, Qt::CTRL | Qt::ALT | Qt::Key_B);
+    connect(findBugsAction, &QAction::triggered, this, &KateCodeView::findBugs);
+
+    // Quick Action: Suggest Improvements
+    QAction *improvementsAction = new QAction(QIcon::fromTheme(QStringLiteral("tools-wizard")),
+                                              i18n("Suggest Improvements"),
+                                              this);
+    actionCollection()->addAction(QStringLiteral("kate_code_improvements"), improvementsAction);
+    actionCollection()->setDefaultShortcut(improvementsAction, Qt::CTRL | Qt::ALT | Qt::Key_I);
+    connect(improvementsAction, &QAction::triggered, this, &KateCodeView::suggestImprovements);
+
+    // Quick Action: Add Tests
+    QAction *addTestsAction = new QAction(QIcon::fromTheme(QStringLiteral("document-new")),
+                                          i18n("Add Tests"),
+                                          this);
+    actionCollection()->addAction(QStringLiteral("kate_code_add_tests"), addTestsAction);
+    actionCollection()->setDefaultShortcut(addTestsAction, Qt::CTRL | Qt::ALT | Qt::Key_T);
+    connect(addTestsAction, &QAction::triggered, this, &KateCodeView::addTests);
+
+    qDebug() << "[KateCodeView] Registered Quick Actions: Explain, Find Bugs, Improvements, Add Tests";
+
     // Register the action with Kate's editor context menu
     m_mainWindow->guiFactory()->addClient(this);
     qDebug() << "[KateCodeView] Added XMLGUI client to Kate";
@@ -44,6 +89,11 @@ KateCodeView::KateCodeView(KateCodePlugin *plugin, KTextEditor::MainWindow *main
 
 KateCodeView::~KateCodeView()
 {
+    // Remove XMLGUI client before destruction to prevent leaks and crashes
+    if (m_mainWindow && m_mainWindow->guiFactory()) {
+        m_mainWindow->guiFactory()->removeClient(this);
+    }
+
     // ToolView is owned by MainWindow and cleaned up automatically
 }
 
@@ -261,5 +311,54 @@ void KateCodeView::addSelectionToContext()
                  << "lines" << startLine << "-" << endLine;
     } else {
         qWarning() << "[KateCode] Chat widget not available";
+    }
+}
+
+void KateCodeView::explainCode()
+{
+    sendQuickAction(i18n("Please explain what this code does, including its purpose, key logic, and any important details."));
+}
+
+void KateCodeView::findBugs()
+{
+    sendQuickAction(i18n("Please analyze this code for potential bugs, errors, or issues. Consider edge cases, error handling, and correctness."));
+}
+
+void KateCodeView::suggestImprovements()
+{
+    sendQuickAction(i18n("Please suggest improvements for this code. Consider readability, performance, maintainability, and best practices."));
+}
+
+void KateCodeView::addTests()
+{
+    sendQuickAction(i18n("Please generate comprehensive test cases for this code. Include unit tests covering normal cases, edge cases, and error conditions."));
+}
+
+void KateCodeView::sendQuickAction(const QString &prompt)
+{
+    KTextEditor::View *view = m_mainWindow->activeView();
+    if (!view || !view->document()) {
+        qWarning() << "[KateCode] No active view or document for quick action";
+        return;
+    }
+
+    QString selection = view->selectionText();
+    if (selection.isEmpty()) {
+        qWarning() << "[KateCode] No text selected for quick action";
+        return;
+    }
+
+    QString filePath = view->document()->url().toLocalFile();
+
+    // Send prompt with selection through ChatWidget
+    if (m_chatWidget) {
+        m_chatWidget->sendPromptWithSelection(prompt, filePath, selection);
+
+        // Show and focus the chat panel so user sees response
+        m_mainWindow->showToolView(m_toolView);
+
+        qDebug() << "[KateCode] Sent quick action prompt with selection from:" << filePath;
+    } else {
+        qWarning() << "[KateCode] Chat widget not available for quick action";
     }
 }
