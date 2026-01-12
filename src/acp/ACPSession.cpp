@@ -13,6 +13,7 @@ ACPSession::ACPSession(QObject *parent)
     , m_status(ConnectionStatus::Disconnected)
     , m_initializeRequestId(-1)
     , m_sessionNewRequestId(-1)
+    , m_sessionLoadRequestId(-1)
     , m_promptRequestId(-1)
     , m_messageCounter(0)
 {
@@ -25,6 +26,10 @@ ACPSession::ACPSession(QObject *parent)
 
 ACPSession::~ACPSession()
 {
+    // Disconnect from service signals before cleanup to prevent signal emission during destruction
+    if (m_service) {
+        disconnect(m_service, nullptr, this, nullptr);
+    }
     stop();
 }
 
@@ -78,6 +83,46 @@ void ACPSession::setMode(const QString &modeId)
     params[QStringLiteral("modeId")] = modeId;
 
     m_service->sendRequest(QStringLiteral("session/set_mode"), params);
+}
+
+void ACPSession::createNewSession()
+{
+    if (m_status != ConnectionStatus::Connecting) {
+        qWarning() << "[ACPSession] createNewSession called but not in Connecting state";
+        return;
+    }
+
+    qDebug() << "[ACPSession] Creating new session";
+
+    QJsonObject params;
+    params[QStringLiteral("cwd")] = m_workingDir;
+    params[QStringLiteral("mcpServers")] = QJsonArray();
+
+    m_sessionNewRequestId = m_service->sendRequest(QStringLiteral("session/new"), params);
+    qDebug() << "[ACPSession] Sent session/new request, id:" << m_sessionNewRequestId;
+}
+
+void ACPSession::loadSession(const QString &sessionId)
+{
+    if (m_status != ConnectionStatus::Connecting) {
+        qWarning() << "[ACPSession] loadSession called but not in Connecting state";
+        return;
+    }
+
+    if (sessionId.isEmpty()) {
+        qWarning() << "[ACPSession] loadSession called with empty session ID";
+        Q_EMIT sessionLoadFailed(QStringLiteral("Empty session ID"));
+        return;
+    }
+
+    qDebug() << "[ACPSession] Loading existing session:" << sessionId;
+
+    QJsonObject params;
+    params[QStringLiteral("sessionId")] = sessionId;
+    params[QStringLiteral("cwd")] = m_workingDir;
+
+    m_sessionLoadRequestId = m_service->sendRequest(QStringLiteral("session/load"), params);
+    qDebug() << "[ACPSession] Sent session/load request, id:" << m_sessionLoadRequestId;
 }
 
 void ACPSession::sendMessage(const QString &content, const QString &filePath, const QString &selection, const QList<ContextChunk> &contextChunks)
@@ -221,6 +266,12 @@ void ACPSession::onNotification(const QString &method, const QJsonObject &params
 
 void ACPSession::onResponse(int id, const QJsonObject &result, const QJsonObject &error)
 {
+    // Handle session/load errors specially - we want to fall back to new session
+    if (id == m_sessionLoadRequestId) {
+        handleSessionLoadResponse(id, result, error);
+        return;
+    }
+
     if (!error.isEmpty()) {
         qWarning() << "[ACPSession] Error response for id" << id << ":" << error;
         Q_EMIT errorOccurred(error[QStringLiteral("message")].toString());
@@ -252,13 +303,9 @@ void ACPSession::handleInitializeResponse(int id, const QJsonObject &result)
     Q_UNUSED(id);
     qDebug() << "[ACPSession] Initialize response received:" << result;
 
-    // Send session/new request
-    QJsonObject params;
-    params[QStringLiteral("cwd")] = m_workingDir;
-    params[QStringLiteral("mcpServers")] = QJsonArray();  // No MCP servers
-
-    m_sessionNewRequestId = m_service->sendRequest(QStringLiteral("session/new"), params);
-    qDebug() << "[ACPSession] Sent session/new request, id:" << m_sessionNewRequestId;
+    // Don't automatically create session - let ChatWidget decide
+    // whether to load an existing session or create a new one
+    Q_EMIT initializeComplete();
 }
 
 void ACPSession::handleSessionNewResponse(int id, const QJsonObject &result)
@@ -285,6 +332,45 @@ void ACPSession::handleSessionNewResponse(int id, const QJsonObject &result)
         if (!m_currentMode.isEmpty()) {
             Q_EMIT modeChanged(m_currentMode);
         }
+    }
+
+    Q_EMIT statusChanged(m_status);
+}
+
+void ACPSession::handleSessionLoadResponse(int id, const QJsonObject &result, const QJsonObject &error)
+{
+    Q_UNUSED(id);
+    m_sessionLoadRequestId = -1;
+
+    if (!error.isEmpty()) {
+        QString errorMsg = error[QStringLiteral("message")].toString();
+        qWarning() << "[ACPSession] Session load failed:" << errorMsg;
+        Q_EMIT sessionLoadFailed(errorMsg);
+        return;
+    }
+
+    m_sessionId = result[QStringLiteral("sessionId")].toString();
+    qDebug() << "[ACPSession] Session loaded with ID:" << m_sessionId;
+
+    // Parse available modes
+    m_availableModes = result[QStringLiteral("availableModes")].toArray();
+    m_currentMode = result[QStringLiteral("currentModeId")].toString();
+
+    qDebug() << "[ACPSession] Available modes:" << m_availableModes.size();
+    qDebug() << "[ACPSession] Current mode:" << m_currentMode;
+
+    if (m_sessionId.isEmpty()) {
+        qWarning() << "[ACPSession] ERROR: Session ID is empty after load!";
+        Q_EMIT sessionLoadFailed(QStringLiteral("Empty session ID in response"));
+        return;
+    }
+
+    m_status = ConnectionStatus::Connected;
+
+    // Emit modes available signal
+    Q_EMIT modesAvailable(m_availableModes);
+    if (!m_currentMode.isEmpty()) {
+        Q_EMIT modeChanged(m_currentMode);
     }
 
     Q_EMIT statusChanged(m_status);

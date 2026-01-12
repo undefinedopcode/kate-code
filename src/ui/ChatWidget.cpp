@@ -2,7 +2,9 @@
 #include "ChatWebView.h"
 #include "ChatInputWidget.h"
 #include "PermissionDialog.h"
+// #include "SessionSelectionDialog.h"  // Session resumption disabled
 #include "../acp/ACPSession.h"
+#include "../util/SessionStore.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -14,6 +16,8 @@
 ChatWidget::ChatWidget(QWidget *parent)
     : QWidget(parent)
     , m_session(new ACPSession(this))
+    , m_sessionStore(new SessionStore(this))
+    , m_pendingAction(PendingAction::None)
 {
     // Create layout
     auto *layout = new QVBoxLayout(this);
@@ -74,6 +78,10 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::commandsAvailable, m_inputWidget, &ChatInputWidget::setAvailableCommands);
     connect(m_session, &ACPSession::errorOccurred, this, &ChatWidget::onError);
 
+    // Session persistence signals
+    connect(m_session, &ACPSession::initializeComplete, this, &ChatWidget::onInitializeComplete);
+    connect(m_session, &ACPSession::sessionLoadFailed, this, &ChatWidget::onSessionLoadFailed);
+
     // Connect web view permission responses back to ACP
     connect(m_chatWebView, &ChatWebView::permissionResponseReady, this, [this](int requestId, const QString &optionId) {
         QJsonObject outcomeObj;
@@ -111,30 +119,40 @@ void ChatWidget::onConnectClicked()
 {
     if (m_session->isConnected()) {
         m_session->stop();
-    } else {
-        // Get current project root
-        QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
-
-        // Add system message
-        Message sysMsg;
-        sysMsg.id = QStringLiteral("sys_connect");
-        sysMsg.role = QStringLiteral("system");
-        sysMsg.content = QStringLiteral("Connecting to claude-code-acp in: %1").arg(projectRoot);
-        sysMsg.timestamp = QDateTime::currentDateTime();
-        m_chatWebView->addMessage(sysMsg);
-
-        m_session->start(projectRoot);
+        return;
     }
+
+    // Get current project root
+    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+
+    // Session resumption disabled - ACP doesn't support it well
+    // Always create a new session
+    m_pendingAction = PendingAction::CreateSession;
+
+    // Add system message
+    Message sysMsg;
+    sysMsg.id = QStringLiteral("sys_connect");
+    sysMsg.role = QStringLiteral("system");
+    sysMsg.timestamp = QDateTime::currentDateTime();
+    sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
+    m_chatWebView->addMessage(sysMsg);
+
+    m_session->start(projectRoot);
 }
 
 void ChatWidget::onNewSessionClicked()
 {
+    // Get current project root
+    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+
+    // Clear stored session BEFORE starting new one
+    m_sessionStore->clearSession(projectRoot);
+
     // Stop current session, clear chat, and start a new session
     m_session->stop();
     m_chatWebView->clearMessages();
 
-    // Get current project root
-    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+    m_pendingAction = PendingAction::CreateSession;
 
     // Add system message for new session
     Message sysMsg;
@@ -196,6 +214,12 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         sysMsg.content = QStringLiteral("Connected! Session ID: %1").arg(m_session->sessionId());
         m_chatWebView->addMessage(sysMsg);
 
+        // Save session ID for future resume
+        {
+            QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+            m_sessionStore->saveSession(projectRoot, m_session->sessionId());
+        }
+
         // Populate file list for @-completion
         if (m_fileListProvider) {
             QStringList files = m_fileListProvider();
@@ -231,11 +255,22 @@ void ChatWidget::onMessageFinished(const QString &messageId)
 void ChatWidget::onToolCallAdded(const QString &messageId, const ToolCall &toolCall)
 {
     m_chatWebView->addToolCall(messageId, toolCall);
+
+    // Request diff highlighting for edits (Edit tool)
+    if (!toolCall.edits.isEmpty()) {
+        Q_EMIT toolCallHighlightRequested(toolCall.id, toolCall);
+    }
 }
 
 void ChatWidget::onToolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result)
 {
+    Q_UNUSED(messageId);
     m_chatWebView->updateToolCall(messageId, toolCallId, status, result);
+
+    // Clear highlights when tool call completes or fails
+    if (status == QStringLiteral("completed") || status == QStringLiteral("failed")) {
+        Q_EMIT toolCallClearRequested(toolCallId);
+    }
 }
 
 void ChatWidget::onTodosUpdated(const QList<TodoItem> &todos)
@@ -254,6 +289,48 @@ void ChatWidget::onError(const QString &message)
     // Log errors to console instead of showing popups
     // Many "errors" from ACP are just informational stderr output
     qWarning() << "[ChatWidget] ACP error:" << message;
+}
+
+void ChatWidget::onInitializeComplete()
+{
+    qDebug() << "[ChatWidget] Initialize complete, pending action:" << static_cast<int>(m_pendingAction);
+
+    switch (m_pendingAction) {
+    case PendingAction::LoadSession:
+        m_session->loadSession(m_pendingSessionId);
+        break;
+    case PendingAction::CreateSession:
+        m_session->createNewSession();
+        break;
+    case PendingAction::None:
+        // Fallback: create new session if no action was set
+        qWarning() << "[ChatWidget] No pending action set, creating new session";
+        m_session->createNewSession();
+        break;
+    }
+
+    m_pendingAction = PendingAction::None;
+    m_pendingSessionId.clear();
+}
+
+void ChatWidget::onSessionLoadFailed(const QString &error)
+{
+    qWarning() << "[ChatWidget] Session load failed, creating new:" << error;
+
+    // Clear stale session from storage
+    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+    m_sessionStore->clearSession(projectRoot);
+
+    // Show system message
+    Message sysMsg;
+    sysMsg.id = QStringLiteral("sys_load_failed");
+    sysMsg.role = QStringLiteral("system");
+    sysMsg.content = QStringLiteral("Previous session unavailable, starting new session");
+    sysMsg.timestamp = QDateTime::currentDateTime();
+    m_chatWebView->addMessage(sysMsg);
+
+    // Create new session
+    m_session->createNewSession();
 }
 
 void ChatWidget::onPermissionModeChanged(const QString &mode)
@@ -306,6 +383,19 @@ void ChatWidget::clearContextChunks()
     m_contextChunks.clear();
     updateContextChipsDisplay();
     qDebug() << "[ChatWidget] Cleared all context chunks";
+}
+
+void ChatWidget::sendPromptWithSelection(const QString &prompt, const QString &filePath, const QString &selection)
+{
+    if (!m_session || !m_session->isConnected()) {
+        qWarning() << "[ChatWidget] Cannot send quick action: not connected to ACP";
+        return;
+    }
+
+    // Send prompt with selection directly to ACP (no context chunks for quick actions)
+    m_session->sendMessage(prompt, filePath, selection, QList<ContextChunk>());
+
+    qDebug() << "[ChatWidget] Sent quick action prompt with selection from:" << filePath;
 }
 
 void ChatWidget::onRemoveContextChunk(const QString &id)

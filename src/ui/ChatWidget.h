@@ -8,6 +8,7 @@
 class ACPSession;
 class ChatWebView;
 class ChatInputWidget;
+class SessionStore;
 class QPushButton;
 class QLabel;
 
@@ -32,6 +33,14 @@ public:
     void removeContextChunk(const QString &id);
     void clearContextChunks();
 
+    // Quick Actions - send prompt directly with selection
+    void sendPromptWithSelection(const QString &prompt, const QString &filePath, const QString &selection);
+
+Q_SIGNALS:
+    // Diff highlighting signals for KateCodeView integration
+    void toolCallHighlightRequested(const QString &toolCallId, const ToolCall &toolCall);
+    void toolCallClearRequested(const QString &toolCallId);
+
 private Q_SLOTS:
     void onConnectClicked();
     void onNewSessionClicked();
@@ -50,7 +59,17 @@ private Q_SLOTS:
     void onError(const QString &message);
     void onRemoveContextChunk(const QString &id);
 
+    // Session persistence
+    void onInitializeComplete();
+    void onSessionLoadFailed(const QString &error);
+
 private:
+    // Pending session action for after initialize completes
+    enum class PendingAction {
+        None,
+        CreateSession,
+        LoadSession
+    };
     void updateContextChipsDisplay();
     ACPSession *m_session;
 
@@ -71,4 +90,9 @@ private:
     QPushButton *m_newSessionButton;
     QLabel *m_statusLabel;
     QWidget *m_contextChipsContainer;
+
+    // Session persistence
+    SessionStore *m_sessionStore;
+    PendingAction m_pendingAction;
+    QString m_pendingSessionId;
 };
