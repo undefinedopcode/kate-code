@@ -405,7 +405,8 @@ function createMessageHTML(message) {
 // Render a single tool call as inline element
 function renderToolCall(toolCall) {
     const fileName = toolCall.filePath ? toolCall.filePath.split('/').pop() : '';
-    const isExpanded = toolCall.expanded || false;
+    // Edit tools are expanded by default to show the diff inline
+    const isExpanded = toolCall.expanded !== undefined ? toolCall.expanded : (toolCall.name === 'Edit');
 
     // Extract command for Bash tools
     let commandDisplay = '';
@@ -790,7 +791,7 @@ function applyCustomHighlightCSS(cssText) {
     logToQt('CSS preview: ' + cssText.substring(0, 200));
 }
 
-// Show inline permission request
+// Show inline permission request (compact single-line style)
 function showPermissionRequest(requestId, toolName, input, options) {
     console.log('showPermissionRequest called:', requestId, toolName);
     console.log('Options:', options);
@@ -800,50 +801,22 @@ function showPermissionRequest(requestId, toolName, input, options) {
         return;
     }
 
-    // Special handling for plan field - render as markdown
-    let detailsHtml = '';
-    if (typeof input === 'object' && input.plan) {
-        // Render plan as markdown
-        if (typeof marked !== 'undefined') {
-            detailsHtml = `<div class="permission-plan">${marked.parse(input.plan)}</div>`;
-        } else {
-            detailsHtml = `<pre>${escapeHtml(input.plan)}</pre>`;
-        }
-    } else {
-        // Show JSON for other inputs
-        const inputDisplay = typeof input === 'object'
-            ? JSON.stringify(input, null, 2)
-            : String(input);
-        detailsHtml = `<pre>${escapeHtml(inputDisplay)}</pre>`;
-    }
-
     let html = `
         <div class="permission-request" id="perm-${requestId}">
             <div class="permission-header">
                 <span class="permission-icon">🔐</span>
-                <span class="permission-title">Permission Required: ${escapeHtml(toolName)}</span>
+                <span class="permission-title">Permission: ${escapeHtml(toolName)}</span>
             </div>
-            <div class="permission-body">
-                <div class="permission-details">
-                    ${detailsHtml}
-                </div>
-                <div class="permission-options">
+            <div class="permission-options">
     `;
 
     options.forEach((option, index) => {
         const label = option.name || option.label || 'Option';
-        const description = option.description || '';
         const optionId = option.optionId || option.id || index.toString();
-        html += `
-            <div class="permission-option" onclick="respondToPermission(${requestId}, '${escapeHtml(optionId)}')">
-                <div class="permission-option-label">${escapeHtml(label)}</div>
-                ${description ? `<div class="permission-option-desc">${escapeHtml(description)}</div>` : ''}
-            </div>
-        `;
+        html += `<div class="permission-option" onclick="respondToPermission(${requestId}, '${escapeHtml(optionId)}')"><span class="permission-option-label">${escapeHtml(label)}</span></div>`;
     });
 
     html += `
-                </div>
             </div>
         </div>
     `;

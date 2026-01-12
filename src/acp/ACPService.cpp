@@ -12,6 +12,10 @@ ACPService::ACPService(QObject *parent)
 
 ACPService::~ACPService()
 {
+    // Disconnect signals before cleanup to prevent signal emission during destruction
+    if (m_process) {
+        disconnect(m_process, nullptr, this, nullptr);
+    }
     stop();
 }
 
@@ -186,6 +190,7 @@ void ACPService::onStderr()
 
 void ACPService::onFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
+    Q_UNUSED(exitStatus);
     qDebug() << "[ACPService] Process finished with exit code:" << exitCode;
     Q_EMIT disconnected(exitCode);
     m_process = nullptr;
