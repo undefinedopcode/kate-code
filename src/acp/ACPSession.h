@@ -6,6 +6,7 @@
 #include <QString>
 
 class ACPService;
+class TranscriptWriter;
 
 class ACPSession : public QObject
 {
@@ -68,6 +69,7 @@ private:
     void handlePermissionRequest(const QJsonObject &params, int requestId);
 
     ACPService *m_service;
+    TranscriptWriter *m_transcript;
     ConnectionStatus m_status;
     QString m_sessionId;
     QString m_workingDir;
@@ -75,6 +77,8 @@ private:
     QJsonArray m_availableModes;
     QList<SlashCommand> m_availableCommands;
     QString m_currentMessageId;
+    QString m_currentMessageContent;  // Accumulated content for transcript
+    QDateTime m_currentMessageTimestamp;
 
     // Request tracking
     int m_initializeRequestId;

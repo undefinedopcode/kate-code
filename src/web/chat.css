@@ -610,8 +610,8 @@ pre.diff .diff-add span {
 
 /* Task tool specific styles */
 .tool-call-inline.task-tool {
-    border-color: #9c27b0;
-    background-color: rgba(156, 39, 176, 0.05);
+    border-color: var(--task-purple, #9c27b0);
+    background-color: var(--task-purple-bg, rgba(156, 39, 176, 0.05));
 }
 
 .tool-call-inline.task-tool.running {
@@ -619,12 +619,12 @@ pre.diff .diff-add span {
 }
 
 @keyframes task-pulse {
-    0%, 100% { background-color: rgba(156, 39, 176, 0.05); }
-    50% { background-color: rgba(156, 39, 176, 0.12); }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
 }
 
 .tool-call-inline.task-tool .tool-call-name {
-    color: #9c27b0;
+    color: var(--task-purple, #9c27b0);
 }
 
 /* TaskOutput tool specific styles */
@@ -646,8 +646,8 @@ pre.diff .diff-add span {
     padding: 2px 6px;
     border-radius: 3px;
     margin-left: 6px;
-    background-color: rgba(156, 39, 176, 0.15);
-    color: #9c27b0;
+    background-color: var(--task-purple-bg, rgba(156, 39, 176, 0.15));
+    color: var(--task-purple, #9c27b0);
 }
 
 .task-badge-explore {
@@ -661,8 +661,8 @@ pre.diff .diff-add span {
 }
 
 .task-badge-general-purpose {
-    background-color: rgba(156, 39, 176, 0.15);
-    color: #9c27b0;
+    background-color: var(--task-purple-bg, rgba(156, 39, 176, 0.15));
+    color: var(--task-purple, #9c27b0);
 }
 
 /* Task indicators (background, resume, blocking) */

@@ -9,8 +9,10 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QPushButton>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 ChatWidget::ChatWidget(QWidget *parent)
@@ -24,18 +26,39 @@ ChatWidget::ChatWidget(QWidget *parent)
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(4);
 
-    // Status bar
-    auto *statusLayout = new QHBoxLayout();
-    statusLayout->setContentsMargins(4, 4, 4, 4);
-    m_statusLabel = new QLabel(QStringLiteral("Disconnected"), this);
-    m_newSessionButton = new QPushButton(QStringLiteral("New Session"), this);
+    // Header bar
+    auto *headerLayout = new QHBoxLayout();
+    headerLayout->setContentsMargins(4, 4, 4, 4);
+    headerLayout->setSpacing(8);
+
+    // Title: "Kate Code - Session"
+    m_titleLabel = new QLabel(QStringLiteral("Kate Code - Session"), this);
+    m_titleLabel->setStyleSheet(QStringLiteral("QLabel { font-weight: bold; }"));
+    headerLayout->addWidget(m_titleLabel);
+    headerLayout->addStretch();
+
+    // New Session button (icon only)
+    m_newSessionButton = new QToolButton(this);
+    m_newSessionButton->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
+    m_newSessionButton->setToolTip(QStringLiteral("New Session"));
+    m_newSessionButton->setAutoRaise(true);
     m_newSessionButton->setEnabled(false);
-    m_connectButton = new QPushButton(QStringLiteral("Connect"), this);
-    statusLayout->addWidget(m_statusLabel);
-    statusLayout->addStretch();
-    statusLayout->addWidget(m_newSessionButton);
-    statusLayout->addWidget(m_connectButton);
-    layout->addLayout(statusLayout);
+    headerLayout->addWidget(m_newSessionButton);
+
+    // Connect/Disconnect button (icon only)
+    m_connectButton = new QToolButton(this);
+    m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
+    m_connectButton->setToolTip(QStringLiteral("Connect"));
+    m_connectButton->setAutoRaise(true);
+    headerLayout->addWidget(m_connectButton);
+
+    // Connection status indicator (colored dot)
+    m_statusIndicator = new QLabel(QStringLiteral("●"), this);
+    m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #888888; font-size: 14px; }"));
+    m_statusIndicator->setToolTip(QStringLiteral("Disconnected"));
+    headerLayout->addWidget(m_statusIndicator);
+
+    layout->addLayout(headerLayout);
 
     // Chat web view
     m_chatWebView = new ChatWebView(this);
@@ -180,36 +203,42 @@ void ChatWidget::onMessageSubmitted(const QString &message)
 
 void ChatWidget::onStatusChanged(ConnectionStatus status)
 {
-    QString statusText;
     Message sysMsg;
     sysMsg.role = QStringLiteral("system");
     sysMsg.timestamp = QDateTime::currentDateTime();
 
     switch (status) {
     case ConnectionStatus::Disconnected:
-        statusText = QStringLiteral("Disconnected");
-        m_connectButton->setText(QStringLiteral("Connect"));
+        m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
+        m_connectButton->setToolTip(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
         m_newSessionButton->setEnabled(false);
         m_inputWidget->setEnabled(false);
+        m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #888888; font-size: 14px; }"));
+        m_statusIndicator->setToolTip(QStringLiteral("Disconnected"));
+        m_titleLabel->setText(QStringLiteral("Kate Code - Session"));
         sysMsg.id = QStringLiteral("sys_disconnected");
         sysMsg.content = QStringLiteral("Disconnected from claude-code-acp");
         m_chatWebView->addMessage(sysMsg);
         break;
     case ConnectionStatus::Connecting:
-        statusText = QStringLiteral("Connecting...");
         m_connectButton->setEnabled(false);
         m_newSessionButton->setEnabled(false);
+        m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #f0ad4e; font-size: 14px; }"));
+        m_statusIndicator->setToolTip(QStringLiteral("Connecting..."));
         sysMsg.id = QStringLiteral("sys_connecting");
         sysMsg.content = QStringLiteral("Initializing ACP protocol...");
         m_chatWebView->addMessage(sysMsg);
         break;
     case ConnectionStatus::Connected:
-        statusText = QStringLiteral("Connected");
-        m_connectButton->setText(QStringLiteral("Disconnect"));
+        m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
+        m_connectButton->setToolTip(QStringLiteral("Disconnect"));
         m_connectButton->setEnabled(true);
         m_newSessionButton->setEnabled(true);
         m_inputWidget->setEnabled(true);
+        m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #5cb85c; font-size: 14px; }"));
+        m_statusIndicator->setToolTip(QStringLiteral("Connected"));
+        m_titleLabel->setText(QStringLiteral("Kate Code - Session"));
         sysMsg.id = QStringLiteral("sys_connected");
         sysMsg.content = QStringLiteral("Connected! Session ID: %1").arg(m_session->sessionId());
         m_chatWebView->addMessage(sysMsg);
@@ -227,14 +256,14 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         }
         break;
     case ConnectionStatus::Error:
-        statusText = QStringLiteral("Error");
-        m_connectButton->setText(QStringLiteral("Connect"));
+        m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
+        m_connectButton->setToolTip(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
         m_newSessionButton->setEnabled(false);
+        m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #d9534f; font-size: 14px; }"));
+        m_statusIndicator->setToolTip(QStringLiteral("Error"));
         break;
     }
-
-    m_statusLabel->setText(statusText);
 }
 
 void ChatWidget::onMessageAdded(const Message &message)

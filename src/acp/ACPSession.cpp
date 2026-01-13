@@ -1,5 +1,6 @@
 #include "ACPSession.h"
 #include "ACPService.h"
+#include "../util/TranscriptWriter.h"
 
 #include <QDebug>
 #include <QJsonArray>
@@ -10,6 +11,7 @@
 ACPSession::ACPSession(QObject *parent)
     : QObject(parent)
     , m_service(new ACPService(this))
+    , m_transcript(new TranscriptWriter(this))
     , m_status(ConnectionStatus::Disconnected)
     , m_initializeRequestId(-1)
     , m_sessionNewRequestId(-1)
@@ -54,6 +56,7 @@ void ACPSession::start(const QString &workingDir, const QString &permissionMode)
 
 void ACPSession::stop()
 {
+    m_transcript->finishSession();
     m_service->stop();
     m_status = ConnectionStatus::Disconnected;
     m_sessionId.clear();
@@ -139,6 +142,7 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
     userMsg.timestamp = QDateTime::currentDateTime();
     userMsg.content = content;
     Q_EMIT messageAdded(userMsg);
+    m_transcript->recordMessage(userMsg);
 
     // Create assistant placeholder for streaming
     Message assistantMsg;
@@ -147,6 +151,8 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
     assistantMsg.timestamp = QDateTime::currentDateTime();
     assistantMsg.isStreaming = true;
     m_currentMessageId = assistantMsg.id;
+    m_currentMessageContent.clear();
+    m_currentMessageTimestamp = assistantMsg.timestamp;
     Q_EMIT messageAdded(assistantMsg);
 
     // Build prompt blocks for ACP using proper resource blocks
@@ -327,6 +333,8 @@ void ACPSession::handleSessionNewResponse(int id, const QJsonObject &result)
         Q_EMIT errorOccurred(QStringLiteral("Failed to get session ID from ACP"));
     } else {
         m_status = ConnectionStatus::Connected;
+        // Start transcript for new session
+        m_transcript->startSession(m_sessionId, m_workingDir);
         // Emit modes available signal
         Q_EMIT modesAvailable(m_availableModes);
         if (!m_currentMode.isEmpty()) {
@@ -367,6 +375,9 @@ void ACPSession::handleSessionLoadResponse(int id, const QJsonObject &result, co
 
     m_status = ConnectionStatus::Connected;
 
+    // Start transcript for loaded session (will append if file exists)
+    m_transcript->startSession(m_sessionId, m_workingDir);
+
     // Emit modes available signal
     Q_EMIT modesAvailable(m_availableModes);
     if (!m_currentMode.isEmpty()) {
@@ -394,6 +405,7 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
                  << "text length:" << text.length() << "text:" << text.left(50);
 
         if (!text.isEmpty() && !m_currentMessageId.isEmpty()) {
+            m_currentMessageContent += text;  // Accumulate for transcript
             Q_EMIT messageUpdated(m_currentMessageId, text);
         }
     }
@@ -401,8 +413,18 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         // Finish streaming
         qDebug() << "[ACPSession] Agent message ended - messageId:" << m_currentMessageId;
         if (!m_currentMessageId.isEmpty()) {
+            // Record complete assistant message to transcript
+            if (!m_currentMessageContent.isEmpty()) {
+                Message assistantMsg;
+                assistantMsg.id = m_currentMessageId;
+                assistantMsg.role = QStringLiteral("assistant");
+                assistantMsg.content = m_currentMessageContent;
+                assistantMsg.timestamp = m_currentMessageTimestamp;
+                m_transcript->recordMessage(assistantMsg);
+            }
             Q_EMIT messageFinished(m_currentMessageId);
             m_currentMessageId.clear();
+            m_currentMessageContent.clear();
         } else {
             qWarning() << "[ACPSession] agent_message_end but no current message ID!";
         }
@@ -477,6 +499,7 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
 
         if (!m_currentMessageId.isEmpty()) {
             Q_EMIT toolCallAdded(m_currentMessageId, toolCall);
+            m_transcript->recordToolCall(toolCall);
         }
     }
     else if (updateType == QStringLiteral("tool_call_update")) {
@@ -540,6 +563,7 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             // (Don't overwrite good results with empty ones from status-only updates)
             if (!result.isEmpty() || !status.isEmpty()) {
                 Q_EMIT toolCallUpdated(m_currentMessageId, toolCallId, status, result);
+                m_transcript->recordToolUpdate(toolCallId, status, result);
             }
         }
     }

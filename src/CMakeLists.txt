@@ -21,6 +21,7 @@ set(katecode_SRCS
     util/KateThemeConverter.cpp
     util/DiffHighlightManager.cpp
     util/SessionStore.cpp
+    util/TranscriptWriter.cpp
 )
 
 # Qt resources
