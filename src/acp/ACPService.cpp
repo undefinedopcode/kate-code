@@ -54,10 +54,17 @@ bool ACPService::start(const QString &workingDir)
 void ACPService::stop()
 {
     if (m_process) {
+        // Disconnect signals BEFORE killing to prevent onFinished from being called
+        // This avoids a race condition where both stop() and onFinished() try to clean up m_process
+        disconnect(m_process, nullptr, this, nullptr);
+
         m_process->kill();
         m_process->waitForFinished(1000);
         m_process->deleteLater();
         m_process = nullptr;
+
+        // Emit disconnected signal since onFinished won't be called (signals disconnected)
+        Q_EMIT disconnected(0);
     }
 }
 
@@ -192,8 +199,15 @@ void ACPService::onFinished(int exitCode, QProcess::ExitStatus exitStatus)
 {
     Q_UNUSED(exitStatus);
     qDebug() << "[ACPService] Process finished with exit code:" << exitCode;
+
+    if (m_process) {
+        // Disconnect signals to prevent further callbacks during cleanup
+        disconnect(m_process, nullptr, this, nullptr);
+        m_process->deleteLater();
+        m_process = nullptr;
+    }
+
     Q_EMIT disconnected(exitCode);
-    m_process = nullptr;
 }
 
 void ACPService::onError(QProcess::ProcessError error)

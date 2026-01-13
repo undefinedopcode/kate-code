@@ -608,6 +608,148 @@ pre.diff .diff-add span {
     border-radius: 3px;
 }
 
+/* Task tool specific styles */
+.tool-call-inline.task-tool {
+    border-color: #9c27b0;
+    background-color: rgba(156, 39, 176, 0.05);
+}
+
+.tool-call-inline.task-tool.running {
+    animation: task-pulse 2s ease-in-out infinite;
+}
+
+@keyframes task-pulse {
+    0%, 100% { background-color: rgba(156, 39, 176, 0.05); }
+    50% { background-color: rgba(156, 39, 176, 0.12); }
+}
+
+.tool-call-inline.task-tool .tool-call-name {
+    color: #9c27b0;
+}
+
+/* TaskOutput tool specific styles */
+.tool-call-inline.task-output-tool {
+    border-color: #ff9800;
+    background-color: rgba(255, 152, 0, 0.05);
+}
+
+.tool-call-inline.task-output-tool .tool-call-name {
+    color: #ff9800;
+}
+
+/* Task badge (subagent type) */
+.task-badge {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    background-color: rgba(156, 39, 176, 0.15);
+    color: #9c27b0;
+}
+
+.task-badge-explore {
+    background-color: rgba(33, 150, 243, 0.15);
+    color: #2196f3;
+}
+
+.task-badge-plan {
+    background-color: rgba(76, 175, 80, 0.15);
+    color: #4caf50;
+}
+
+.task-badge-general-purpose {
+    background-color: rgba(156, 39, 176, 0.15);
+    color: #9c27b0;
+}
+
+/* Task indicators (background, resume, blocking) */
+.task-indicator {
+    font-size: 12px;
+    margin-left: 4px;
+    opacity: 0.8;
+}
+
+.task-indicator.task-background {
+    color: #ff9800;
+}
+
+.task-indicator.task-resume {
+    color: #2196f3;
+}
+
+.task-indicator.task-blocking {
+    color: #ff9800;
+}
+
+.task-indicator.task-nonblocking {
+    color: #4caf50;
+}
+
+/* Task description in summary */
+.task-description {
+    color: var(--fg-secondary);
+    font-size: 11px;
+    margin-left: 8px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* TaskOutput task ID display */
+.task-output-id {
+    font-size: 10px;
+    font-family: var(--code-font-family, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace);
+    padding: 2px 6px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    margin-left: 6px;
+    color: var(--fg-primary);
+}
+
+/* Task prompt in expanded details */
+.task-prompt {
+    font-size: 11px;
+    color: var(--fg-primary);
+    font-family: var(--code-font-family, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace);
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+    line-height: 1.4;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+/* Task model info */
+.task-model-info {
+    font-size: 11px;
+    margin-bottom: 8px;
+    color: var(--fg-secondary);
+}
+
+.task-model-info strong {
+    color: var(--fg-primary);
+}
+
+/* TaskOutput details */
+.task-output-details {
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+.task-output-details code {
+    font-family: var(--code-font-family, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace);
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+
 /* Permission request - two-line style */
 .permission-request {
     display: flex;

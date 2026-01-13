@@ -493,11 +493,62 @@ function renderToolCall(toolCall) {
         commandDisplay = cmd.length > 50 ? cmd.substring(0, 50) + '...' : cmd;
     }
 
+    // Select icon based on tool type
+    let toolIcon = '🔧'; // default
+    if (toolCall.name === 'Task') toolIcon = '🤖';
+    else if (toolCall.name === 'TaskOutput') toolIcon = '📥';
+    else if (toolCall.name === 'Bash') toolIcon = '💻';
+    else if (toolCall.name === 'Edit') toolIcon = '✏️';
+    else if (toolCall.name === 'Write') toolIcon = '📝';
+    else if (toolCall.name === 'Read') toolIcon = '📖';
+    else if (toolCall.name === 'Glob' || toolCall.name === 'Grep') toolIcon = '🔍';
+
+    // Determine extra CSS classes for Task/TaskOutput
+    let extraClasses = '';
+    if (toolCall.name === 'Task') extraClasses = ' task-tool';
+    else if (toolCall.name === 'TaskOutput') extraClasses = ' task-output-tool';
+
+    // Build Task-specific summary elements
+    let taskSummaryHtml = '';
+    if (toolCall.name === 'Task' && toolCall.input) {
+        const subagentType = toolCall.input.subagent_type || 'general-purpose';
+        const description = toolCall.input.description || '';
+        const isBackground = toolCall.input.run_in_background === true;
+        const isResuming = !!toolCall.input.resume;
+
+        // Subagent type badge
+        const badgeClass = 'task-badge-' + subagentType.toLowerCase().replace(/[^a-z]/g, '-');
+        taskSummaryHtml += `<span class="task-badge ${badgeClass}">${escapeHtml(subagentType)}</span>`;
+
+        if (isBackground) {
+            taskSummaryHtml += `<span class="task-indicator task-background" title="Running in background">⚡</span>`;
+        }
+        if (isResuming) {
+            taskSummaryHtml += `<span class="task-indicator task-resume" title="Resuming previous agent">↻</span>`;
+        }
+        if (description) {
+            taskSummaryHtml += `<span class="task-description">${escapeHtml(description)}</span>`;
+        }
+    }
+
+    // Build TaskOutput-specific summary elements
+    let taskOutputSummaryHtml = '';
+    if (toolCall.name === 'TaskOutput' && toolCall.input) {
+        const taskId = toolCall.input.task_id || '';
+        const blocking = toolCall.input.block !== false; // Default is blocking
+        const shortId = taskId.length > 12 ? taskId.substring(0, 8) + '...' : taskId;
+
+        taskOutputSummaryHtml += `<span class="task-output-id" title="${escapeHtml(taskId)}">${escapeHtml(shortId)}</span>`;
+        taskOutputSummaryHtml += `<span class="task-indicator ${blocking ? 'task-blocking' : 'task-nonblocking'}" title="${blocking ? 'Waiting for completion' : 'Non-blocking'}">${blocking ? '⏳' : '🔄'}</span>`;
+    }
+
     let html = `
-        <div class="tool-call-inline ${toolCall.status}" data-tool-id="${escapeHtml(toolCall.id)}">
+        <div class="tool-call-inline ${toolCall.status}${extraClasses}" data-tool-id="${escapeHtml(toolCall.id)}">
             <div class="tool-call-summary" onclick="toggleToolCall('${escapeHtml(toolCall.id)}')">
-                <span class="tool-call-icon">🔧</span>
+                <span class="tool-call-icon">${toolIcon}</span>
                 <span class="tool-call-name">${escapeHtml(toolCall.name || 'Tool')}</span>
+                ${taskSummaryHtml}
+                ${taskOutputSummaryHtml}
                 ${commandDisplay ? `<span class="tool-call-command">${escapeHtml(commandDisplay)}</span>` : ''}
                 ${fileName ? `<span class="tool-call-file">${escapeHtml(fileName)}</span>` : ''}
                 <span class="tool-call-toggle">${isExpanded ? '▼' : '▶'}</span>
@@ -557,6 +608,37 @@ function renderToolCall(toolCall) {
                     <pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre>
                 </div>
             </div>`;
+        }
+
+        // Show Task tool details
+        if (toolCall.name === 'Task' && toolCall.input) {
+            const prompt = toolCall.input.prompt || '';
+            const model = toolCall.input.model;
+
+            html += `<div class="tool-call-input task-details">`;
+
+            if (model) {
+                html += `<div class="task-model-info"><strong>Model:</strong> ${escapeHtml(model)}</div>`;
+            }
+
+            if (prompt) {
+                html += `<strong>Prompt:</strong><pre class="task-prompt">${escapeHtml(prompt)}</pre>`;
+            }
+
+            html += `</div>`;
+        }
+
+        // Show TaskOutput tool details
+        if (toolCall.name === 'TaskOutput' && toolCall.input) {
+            const taskId = toolCall.input.task_id || '';
+            const timeout = toolCall.input.timeout;
+
+            html += `<div class="tool-call-input task-output-details">`;
+            html += `<strong>Task ID:</strong> <code>${escapeHtml(taskId)}</code>`;
+            if (timeout) {
+                html += `<br><strong>Timeout:</strong> ${timeout}ms`;
+            }
+            html += `</div>`;
         }
 
         // Show result if available (skip for Write since we show content above)
