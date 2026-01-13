@@ -10,6 +10,7 @@ class ChatWebView;
 class ChatInputWidget;
 class SessionStore;
 class QPushButton;
+class QToolButton;
 class QLabel;
 
 class ChatWidget : public QWidget
@@ -86,9 +87,10 @@ private:
     // UI components
     ChatWebView *m_chatWebView;
     ChatInputWidget *m_inputWidget;
-    QPushButton *m_connectButton;
-    QPushButton *m_newSessionButton;
-    QLabel *m_statusLabel;
+    QToolButton *m_connectButton;
+    QToolButton *m_newSessionButton;
+    QLabel *m_titleLabel;
+    QLabel *m_statusIndicator;
     QWidget *m_contextChipsContainer;
 
     // Session persistence

@@ -93,6 +93,11 @@ void ChatWebView::injectColorScheme()
         inlineCodeBg = isLight ? QStringLiteral("rgba(0, 0, 0, 0.08)")
                                 : QStringLiteral("rgba(0, 0, 0, 0.3)");
 
+        // Theme-aware task purple: darker on light themes, lighter on dark themes for contrast
+        QString taskPurple = isLight ? QStringLiteral("#9c27b0") : QStringLiteral("#ce93d8");
+        QString taskPurpleBg = isLight ? QStringLiteral("rgba(156, 39, 176, 0.08)")
+                                       : QStringLiteral("rgba(206, 147, 216, 0.15)");
+
         // Escape the CSS for JavaScript string literal
         QString escapedCSS = kateThemeCSS;
         escapedCSS.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
@@ -102,9 +107,10 @@ void ChatWebView::injectColorScheme()
 
         // Add code background and font variables to CSS vars
         // Don't quote font family here - quotes will be added in CSS usage
-        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px")
+        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px; --task-purple: %5; --task-purple-bg: %6")
                                             .arg(codeBg, inlineCodeBg, fontFamily)
-                                            .arg(fontSize);
+                                            .arg(fontSize)
+                                            .arg(taskPurple, taskPurpleBg);
 
         QString script = QStringLiteral(
             "applyColorScheme('%1'); "
@@ -122,9 +128,15 @@ void ChatWebView::injectColorScheme()
         inlineCodeBg = isLight ? QStringLiteral("rgba(0, 0, 0, 0.08)")
                                 : QStringLiteral("rgba(0, 0, 0, 0.3)");
 
-        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px")
+        // Theme-aware task purple: darker on light themes, lighter on dark themes for contrast
+        QString taskPurple = isLight ? QStringLiteral("#9c27b0") : QStringLiteral("#ce93d8");
+        QString taskPurpleBg = isLight ? QStringLiteral("rgba(156, 39, 176, 0.08)")
+                                       : QStringLiteral("rgba(206, 147, 216, 0.15)");
+
+        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px; --task-purple: %5; --task-purple-bg: %6")
                                             .arg(codeBg, inlineCodeBg, fontFamily)
-                                            .arg(fontSize);
+                                            .arg(fontSize)
+                                            .arg(taskPurple, taskPurpleBg);
 
         QString script = QStringLiteral(
             "applyColorScheme('%1'); "
