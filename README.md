@@ -191,15 +191,6 @@ When Claude needs approval to run certain tools:
 
 ## Configuration
 
-### API Key
-
-Configure your Anthropic API key for claude-code:
-```bash
-export ANTHROPIC_API_KEY="your-key-here"
-```
-
-Add to your `~/.bashrc` or `~/.zshrc` to persist across sessions.
-
 ### Color Scheme
 
 The plugin automatically adapts to your KDE color scheme by reading `~/.config/kdeglobals`. If you change your KDE theme, restart Kate to pick up the new colors.
@@ -213,7 +204,6 @@ The plugin automatically adapts to your KDE color scheme by reading `~/.config/k
 
 ### Connection fails
 - Verify `claude-code-acp` is in PATH: `which claude-code-acp`
-- Check your API key is set: `echo $ANTHROPIC_API_KEY`
 - Look for error messages in terminal when launching Kate from command line: `kate`
 
 ### Messages not displaying
