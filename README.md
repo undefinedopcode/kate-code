@@ -2,6 +2,8 @@
 
 A plugin for the Kate text editor that integrates Claude Code (an AI coding assistant) directly into the editor's interface. It provides an interactive chat panel where you can converse with Claude to get help with coding tasks—all without leaving your KDE development environment.
 
+![Kate Code Screenshot](Screenshot.png)
+
 ## Features
 
 ### Chat Interface
