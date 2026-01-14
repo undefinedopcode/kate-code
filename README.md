@@ -1,29 +1,44 @@
 # Kate Code
 
-A Kate text editor plugin that integrates Claude Code using the ACP (Agent Client Protocol), bringing AI-powered coding assistance directly into your KDE development environment.
+A plugin for the Kate text editor that integrates Claude Code (an AI coding assistant) directly into the editor's interface. It provides an interactive chat panel where you can converse with Claude to get help with coding tasks—all without leaving your KDE development environment.
 
 ## Features
 
-- **Real-time Chat Interface**: Qt WebEngineView-based chat with markdown rendering and message streaming
-- **Syntax Highlighting**: Code blocks with language-aware syntax highlighting via highlight.js
-  - Theme-aware: automatically adapts to your KDE dark/light theme
-  - Copy button on each code block for easy clipboard access
-- **Agent Mode Selector**: Dropdown to choose Claude's permission mode (e.g., default, plan mode)
-- **Inline Tool Call Display**: See what tools Claude is using with expandable details
-  - Bash commands with full command and output display
-  - File operations with path information
-  - Collapsible tool results for better readability
-- **Task Management**: Collapsible task list anchored at bottom showing current progress
-  - Real-time status updates (pending, in progress, completed)
-  - Progress counter showing completed vs total tasks
-- **Permission Handling**: Inline permission dialogs for tool approvals
-  - Allow always, allow once, or reject operations
-  - Clear display of tool inputs and options
-- **KDE Integration**:
-  - Automatic color scheme extraction from `~/.config/kdeglobals`
-  - Seamless integration with Kate's side panel layout
-  - Context-aware: passes current file, selection, and project root to Claude
-- **Full ACP Protocol Support**: JSON-RPC 2.0 over stdin/stdout with claude-code-acp subprocess
+### Chat Interface
+- **Real-time Streaming**: Messages stream in as Claude generates them with markdown formatting via marked.js
+- **Syntax Highlighting**: Language-aware code highlighting via highlight.js supporting 50+ languages
+- **Theme Integration**: Automatically adapts to your Kate/KDE color scheme (dark/light)
+- **Copy Buttons**: One-click clipboard copy on all code blocks
+
+### Tool Visualization
+See what Claude is doing with inline tool call displays:
+- **Bash**: Command preview in header, full command and output in expandable details
+- **Edit**: Unified diffs with syntax-highlighted code showing exactly what changed
+- **Write**: Syntax-highlighted file content with copy button
+- **Task/TaskOutput**: Sub-agent status with badges for agent type, background execution, and resume state
+- **Read/Glob/Grep**: File operation summaries
+
+### Task Management
+- Collapsible task list showing multi-step operation progress
+- Real-time status: pending (○), in-progress (⟳), completed (✓)
+- Progress counter: "Tasks (3/5)" format
+- State persists across sessions via localStorage
+
+### Permission System
+- Inline permission dialogs for tool approvals
+- Options: Always Allow, Allow Once, Reject
+- Clear display of tool inputs and available actions
+
+### KDE Integration
+- Automatic color scheme extraction from `~/.config/kdeglobals`
+- Kate theme colors applied to highlight.js syntax highlighting
+- Seamless side panel integration
+- Context-aware: passes current file, selection, and project root to Claude
+
+### Architecture
+- **ACP Protocol**: JSON-RPC 2.0 over stdin/stdout with `claude-code-acp` subprocess
+- **Qt WebChannel**: Bidirectional C++/JavaScript bridge for real-time UI updates
+- **Web UI**: HTML/CSS/JS rendered in Qt WebEngineView for rich formatting
 
 ## Prerequisites
 
@@ -40,8 +55,7 @@ A Kate text editor plugin that integrates Claude Code using the ACP (Agent Clien
 
 ### Runtime Dependencies
 - `claude-code-acp` binary installed and available in PATH
-  - Install from: https://github.com/anthropics/claude-code
-- Valid Anthropic API key configured for claude-code
+  - Install from: https://github.com/zed-industries/claude-code-acp
 
 ## Installation
 
@@ -66,7 +80,7 @@ sudo dnf install cmake extra-cmake-modules qt6-qtwebengine-devel \
 
 ### 2. Install claude-code-acp
 
-Follow the instructions at https://github.com/anthropics/claude-code to install the ACP binary.
+Follow the instructions at https://github.com/zed-industries/claude-code-acp to install the ACP binary.
 
 Verify installation:
 ```bash
@@ -279,5 +293,5 @@ Contributions welcome! Please:
 ## Acknowledgments
 
 - Built with Qt 6 and KDE Frameworks 6
-- Integrates with [Claude Code](https://github.com/anthropics/claude-code) via ACP
+- Integrates with [claude-code-acp](https://github.com/zed-industries/claude-code-acp) by Zed Industries
 - Markdown rendering by [marked.js](https://marked.js.org/)
