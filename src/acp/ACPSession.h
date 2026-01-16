@@ -83,6 +83,7 @@ private:
     QString m_currentMessageId;
     QString m_currentMessageContent;  // Accumulated content for transcript
     QDateTime m_currentMessageTimestamp;
+    QHash<QString, QJsonObject> m_toolCallInputs;  // Track tool inputs by toolCallId
 
     // Request tracking
     int m_initializeRequestId;
