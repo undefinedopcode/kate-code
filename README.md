@@ -61,26 +61,7 @@ See what Claude is doing with inline tool call displays:
 
 ## Installation
 
-### 1. Install Dependencies
-
-#### Arch Linux / Manjaro
-```bash
-sudo pacman -S extra-cmake-modules qt6-webengine kf6-ktexteditor kf6-ki18n kf6-kcoreaddons kf6-kxmlgui
-```
-
-#### Ubuntu / Debian
-```bash
-sudo apt install cmake extra-cmake-modules qt6-webengine-dev \
-  libkf6texteditor-dev libkf6i18n-dev libkf6coreaddons-dev libkf6xmlgui-dev
-```
-
-#### Fedora
-```bash
-sudo dnf install cmake extra-cmake-modules qt6-qtwebengine-devel \
-  kf6-ktexteditor-devel kf6-ki18n-devel kf6-kcoreaddons-devel kf6-kxmlgui-devel
-```
-
-### 2. Install claude-code-acp
+### Install claude-code-acp
 
 Follow the instructions at https://github.com/zed-industries/claude-code-acp to install the ACP binary.
 
@@ -89,37 +70,79 @@ Verify installation:
 which claude-code-acp
 ```
 
-### 3. Build the Plugin
+### Option 1: Install from Package (Recommended)
 
+#### Arch Linux (AUR or local build)
 ```bash
-# Clone the repository (or navigate to your local copy)
-cd kate-code
-
-# Create build directory
-mkdir -p build
-cd build
-
-# Configure with CMake
-cmake ..
-
-# Build
-cmake --build .
+# Build and install from PKGBUILD
+makepkg -si
 ```
 
-### 4. Install the Plugin
+#### Fedora / RHEL
+```bash
+# Build RPM using Docker
+./build-packages.sh rpm
 
-**Important**: Kate plugins require system-wide installation to be discovered by KDE's plugin system.
+# Install the resulting package
+sudo dnf install dist/kate-code-1.0.0-1.*.rpm
+```
+
+#### Debian / Ubuntu
+```bash
+# Build deb using Docker
+./build-packages.sh deb
+
+# Install the resulting package
+sudo dpkg -i dist/kate-code_1.0.0-1_amd64.deb
+sudo apt-get install -f  # Install any missing dependencies
+```
+
+### Option 2: Build from Source
+
+#### Install Build Dependencies
+
+**Arch Linux / Manjaro:**
+```bash
+sudo pacman -S cmake extra-cmake-modules qt6-webengine \
+  kf6-ktexteditor kf6-ki18n kf6-kcoreaddons kf6-kxmlgui kf6-syntax-highlighting
+```
+
+**Debian / Ubuntu:**
+```bash
+sudo apt install cmake extra-cmake-modules qt6-webengine-dev \
+  libkf6texteditor-dev libkf6i18n-dev libkf6coreaddons-dev \
+  libkf6xmlgui-dev libkf6syntaxhighlighting-dev
+```
+
+**Fedora:**
+```bash
+sudo dnf install cmake extra-cmake-modules gcc-c++ qt6-qtwebengine-devel \
+  kf6-ktexteditor-devel kf6-ki18n-devel kf6-kcoreaddons-devel \
+  kf6-kxmlgui-devel kf6-syntax-highlighting-devel
+```
+
+#### Build and Install
 
 ```bash
-# Install to system directories (requires sudo)
-sudo cmake --install .
+# Configure
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+# Build
+cmake --build build
+
+# Install to system (requires sudo)
+sudo cmake --install build
+
+# Or install to user directory
+cmake --install build --prefix ~/.local
 ```
 
 The plugin will be installed to:
 - Library: `/usr/lib/qt6/plugins/kf6/ktexteditor/katecode.so`
-- Metadata: `/usr/share/kf6/ktexteditor/katecode.json`
+- Metadata: `/usr/lib/qt6/plugins/kf6/ktexteditor/katecode.json`
+- UI Resource: `/usr/share/kate/plugins/katecode/katecodeui.rc`
 
-### 5. Enable in Kate
+### Enable in Kate
 
 1. Restart Kate completely (close all windows)
 2. Open Kate
