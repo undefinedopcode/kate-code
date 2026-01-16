@@ -523,6 +523,9 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
                  << "name:" << toolCall.name << "status:" << toolCall.status
                  << "file:" << toolCall.filePath << "operation:" << toolCall.operationType;
 
+        // Store tool input for later lookup (e.g., to check ExitPlanMode parameters)
+        m_toolCallInputs[toolCall.id] = toolCall.input;
+
         if (!m_currentMessageId.isEmpty()) {
             Q_EMIT toolCallAdded(m_currentMessageId, toolCall);
             m_transcript->recordToolCall(toolCall);
@@ -591,6 +594,23 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
                 Q_EMIT toolCallUpdated(m_currentMessageId, toolCallId, status, result);
                 m_transcript->recordToolUpdate(toolCallId, status, result);
             }
+        }
+
+        // Detect ExitPlanMode completion and switch to appropriate mode
+        if (toolName == QStringLiteral("ExitPlanMode") && status == QStringLiteral("completed")) {
+            // Check if launchSwarm was requested (means "Accept Edits" mode)
+            QJsonObject toolInput = m_toolCallInputs.value(toolCallId);
+            bool launchSwarm = toolInput[QStringLiteral("launchSwarm")].toBool(false);
+
+            QString newMode = launchSwarm ? QStringLiteral("acceptEdits") : QStringLiteral("default");
+            qDebug() << "[ACPSession] ExitPlanMode completed, launchSwarm:" << launchSwarm
+                     << "switching to mode:" << newMode;
+
+            m_currentMode = newMode;
+            Q_EMIT modeChanged(newMode);
+
+            // Clean up stored input
+            m_toolCallInputs.remove(toolCallId);
         }
     }
     else if (updateType == QStringLiteral("plan")) {
