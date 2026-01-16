@@ -1,0 +1,25 @@
+Source: kate-code
+Section: editors
+Priority: optional
+Maintainer: April <april@example.com>
+Build-Depends: debhelper-compat (= 13),
+               cmake,
+               extra-cmake-modules,
+               libkf6texteditor-dev,
+               libkf6i18n-dev,
+               libkf6coreaddons-dev,
+               libkf6xmlgui-dev,
+               libkf6syntaxhighlighting-dev,
+               qt6-webengine-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/undefinedopcode/kate-code
+Rules-Requires-Root: no
+
+Package: kate-code
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Recommends: claude-code-acp
+Description: Claude Code integration for Kate text editor
+ A Kate plugin that provides Claude AI assistant integration via the
+ Agent Client Protocol (ACP). Features include chat interface, tool
+ execution with permission controls, and session management.

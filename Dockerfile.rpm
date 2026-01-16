@@ -1,0 +1,46 @@
+# Dockerfile for building kate-code .rpm package
+# Usage:
+#   docker build -f Dockerfile.rpm -t kate-code-rpm .
+#   docker run --rm -v $(pwd)/dist:/dist kate-code-rpm
+
+FROM fedora:41
+
+# Install build dependencies
+RUN dnf install -y \
+    rpm-build \
+    cmake \
+    extra-cmake-modules \
+    gcc-c++ \
+    kf6-ktexteditor-devel \
+    kf6-ki18n-devel \
+    kf6-kcoreaddons-devel \
+    kf6-kxmlgui-devel \
+    kf6-syntax-highlighting-devel \
+    qt6-qtwebengine-devel \
+    && dnf clean all
+
+WORKDIR /build
+
+# Copy source
+COPY . /build/
+
+# Create tarball for rpmbuild
+RUN mkdir -p /root/rpmbuild/{SOURCES,SPECS} && \
+    tar czf /root/rpmbuild/SOURCES/kate-code-1.0.0.tar.gz \
+        --transform 's,^,kate-code-1.0.0/,' \
+        --exclude='.git' \
+        --exclude='build' \
+        --exclude='dist' \
+        --exclude='*.tar.gz' \
+        --exclude='*.pkg.tar.zst' \
+        . && \
+    cp kate-code.spec /root/rpmbuild/SPECS/
+
+# Build the package
+RUN rpmbuild -ba /root/rpmbuild/SPECS/kate-code.spec
+
+# Copy RPM to dist
+RUN mkdir -p /dist && \
+    cp /root/rpmbuild/RPMS/*/*.rpm /dist/
+
+CMD ["cp", "-r", "/dist/.", "/output/"]

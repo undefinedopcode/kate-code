@@ -1,0 +1,34 @@
+# Dockerfile for building kate-code .deb package
+# Usage:
+#   docker build -f Dockerfile.deb -t kate-code-deb .
+#   docker run --rm -v $(pwd)/dist:/dist kate-code-deb
+
+FROM debian:trixie
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    extra-cmake-modules \
+    libkf6texteditor-dev \
+    libkf6i18n-dev \
+    libkf6coreaddons-dev \
+    libkf6xmlgui-dev \
+    libkf6syntaxhighlighting-dev \
+    qt6-webengine-dev \
+    devscripts \
+    debhelper \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy source
+COPY . /build/
+
+# Build the package
+RUN dpkg-buildpackage -us -uc -b
+
+# Move .deb to output directory
+RUN mkdir -p /dist && mv /kate-code_*.deb /dist/ 2>/dev/null || mv ../*.deb /dist/
+
+CMD ["cp", "-r", "/dist/.", "/output/"]

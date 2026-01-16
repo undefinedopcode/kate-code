@@ -2,6 +2,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QJsonDocument>
 #include <QStandardPaths>
 
 TranscriptWriter::TranscriptWriter(QObject *parent)
