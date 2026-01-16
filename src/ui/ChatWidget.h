@@ -45,6 +45,7 @@ Q_SIGNALS:
 private Q_SLOTS:
     void onConnectClicked();
     void onNewSessionClicked();
+    void onStopClicked();
     void onMessageSubmitted(const QString &message);
     void onPermissionModeChanged(const QString &mode);
     void onStatusChanged(ConnectionStatus status);
@@ -59,6 +60,7 @@ private Q_SLOTS:
     void onModeChanged(const QString &modeId);
     void onError(const QString &message);
     void onRemoveContextChunk(const QString &id);
+    void onPromptCancelled();
 
     // Session persistence
     void onInitializeComplete();

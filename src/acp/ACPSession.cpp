@@ -60,7 +60,33 @@ void ACPSession::stop()
     m_service->stop();
     m_status = ConnectionStatus::Disconnected;
     m_sessionId.clear();
+    m_promptRequestId = -1;
     Q_EMIT statusChanged(m_status);
+}
+
+void ACPSession::cancelPrompt()
+{
+    if (m_promptRequestId < 0) {
+        qDebug() << "[ACPSession] cancelPrompt called but no prompt running";
+        return;
+    }
+
+    qDebug() << "[ACPSession] Cancelling prompt request:" << m_promptRequestId;
+
+    // Send $/cancel_request notification per ACP protocol
+    QJsonObject params;
+    params[QStringLiteral("id")] = m_promptRequestId;
+    m_service->sendNotification(QStringLiteral("$/cancel_request"), params);
+
+    // Finish any streaming message
+    if (!m_currentMessageId.isEmpty()) {
+        Q_EMIT messageFinished(m_currentMessageId);
+        m_currentMessageId.clear();
+        m_currentMessageContent.clear();
+    }
+
+    m_promptRequestId = -1;
+    Q_EMIT promptCancelled();
 }
 
 void ACPSession::sendPermissionResponse(int requestId, const QJsonObject &outcome)

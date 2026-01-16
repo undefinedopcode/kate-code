@@ -5,6 +5,7 @@
 #include <QCompleter>
 #include <QEvent>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QKeyEvent>
@@ -270,17 +271,37 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     m_completer->setWrapAround(false);
     m_textEdit->setCompleter(m_completer);
 
-    // Send button
-    m_sendButton = new QPushButton(QStringLiteral("Send"), this);
-    m_sendButton->setMinimumWidth(80);
-    m_sendButton->setMinimumHeight(50);
+    // Button container with vertical layout
+    auto *buttonLayout = new QVBoxLayout();
+    buttonLayout->setContentsMargins(0, 0, 0, 0);
+    buttonLayout->setSpacing(4);
+
+    // Send button (icon)
+    m_sendButton = new QPushButton(this);
+    m_sendButton->setIcon(QIcon::fromTheme(QStringLiteral("document-send")));
+    m_sendButton->setToolTip(QStringLiteral("Send message (Enter)"));
+    m_sendButton->setMinimumSize(40, 40);
+    m_sendButton->setMaximumSize(40, 40);
+
+    // Stop button (icon)
+    m_stopButton = new QPushButton(this);
+    m_stopButton->setIcon(QIcon::fromTheme(QStringLiteral("process-stop")));
+    m_stopButton->setToolTip(QStringLiteral("Stop generation (Escape)"));
+    m_stopButton->setMinimumSize(40, 40);
+    m_stopButton->setMaximumSize(40, 40);
+    m_stopButton->setEnabled(false);  // Disabled by default
+
+    buttonLayout->addWidget(m_sendButton);
+    buttonLayout->addWidget(m_stopButton);
+    buttonLayout->addStretch();
 
     inputLayout->addWidget(m_textEdit, 1);
-    inputLayout->addWidget(m_sendButton);
+    inputLayout->addLayout(buttonLayout);
 
     mainLayout->addLayout(inputLayout);
 
     connect(m_sendButton, &QPushButton::clicked, this, &ChatInputWidget::onSendClicked);
+    connect(m_stopButton, &QPushButton::clicked, this, &ChatInputWidget::onStopClicked);
     connect(m_modeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ChatInputWidget::onModeChanged);
 }
@@ -294,6 +315,7 @@ void ChatInputWidget::setEnabled(bool enabled)
     m_textEdit->setEnabled(enabled);
     m_sendButton->setEnabled(enabled);
     m_modeComboBox->setEnabled(enabled);
+    // Stop button state is controlled by setPromptRunning(), not general enabled state
 }
 
 void ChatInputWidget::clear()
@@ -321,6 +343,14 @@ bool ChatInputWidget::eventFilter(QObject *obj, QEvent *event)
             !(keyEvent->modifiers() & Qt::ShiftModifier)) {
             if (!m_completer->popup()->isVisible()) {
                 onSendClicked();
+                return true;
+            }
+        }
+
+        // Handle Escape = stop generation (when completer not visible and prompt running)
+        if (keyEvent->key() == Qt::Key_Escape) {
+            if (!m_completer->popup()->isVisible() && m_promptRunning) {
+                onStopClicked();
                 return true;
             }
         }
@@ -452,4 +482,15 @@ void ChatInputWidget::setAvailableFiles(const QStringList &files)
     m_textEdit->setModels(m_commandModel, m_fileModel);
 
     qDebug() << "[ChatInputWidget] Loaded" << files.size() << "files for @-completion";
+}
+
+void ChatInputWidget::setPromptRunning(bool running)
+{
+    m_promptRunning = running;
+    m_stopButton->setEnabled(running);
+}
+
+void ChatInputWidget::onStopClicked()
+{
+    Q_EMIT stopClicked();
 }

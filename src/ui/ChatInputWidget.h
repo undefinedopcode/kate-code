@@ -64,22 +64,27 @@ public:
     void setCurrentMode(const QString &modeId);
     void setAvailableCommands(const QList<SlashCommand> &commands);
     void setAvailableFiles(const QStringList &files);
+    void setPromptRunning(bool running);
 
 Q_SIGNALS:
     void messageSubmitted(const QString &message);
     void permissionModeChanged(const QString &mode);
+    void stopClicked();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private Q_SLOTS:
     void onSendClicked();
+    void onStopClicked();
     void onModeChanged(int index);
 
 private:
     CommandTextEdit *m_textEdit;
     QPushButton *m_sendButton;
+    QPushButton *m_stopButton;
     QComboBox *m_modeComboBox;
+    bool m_promptRunning = false;
     QCompleter *m_completer;
     QList<SlashCommand> m_availableCommands;
     QStringList m_availableFiles;

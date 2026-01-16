@@ -2,6 +2,12 @@
 let messages = {};
 let bridge = null;
 
+// Material Symbols icon helper - returns HTML span with icon ligature
+function materialIcon(name, extraClass = '') {
+    const cls = extraClass ? `material-icon ${extraClass}` : 'material-icon';
+    return `<span class="${cls}">${name}</span>`;
+}
+
 // Map file extensions to highlight.js language identifiers
 const extToLanguage = {
     // Web
@@ -224,14 +230,14 @@ function configureMarked() {
                 const encodedCode = btoa(unescape(encodeURIComponent(code)));
 
                 return '<div class="code-block-wrapper">' +
-                       '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code">📋</button>' +
+                       '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code"><span class="material-icon material-icon-sm">content_copy</span></button>' +
                        '<pre><code class="hljs language-' + lang + '">' + highlighted + '</code></pre>' +
                        '</div>';
             }
 
             const encodedCode = btoa(unescape(encodeURIComponent(code)));
             return '<div class="code-block-wrapper">' +
-                   '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code">📋</button>' +
+                   '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code"><span class="material-icon material-icon-sm">content_copy</span></button>' +
                    '<pre><code>' + code + '</code></pre>' +
                    '</div>';
         }
@@ -493,15 +499,16 @@ function renderToolCall(toolCall) {
         commandDisplay = cmd.length > 50 ? cmd.substring(0, 50) + '...' : cmd;
     }
 
-    // Select icon based on tool type
-    let toolIcon = '🔧'; // default
-    if (toolCall.name === 'Task') toolIcon = '🤖';
-    else if (toolCall.name === 'TaskOutput') toolIcon = '📥';
-    else if (toolCall.name === 'Bash') toolIcon = '💻';
-    else if (toolCall.name === 'Edit') toolIcon = '✏️';
-    else if (toolCall.name === 'Write') toolIcon = '📝';
-    else if (toolCall.name === 'Read') toolIcon = '📖';
-    else if (toolCall.name === 'Glob' || toolCall.name === 'Grep') toolIcon = '🔍';
+    // Select icon based on tool type (Material Symbols names)
+    let toolIconName = 'build'; // default (wrench/tool icon)
+    if (toolCall.name === 'Task') toolIconName = 'smart_toy';
+    else if (toolCall.name === 'TaskOutput') toolIconName = 'download';
+    else if (toolCall.name === 'Bash') toolIconName = 'terminal';
+    else if (toolCall.name === 'Edit') toolIconName = 'edit';
+    else if (toolCall.name === 'Write') toolIconName = 'edit_document';
+    else if (toolCall.name === 'Read') toolIconName = 'description';
+    else if (toolCall.name === 'Glob' || toolCall.name === 'Grep') toolIconName = 'search';
+    const toolIcon = materialIcon(toolIconName, 'material-icon-sm');
 
     // Determine extra CSS classes for Task/TaskOutput
     let extraClasses = '';
@@ -521,10 +528,10 @@ function renderToolCall(toolCall) {
         taskSummaryHtml += `<span class="task-badge ${badgeClass}">${escapeHtml(subagentType)}</span>`;
 
         if (isBackground) {
-            taskSummaryHtml += `<span class="task-indicator task-background" title="Running in background">⚡</span>`;
+            taskSummaryHtml += `<span class="task-indicator task-background" title="Running in background">${materialIcon('bolt', 'material-icon-sm')}</span>`;
         }
         if (isResuming) {
-            taskSummaryHtml += `<span class="task-indicator task-resume" title="Resuming previous agent">↻</span>`;
+            taskSummaryHtml += `<span class="task-indicator task-resume" title="Resuming previous agent">${materialIcon('refresh', 'material-icon-sm')}</span>`;
         }
         if (description) {
             taskSummaryHtml += `<span class="task-description">${escapeHtml(description)}</span>`;
@@ -539,7 +546,7 @@ function renderToolCall(toolCall) {
         const shortId = taskId.length > 12 ? taskId.substring(0, 8) + '...' : taskId;
 
         taskOutputSummaryHtml += `<span class="task-output-id" title="${escapeHtml(taskId)}">${escapeHtml(shortId)}</span>`;
-        taskOutputSummaryHtml += `<span class="task-indicator ${blocking ? 'task-blocking' : 'task-nonblocking'}" title="${blocking ? 'Waiting for completion' : 'Non-blocking'}">${blocking ? '⏳' : '🔄'}</span>`;
+        taskOutputSummaryHtml += `<span class="task-indicator ${blocking ? 'task-blocking' : 'task-nonblocking'}" title="${blocking ? 'Waiting for completion' : 'Non-blocking'}">${materialIcon(blocking ? 'hourglass_empty' : 'sync', 'material-icon-sm')}</span>`;
     }
 
     let html = `
@@ -551,7 +558,7 @@ function renderToolCall(toolCall) {
                 ${taskOutputSummaryHtml}
                 ${commandDisplay ? `<span class="tool-call-command">${escapeHtml(commandDisplay)}</span>` : ''}
                 ${fileName ? `<span class="tool-call-file">${escapeHtml(fileName)}</span>` : ''}
-                <span class="tool-call-toggle">${isExpanded ? '▼' : '▶'}</span>
+                <span class="tool-call-toggle">${materialIcon(isExpanded ? 'expand_more' : 'chevron_right', 'material-icon-sm')}</span>
             </div>
     `;
 
@@ -604,7 +611,7 @@ function renderToolCall(toolCall) {
             html += `<div class="tool-call-input">
                 <strong>Content:</strong>
                 <div class="code-block-wrapper">
-                    <button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="${encodedCode}" title="Copy code">📋</button>
+                    <button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="${encodedCode}" title="Copy code"><span class="material-icon material-icon-sm">content_copy</span></button>
                     <pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre>
                 </div>
             </div>`;
@@ -833,7 +840,7 @@ function updateTodos(todosJson) {
     let html = `
         <div class="todos-header" onclick="toggleTodos()">
             <span class="todos-title">Tasks (${completedCount}/${totalCount})</span>
-            <span class="todos-toggle">${isCollapsed ? '▲' : '▼'}</span>
+            <span class="todos-toggle">${materialIcon(isCollapsed ? 'expand_less' : 'expand_more', 'material-icon-sm')}</span>
         </div>
         <div class="todos-content ${isCollapsed ? 'collapsed' : ''}">
             <div class="todos-list">
@@ -847,11 +854,11 @@ function updateTodos(todosJson) {
 
         let statusIcon = '';
         if (status === 'completed') {
-            statusIcon = '✓';
+            statusIcon = materialIcon('check_circle', 'material-icon-sm');
         } else if (status === 'in_progress') {
-            statusIcon = '⟳';
+            statusIcon = materialIcon('pending', 'material-icon-sm');
         } else {
-            statusIcon = '○';
+            statusIcon = materialIcon('radio_button_unchecked', 'material-icon-sm');
         }
 
         html += `
@@ -874,7 +881,7 @@ function toggleTodos() {
     if (!content || !toggle) return;
 
     const isCollapsed = content.classList.toggle('collapsed');
-    toggle.textContent = isCollapsed ? '▲' : '▼';
+    toggle.innerHTML = materialIcon(isCollapsed ? 'expand_less' : 'expand_more', 'material-icon-sm');
 
     // Save state
     localStorage.setItem('todos-collapsed', isCollapsed.toString());
@@ -912,12 +919,12 @@ function copyCode(button) {
         document.execCommand('copy');
 
         // Visual feedback
-        const originalText = button.textContent;
-        button.textContent = '✓';
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<span class="material-icon material-icon-sm">check</span>';
         button.classList.add('copied');
 
         setTimeout(() => {
-            button.textContent = originalText;
+            button.innerHTML = originalHTML;
             button.classList.remove('copied');
         }, 2000);
 
@@ -999,7 +1006,7 @@ function showPermissionRequest(requestId, toolName, input, options) {
     let html = `
         <div class="permission-request" id="perm-${requestId}">
             <div class="permission-header">
-                <span class="permission-icon">🔐</span>
+                <span class="permission-icon">${materialIcon('lock', 'material-icon-sm')}</span>
                 <span class="permission-title">Permission: ${escapeHtml(toolName)}</span>
             </div>
             <div class="permission-options">
