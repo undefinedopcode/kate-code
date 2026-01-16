@@ -295,7 +295,7 @@ kate 2>&1 | grep -E "\[ACP|ChatWebView|ChatWidget\]"
 
 ## License
 
-[Add your license here]
+MIT License
 
 ## Contributing
 
