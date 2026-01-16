@@ -23,14 +23,16 @@ void TranscriptWriter::startSession(const QString &sessionId, const QString &pro
     m_sessionId = sessionId;
     m_projectRoot = projectRoot;
 
-    // Create transcripts directory
+    // Create transcripts directory with project subfolder
     QString transcriptDir = QDir::homePath() + QStringLiteral("/.kate-code/transcripts");
-    QDir dir(transcriptDir);
+    QString projectFolder = projectPathToFolderName(projectRoot);
+    QString projectDir = transcriptDir + QStringLiteral("/") + projectFolder;
+    QDir dir(projectDir);
     if (!dir.exists()) {
-        dir.mkpath(transcriptDir);
+        dir.mkpath(projectDir);
     }
 
-    m_filePath = transcriptDir + QStringLiteral("/") + sessionId + QStringLiteral(".md");
+    m_filePath = projectDir + QStringLiteral("/") + sessionId + QStringLiteral(".md");
     m_file.setFileName(m_filePath);
 
     // Check if we're resuming an existing session
@@ -284,4 +286,17 @@ QString TranscriptWriter::escapeMarkdown(const QString &text)
     escaped.replace(QLatin1Char('*'), QStringLiteral("\\*"));
     escaped.replace(QLatin1Char('_'), QStringLiteral("\\_"));
     return escaped;
+}
+
+QString TranscriptWriter::projectPathToFolderName(const QString &projectRoot)
+{
+    if (projectRoot.isEmpty()) {
+        return QStringLiteral("_unknown_");
+    }
+    QString folder = projectRoot;
+    if (folder.startsWith(QLatin1Char('/'))) {
+        folder = folder.mid(1);
+    }
+    folder.replace(QLatin1Char('/'), QLatin1Char('_'));
+    return folder;
 }

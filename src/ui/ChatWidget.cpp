@@ -86,6 +86,7 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_newSessionButton, &QPushButton::clicked, this, &ChatWidget::onNewSessionClicked);
     connect(m_inputWidget, &ChatInputWidget::messageSubmitted, this, &ChatWidget::onMessageSubmitted);
     connect(m_inputWidget, &ChatInputWidget::permissionModeChanged, this, &ChatWidget::onPermissionModeChanged);
+    connect(m_inputWidget, &ChatInputWidget::stopClicked, this, &ChatWidget::onStopClicked);
 
     // Connect ACP session signals
     connect(m_session, &ACPSession::statusChanged, this, &ChatWidget::onStatusChanged);
@@ -100,6 +101,7 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::modeChanged, this, &ChatWidget::onModeChanged);
     connect(m_session, &ACPSession::commandsAvailable, m_inputWidget, &ChatInputWidget::setAvailableCommands);
     connect(m_session, &ACPSession::errorOccurred, this, &ChatWidget::onError);
+    connect(m_session, &ACPSession::promptCancelled, this, &ChatWidget::onPromptCancelled);
 
     // Session persistence signals
     connect(m_session, &ACPSession::initializeComplete, this, &ChatWidget::onInitializeComplete);
@@ -188,6 +190,26 @@ void ChatWidget::onNewSessionClicked()
     m_session->start(projectRoot);
 }
 
+void ChatWidget::onStopClicked()
+{
+    qDebug() << "[ChatWidget] Stop clicked, cancelling prompt";
+    m_session->cancelPrompt();
+}
+
+void ChatWidget::onPromptCancelled()
+{
+    qDebug() << "[ChatWidget] Prompt cancelled";
+    m_inputWidget->setPromptRunning(false);
+
+    // Add system message to indicate cancellation
+    Message sysMsg;
+    sysMsg.id = QStringLiteral("sys_cancelled");
+    sysMsg.role = QStringLiteral("system");
+    sysMsg.content = QStringLiteral("Generation stopped");
+    sysMsg.timestamp = QDateTime::currentDateTime();
+    m_chatWebView->addMessage(sysMsg);
+}
+
 void ChatWidget::onMessageSubmitted(const QString &message)
 {
     // Get current Kate context
@@ -269,6 +291,11 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
 void ChatWidget::onMessageAdded(const Message &message)
 {
     m_chatWebView->addMessage(message);
+
+    // Track when assistant starts responding (prompt is running)
+    if (message.role == QStringLiteral("assistant")) {
+        m_inputWidget->setPromptRunning(true);
+    }
 }
 
 void ChatWidget::onMessageUpdated(const QString &messageId, const QString &content)
@@ -279,6 +306,9 @@ void ChatWidget::onMessageUpdated(const QString &messageId, const QString &conte
 void ChatWidget::onMessageFinished(const QString &messageId)
 {
     m_chatWebView->finishMessage(messageId);
+
+    // Prompt finished - update running state
+    m_inputWidget->setPromptRunning(false);
 }
 
 void ChatWidget::onToolCallAdded(const QString &messageId, const ToolCall &toolCall)

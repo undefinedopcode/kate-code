@@ -93,6 +93,27 @@ int ACPService::sendRequest(const QString &method, const QJsonObject &params)
     return m_messageId;
 }
 
+void ACPService::sendNotification(const QString &method, const QJsonObject &params)
+{
+    if (!m_process || m_process->state() != QProcess::Running) {
+        qWarning() << "[ACPService] Cannot send notification: ACP not connected";
+        return;
+    }
+
+    QJsonObject msg;
+    msg[QStringLiteral("jsonrpc")] = QStringLiteral("2.0");
+    msg[QStringLiteral("method")] = method;
+
+    if (!params.isEmpty()) {
+        msg[QStringLiteral("params")] = params;
+    }
+
+    QByteArray data = QJsonDocument(msg).toJson(QJsonDocument::Compact) + "\n";
+    qDebug() << "[ACPService] >> notification:" << method;
+
+    m_process->write(data);
+}
+
 void ACPService::sendResponse(int requestId, const QJsonObject &result, const QJsonObject &error)
 {
     if (!m_process || m_process->state() != QProcess::Running) {

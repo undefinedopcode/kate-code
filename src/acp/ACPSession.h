@@ -28,8 +28,11 @@ public:
     void setMode(const QString &modeId);
 
     bool isConnected() const { return m_status == ConnectionStatus::Connected; }
+    bool isPromptRunning() const { return m_promptRequestId >= 0; }
     ConnectionStatus status() const { return m_status; }
     QString sessionId() const { return m_sessionId; }
+
+    void cancelPrompt();
     QJsonArray availableModes() const { return m_availableModes; }
     QString currentMode() const { return m_currentMode; }
     QList<SlashCommand> availableCommands() const { return m_availableCommands; }
@@ -47,6 +50,7 @@ Q_SIGNALS:
     void modeChanged(const QString &modeId);
     void commandsAvailable(const QList<SlashCommand> &commands);
     void errorOccurred(const QString &message);
+    void promptCancelled();
 
     // Emitted after initialize completes, before session creation
     void initializeComplete();

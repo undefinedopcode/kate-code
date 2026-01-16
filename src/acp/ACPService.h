@@ -17,6 +17,7 @@ public:
     void stop();
 
     int sendRequest(const QString &method, const QJsonObject &params = QJsonObject());
+    void sendNotification(const QString &method, const QJsonObject &params = QJsonObject());
     void sendResponse(int requestId, const QJsonObject &result = QJsonObject(), const QJsonObject &error = QJsonObject());
 
     bool isRunning() const;

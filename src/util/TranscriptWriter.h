@@ -30,6 +30,7 @@ private:
     QString formatToolCall(const ToolCall &toolCall);
     QString generateUnifiedDiff(const QString &oldText, const QString &newText);
     QString escapeMarkdown(const QString &text);
+    QString projectPathToFolderName(const QString &projectRoot);
 
     QString m_sessionId;
     QString m_projectRoot;
