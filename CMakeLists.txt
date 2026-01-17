@@ -19,6 +19,7 @@ find_package(KF6 ${REQUIRED_KF_VERSION} REQUIRED COMPONENTS
     CoreAddons
     XmlGui
     SyntaxHighlighting
+    Wallet
 )
 
 find_package(Qt6 REQUIRED COMPONENTS
@@ -26,6 +27,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     WebEngineWidgets
     WebChannel
+    Network
 )
 
 add_subdirectory(src)

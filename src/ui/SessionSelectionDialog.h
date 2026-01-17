@@ -5,11 +5,13 @@
 class QRadioButton;
 class QLabel;
 class QPushButton;
+class QTextEdit;
 
 /**
  * SessionSelectionDialog - Asks user whether to resume or start new session.
  *
  * Shown when connecting to a project that has a stored session ID.
+ * Optionally shows a summary preview if available.
  */
 class SessionSelectionDialog : public QDialog
 {
@@ -22,7 +24,9 @@ public:
         Cancelled
     };
 
-    explicit SessionSelectionDialog(const QString &sessionId, QWidget *parent = nullptr);
+    explicit SessionSelectionDialog(const QString &sessionId,
+                                    const QString &summaryContent = QString(),
+                                    QWidget *parent = nullptr);
     ~SessionSelectionDialog() override = default;
 
     Result selectedResult() const { return m_result; }
@@ -33,5 +37,6 @@ private Q_SLOTS:
 private:
     QRadioButton *m_resumeRadio;
     QRadioButton *m_newRadio;
+    QTextEdit *m_summaryPreview;
     Result m_result;
 };

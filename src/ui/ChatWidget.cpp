@@ -4,9 +4,13 @@
 #include "PermissionDialog.h"
 // #include "SessionSelectionDialog.h"  // Session resumption disabled
 #include "../acp/ACPSession.h"
+#include "../config/SettingsStore.h"
 #include "../util/SessionStore.h"
+#include "../util/SummaryGenerator.h"
+#include "../util/SummaryStore.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -20,6 +24,9 @@ ChatWidget::ChatWidget(QWidget *parent)
     , m_session(new ACPSession(this))
     , m_sessionStore(new SessionStore(this))
     , m_pendingAction(PendingAction::None)
+    , m_settingsStore(nullptr)
+    , m_summaryStore(new SummaryStore(this))
+    , m_summaryGenerator(nullptr)
 {
     // Create layout
     auto *layout = new QVBoxLayout(this);
@@ -140,6 +147,20 @@ void ChatWidget::setFileListProvider(FileListProvider provider)
     m_fileListProvider = provider;
 }
 
+void ChatWidget::setSettingsStore(SettingsStore *settings)
+{
+    m_settingsStore = settings;
+
+    // Create summary generator now that we have settings
+    if (m_settingsStore && !m_summaryGenerator) {
+        m_summaryGenerator = new SummaryGenerator(m_settingsStore, this);
+        connect(m_summaryGenerator, &SummaryGenerator::summaryReady,
+                this, &ChatWidget::onSummaryReady);
+        connect(m_summaryGenerator, &SummaryGenerator::summaryError,
+                this, &ChatWidget::onSummaryError);
+    }
+}
+
 void ChatWidget::onConnectClicked()
 {
     if (m_session->isConnected()) {
@@ -242,6 +263,9 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         sysMsg.id = QStringLiteral("sys_disconnected");
         sysMsg.content = QStringLiteral("Disconnected from claude-code-acp");
         m_chatWebView->addMessage(sysMsg);
+
+        // Trigger summary generation for the ended session
+        triggerSummaryGeneration();
         break;
     case ConnectionStatus::Connecting:
         m_connectButton->setEnabled(false);
@@ -265,10 +289,12 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         sysMsg.content = QStringLiteral("Connected! Session ID: %1").arg(m_session->sessionId());
         m_chatWebView->addMessage(sysMsg);
 
-        // Save session ID for future resume
+        // Save session ID for future resume and summary generation
         {
             QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
             m_sessionStore->saveSession(projectRoot, m_session->sessionId());
+            m_lastSessionId = m_session->sessionId();
+            m_lastProjectRoot = projectRoot;
         }
 
         // Populate file list for @-completion
@@ -529,4 +555,73 @@ void ChatWidget::updateContextChipsDisplay()
 
     // Add stretch to keep chips left-aligned
     qobject_cast<QHBoxLayout*>(layout)->addStretch();
+}
+
+void ChatWidget::triggerSummaryGeneration()
+{
+    // Check if we have what we need for summary generation
+    if (m_lastSessionId.isEmpty() || m_lastProjectRoot.isEmpty()) {
+        qDebug() << "[ChatWidget] No session to summarize";
+        return;
+    }
+
+    if (!m_settingsStore || !m_summaryGenerator) {
+        qDebug() << "[ChatWidget] Settings or summary generator not available";
+        return;
+    }
+
+    if (!m_settingsStore->summariesEnabled()) {
+        qDebug() << "[ChatWidget] Summaries disabled in settings";
+        return;
+    }
+
+    if (!m_settingsStore->hasApiKey()) {
+        qDebug() << "[ChatWidget] No API key configured for summaries";
+        return;
+    }
+
+    // Read transcript content
+    QString transcriptPath = QDir::homePath() +
+        QStringLiteral("/.kate-code/transcripts/") +
+        m_lastProjectRoot.mid(1).replace(QLatin1Char('/'), QLatin1Char('_')) +
+        QStringLiteral("/") + m_lastSessionId + QStringLiteral(".md");
+
+    QFile transcriptFile(transcriptPath);
+    if (!transcriptFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "[ChatWidget] Could not read transcript:" << transcriptPath;
+        return;
+    }
+
+    QString transcriptContent = QString::fromUtf8(transcriptFile.readAll());
+    transcriptFile.close();
+
+    if (transcriptContent.isEmpty()) {
+        qDebug() << "[ChatWidget] Empty transcript, skipping summary";
+        return;
+    }
+
+    qDebug() << "[ChatWidget] Generating summary for session:" << m_lastSessionId;
+    m_summaryGenerator->generateSummary(m_lastSessionId, m_lastProjectRoot, transcriptContent);
+}
+
+void ChatWidget::onSummaryReady(const QString &sessionId, const QString &projectRoot, const QString &summary)
+{
+    qDebug() << "[ChatWidget] Summary generated for session:" << sessionId;
+
+    // Save summary to file
+    m_summaryStore->saveSummary(projectRoot, sessionId, summary);
+
+    // Add system message about summary
+    Message sysMsg;
+    sysMsg.id = QStringLiteral("sys_summary");
+    sysMsg.role = QStringLiteral("system");
+    sysMsg.content = QStringLiteral("Session summary saved to ~/.kate-code/summaries/");
+    sysMsg.timestamp = QDateTime::currentDateTime();
+    m_chatWebView->addMessage(sysMsg);
+}
+
+void ChatWidget::onSummaryError(const QString &sessionId, const QString &error)
+{
+    qWarning() << "[ChatWidget] Summary generation failed for" << sessionId << ":" << error;
+    // Don't show error to user - summary is optional
 }

@@ -16,12 +16,18 @@ set(katecode_SRCS
     ui/PermissionDialog.cpp
     ui/SessionSelectionDialog.cpp
 
+    # Config layer
+    config/SettingsStore.cpp
+    config/KateCodeConfigPage.cpp
+
     # Util layer
     util/KDEColorScheme.cpp
     util/KateThemeConverter.cpp
     util/DiffHighlightManager.cpp
     util/SessionStore.cpp
     util/TranscriptWriter.cpp
+    util/SummaryStore.cpp
+    util/SummaryGenerator.cpp
 )
 
 # Qt resources
@@ -35,10 +41,12 @@ target_link_libraries(katecode
     KF6::CoreAddons
     KF6::XmlGui
     KF6::SyntaxHighlighting
+    KF6::Wallet
     Qt6::Core
     Qt6::Widgets
     Qt6::WebEngineWidgets
     Qt6::WebChannel
+    Qt6::Network
 )
 
 # Installation

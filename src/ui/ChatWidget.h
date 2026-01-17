@@ -9,6 +9,9 @@ class ACPSession;
 class ChatWebView;
 class ChatInputWidget;
 class SessionStore;
+class SummaryStore;
+class SummaryGenerator;
+class SettingsStore;
 class QPushButton;
 class QToolButton;
 class QLabel;
@@ -20,6 +23,9 @@ class ChatWidget : public QWidget
 public:
     explicit ChatWidget(QWidget *parent = nullptr);
     ~ChatWidget() override;
+
+    // Settings injection (from KateCodePlugin via KateCodeView)
+    void setSettingsStore(SettingsStore *settings);
 
     // Context providers (callbacks to get current file/selection/project root from Kate)
     using ContextProvider = std::function<QString()>;
@@ -66,7 +72,12 @@ private Q_SLOTS:
     void onInitializeComplete();
     void onSessionLoadFailed(const QString &error);
 
+    // Summary generation
+    void onSummaryReady(const QString &sessionId, const QString &projectRoot, const QString &summary);
+    void onSummaryError(const QString &sessionId, const QString &error);
+
 private:
+    void triggerSummaryGeneration();
     // Pending session action for after initialize completes
     enum class PendingAction {
         None,
@@ -99,4 +110,11 @@ private:
     SessionStore *m_sessionStore;
     PendingAction m_pendingAction;
     QString m_pendingSessionId;
+
+    // Summary generation
+    SettingsStore *m_settingsStore;
+    SummaryStore *m_summaryStore;
+    SummaryGenerator *m_summaryGenerator;
+    QString m_lastSessionId;
+    QString m_lastProjectRoot;
 };
