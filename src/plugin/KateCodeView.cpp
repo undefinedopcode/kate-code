@@ -1,6 +1,7 @@
 #include "KateCodeView.h"
 #include "KateCodePlugin.h"
 #include "../acp/ACPModels.h"
+#include "../config/SettingsStore.h"
 #include "../ui/ChatWidget.h"
 #include "../util/DiffHighlightManager.h"
 
@@ -135,6 +136,9 @@ void KateCodeView::createToolView()
     m_chatWidget->setSelectionProvider([this]() { return getCurrentSelection(); });
     m_chatWidget->setProjectRootProvider([this]() { return getProjectRoot(); });
     m_chatWidget->setFileListProvider([this]() { return getProjectFiles(); });
+
+    // Inject settings store for summary generation
+    m_chatWidget->setSettingsStore(m_plugin->settings());
 }
 
 QString KateCodeView::getCurrentFilePath() const

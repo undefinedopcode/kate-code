@@ -1,17 +1,22 @@
 #include "SessionSelectionDialog.h"
 
 #include <QDialogButtonBox>
+#include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QTextEdit>
 #include <QVBoxLayout>
 
-SessionSelectionDialog::SessionSelectionDialog(const QString &sessionId, QWidget *parent)
+SessionSelectionDialog::SessionSelectionDialog(const QString &sessionId,
+                                               const QString &summaryContent,
+                                               QWidget *parent)
     : QDialog(parent)
+    , m_summaryPreview(nullptr)
     , m_result(Result::Cancelled)
 {
     setWindowTitle(tr("Session Selection"));
-    setMinimumWidth(350);
+    setMinimumWidth(400);
 
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(12);
@@ -34,6 +39,25 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &sessionId, QWidget
     auto *sessionLabel = new QLabel(QStringLiteral("   Session: %1").arg(shortId), this);
     sessionLabel->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
     layout->addWidget(sessionLabel);
+
+    // Summary preview (if available)
+    if (!summaryContent.isEmpty()) {
+        auto *summaryGroup = new QGroupBox(tr("Session Summary"), this);
+        auto *summaryLayout = new QVBoxLayout(summaryGroup);
+
+        m_summaryPreview = new QTextEdit(this);
+        m_summaryPreview->setPlainText(summaryContent);
+        m_summaryPreview->setReadOnly(true);
+        m_summaryPreview->setMaximumHeight(150);
+        m_summaryPreview->setStyleSheet(QStringLiteral(
+            "QTextEdit { background-color: palette(alternate-base); font-size: small; }"));
+        summaryLayout->addWidget(m_summaryPreview);
+
+        layout->addWidget(summaryGroup);
+
+        // Make dialog wider to show summary
+        setMinimumWidth(500);
+    }
 
     // New session option
     m_newRadio = new QRadioButton(tr("Start new session"), this);
