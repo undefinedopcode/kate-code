@@ -1,0 +1,60 @@
+# Dockerfile for building kate-code .pkg.tar.zst package (Arch Linux)
+# Usage:
+#   docker build -f Dockerfile.arch -t kate-code-arch .
+#   docker run --rm -v $(pwd)/dist:/dist kate-code-arch
+
+FROM archlinux:base-devel
+
+# Update and install build dependencies
+RUN pacman -Syu --noconfirm && \
+    pacman -S --noconfirm --needed \
+    cmake \
+    extra-cmake-modules \
+    ktexteditor \
+    ki18n \
+    kcoreaddons \
+    kxmlgui \
+    syntax-highlighting \
+    qt6-webengine \
+    git \
+    && pacman -Scc --noconfirm
+
+# Create build user (makepkg cannot run as root)
+RUN useradd -m builder && \
+    echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers && \
+    mkdir -p /home/builder/build && \
+    chown builder:builder /home/builder/build
+
+WORKDIR /home/builder/build
+
+# Copy source
+COPY --chown=builder:builder . /home/builder/build/
+
+# Create tarball and modify PKGBUILD for local source
+RUN tar czf /tmp/kate-code-1.0.0.tar.gz \
+        --transform 's,^\.,kate-code-1.0.0,' \
+        --exclude='.git' \
+        --exclude='build' \
+        --exclude='dist' \
+        --exclude='pkg' \
+        --exclude='src/build' \
+        --exclude='src/kate-code' \
+        --exclude='*.tar.gz' \
+        --exclude='*.pkg.tar.zst' \
+        . && \
+    mv /tmp/kate-code-1.0.0.tar.gz . && \
+    sed -i 's|source=.*|source=("kate-code-1.0.0.tar.gz")|' PKGBUILD && \
+    sed -i 's|sha256sums=.*|sha256sums=("SKIP")|' PKGBUILD && \
+    sed -i 's|-S "$pkgname"|-S "$srcdir/kate-code-1.0.0"|' PKGBUILD
+
+# Switch to builder user
+USER builder
+
+# Build the package using makepkg
+RUN makepkg -sf --noconfirm --skipchecksums
+
+# Copy package to dist
+USER root
+RUN mkdir -p /dist && cp /home/builder/build/*.pkg.tar.zst /dist/
+
+CMD ["cp", "-r", "/dist/.", "/output/"]

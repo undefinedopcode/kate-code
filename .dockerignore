@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+dist/
+pkg/
+src/build/
+src/kate-code/
+
+# Git
+.git/
+
+# Packages
+*.tar.gz
+*.pkg.tar.zst
+*.deb
+*.rpm
