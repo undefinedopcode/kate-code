@@ -182,6 +182,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    padding-left: 40px !important;
 }
 
 .message-header {
@@ -228,8 +229,15 @@ body {
 
 .message.user .message-content {
     background-color: rgba(0, 122, 204, 0.1);
-    border-left: 3px solid var(--accent);
-    padding-left: 16px;
+}
+
+.user-markdown {
+    border: 12px !important;
+}
+
+/* User markdown wrapper */
+.message.user .message-content .user-markdown {
+    margin: 8px;
 }
 
 /* Markdown paragraph styling for user messages */
@@ -275,7 +283,8 @@ body {
 .message.user .message-content ul,
 .message.user .message-content ol {
     margin: 8px 0;
-    padding-left: 20px;
+    padding-left: 24px;
+    list-style-position: inside;
 }
 
 .message.user .message-content li {
