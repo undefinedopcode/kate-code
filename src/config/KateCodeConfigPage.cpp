@@ -51,7 +51,7 @@ QString KateCodeConfigPage::fullName() const
 
 QIcon KateCodeConfigPage::icon() const
 {
-    return QIcon::fromTheme(QStringLiteral("claude"));
+    return QIcon::fromTheme(QStringLiteral("code-context"));
 }
 
 void KateCodeConfigPage::setupUi()
