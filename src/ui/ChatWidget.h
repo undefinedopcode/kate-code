@@ -123,4 +123,7 @@ private:
 
     // Session resumption context (sent automatically after connect)
     QString m_pendingSummaryContext;
+
+    // Track whether user has sent a message (for summary generation decision)
+    bool m_userSentMessage = false;
 };
