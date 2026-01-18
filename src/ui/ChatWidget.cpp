@@ -187,6 +187,9 @@ void ChatWidget::onConnectClicked()
         return;
     }
 
+    // Reset user message tracking for new session
+    m_userSentMessage = false;
+
     // Get current project root
     QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
 
@@ -232,6 +235,9 @@ void ChatWidget::onConnectClicked()
 
 void ChatWidget::onNewSessionClicked()
 {
+    // Reset user message tracking for new session
+    m_userSentMessage = false;
+
     // Get current project root
     QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
 
@@ -278,6 +284,9 @@ void ChatWidget::onPromptCancelled()
 
 void ChatWidget::onMessageSubmitted(const QString &message)
 {
+    // Track that user has sent a real message (for summary generation)
+    m_userSentMessage = true;
+
     // Get current Kate context
     QString filePath = m_filePathProvider ? m_filePathProvider() : QString();
     QString selection = m_selectionProvider ? m_selectionProvider() : QString();
@@ -615,8 +624,15 @@ void ChatWidget::triggerSummaryGeneration()
     qDebug() << "[ChatWidget] triggerSummaryGeneration called";
     qDebug() << "[ChatWidget]   m_lastSessionId:" << m_lastSessionId;
     qDebug() << "[ChatWidget]   m_lastProjectRoot:" << m_lastProjectRoot;
+    qDebug() << "[ChatWidget]   m_userSentMessage:" << m_userSentMessage;
     qDebug() << "[ChatWidget]   m_settingsStore:" << (m_settingsStore ? "set" : "null");
     qDebug() << "[ChatWidget]   m_summaryGenerator:" << (m_summaryGenerator ? "set" : "null");
+
+    // Skip summary if user didn't send any messages (e.g., resumed but didn't interact)
+    if (!m_userSentMessage) {
+        qDebug() << "[ChatWidget] No user messages sent, skipping summary";
+        return;
+    }
 
     // Check if we have what we need for summary generation
     if (m_lastSessionId.isEmpty() || m_lastProjectRoot.isEmpty()) {
