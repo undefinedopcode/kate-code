@@ -127,6 +127,22 @@ ChatWidget::~ChatWidget()
 {
 }
 
+void ChatWidget::prepareForShutdown()
+{
+    qDebug() << "[ChatWidget] prepareForShutdown called";
+
+    // Trigger summary generation for active session
+    triggerSummaryGeneration();
+
+    // Wait for summary to complete (if one was triggered)
+    if (m_summaryGenerator && m_summaryGenerator->isGenerating()) {
+        qDebug() << "[ChatWidget] Waiting for summary generation to complete...";
+        m_summaryGenerator->waitForPendingRequests();
+    }
+
+    qDebug() << "[ChatWidget] Shutdown preparation complete";
+}
+
 void ChatWidget::setFilePathProvider(ContextProvider provider)
 {
     m_filePathProvider = provider;

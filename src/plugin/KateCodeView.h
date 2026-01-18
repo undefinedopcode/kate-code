@@ -23,6 +23,9 @@ public:
     QString getProjectRoot() const;
     QStringList getProjectFiles() const;
 
+    // Shutdown hook for summary generation
+    void prepareForShutdown();
+
 private Q_SLOTS:
     void addSelectionToContext();
 

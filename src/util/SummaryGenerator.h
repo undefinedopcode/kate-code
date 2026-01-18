@@ -22,6 +22,9 @@ public:
 
     bool isGenerating() const { return !m_pendingRequests.isEmpty(); }
 
+    // Block until all pending requests complete (for shutdown)
+    void waitForPendingRequests(int timeoutMs = 30000);
+
 Q_SIGNALS:
     void summaryReady(const QString &sessionId, const QString &projectRoot, const QString &summary);
     void summaryError(const QString &sessionId, const QString &error);

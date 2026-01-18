@@ -1,6 +1,8 @@
 #include "SummaryGenerator.h"
 #include "../config/SettingsStore.h"
 
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -21,6 +23,33 @@ SummaryGenerator::~SummaryGenerator()
     // Cancel pending requests
     for (auto it = m_pendingRequests.begin(); it != m_pendingRequests.end(); ++it) {
         it.key()->abort();
+    }
+}
+
+void SummaryGenerator::waitForPendingRequests(int timeoutMs)
+{
+    if (m_pendingRequests.isEmpty()) {
+        return;
+    }
+
+    qDebug() << "[SummaryGenerator] Waiting for" << m_pendingRequests.size() << "pending request(s)...";
+
+    QElapsedTimer timer;
+    timer.start();
+
+    QEventLoop loop;
+    while (!m_pendingRequests.isEmpty() && timer.elapsed() < timeoutMs) {
+        loop.processEvents(QEventLoop::AllEvents, 100);
+    }
+
+    if (!m_pendingRequests.isEmpty()) {
+        qWarning() << "[SummaryGenerator] Timeout waiting for requests, aborting" << m_pendingRequests.size() << "remaining";
+        for (auto it = m_pendingRequests.begin(); it != m_pendingRequests.end(); ++it) {
+            it.key()->abort();
+        }
+        m_pendingRequests.clear();
+    } else {
+        qDebug() << "[SummaryGenerator] All pending requests completed";
     }
 }
 
