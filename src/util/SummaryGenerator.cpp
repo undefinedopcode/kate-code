@@ -28,16 +28,21 @@ void SummaryGenerator::generateSummary(const QString &sessionId,
                                          const QString &projectRoot,
                                          const QString &transcriptContent)
 {
+    qDebug() << "[SummaryGenerator] generateSummary called for session:" << sessionId;
     QString apiKey = m_settings->apiKey();
     if (apiKey.isEmpty()) {
+        qDebug() << "[SummaryGenerator] No API key configured";
         Q_EMIT summaryError(sessionId, QStringLiteral("No API key configured"));
         return;
     }
 
     if (transcriptContent.isEmpty()) {
+        qDebug() << "[SummaryGenerator] No transcript content";
         Q_EMIT summaryError(sessionId, QStringLiteral("No transcript content to summarize"));
         return;
     }
+
+    qDebug() << "[SummaryGenerator] Making API request to Anthropic...";
 
     QUrl url(QStringLiteral("https://api.anthropic.com/v1/messages"));
     QNetworkRequest request(url);
@@ -69,19 +74,23 @@ void SummaryGenerator::generateSummary(const QString &sessionId,
 
 void SummaryGenerator::onNetworkReply(QNetworkReply *reply)
 {
+    qDebug() << "[SummaryGenerator] Network reply received";
     reply->deleteLater();
 
     if (!m_pendingRequests.contains(reply)) {
+        qDebug() << "[SummaryGenerator] Unknown reply, ignoring";
         return;
     }
 
     PendingRequest pending = m_pendingRequests.take(reply);
 
     if (reply->error() != QNetworkReply::NoError) {
+        qDebug() << "[SummaryGenerator] Network error:" << reply->errorString();
         Q_EMIT summaryError(pending.sessionId,
                            QStringLiteral("Network error: %1").arg(reply->errorString()));
         return;
     }
+    qDebug() << "[SummaryGenerator] HTTP status:" << reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
     QByteArray responseData = reply->readAll();
     QJsonDocument doc = QJsonDocument::fromJson(responseData);

@@ -117,4 +117,7 @@ private:
     SummaryGenerator *m_summaryGenerator;
     QString m_lastSessionId;
     QString m_lastProjectRoot;
+
+    // Session resumption context (sent automatically after connect)
+    QString m_pendingSummaryContext;
 };

@@ -2,7 +2,7 @@
 #include "ChatWebView.h"
 #include "ChatInputWidget.h"
 #include "PermissionDialog.h"
-// #include "SessionSelectionDialog.h"  // Session resumption disabled
+#include "SessionSelectionDialog.h"
 #include "../acp/ACPSession.h"
 #include "../config/SettingsStore.h"
 #include "../util/SessionStore.h"
@@ -158,6 +158,9 @@ void ChatWidget::setSettingsStore(SettingsStore *settings)
                 this, &ChatWidget::onSummaryReady);
         connect(m_summaryGenerator, &SummaryGenerator::summaryError,
                 this, &ChatWidget::onSummaryError);
+
+        // Load API key from KWallet for summary generation
+        m_settingsStore->loadApiKey();
     }
 }
 
@@ -171,8 +174,29 @@ void ChatWidget::onConnectClicked()
     // Get current project root
     QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
 
-    // Session resumption disabled - ACP doesn't support it well
-    // Always create a new session
+    // Clear any pending summary from previous attempt
+    m_pendingSummaryContext.clear();
+
+    // Check if a previous session exists with a summary
+    QString lastSessionId = m_sessionStore->getLastSession(projectRoot);
+    if (!lastSessionId.isEmpty()) {
+        QString summary = m_summaryStore->loadSummary(projectRoot, lastSessionId);
+        if (!summary.isEmpty()) {
+            // Show dialog to ask user whether to resume with context
+            SessionSelectionDialog dialog(lastSessionId, summary, this);
+            if (dialog.exec() == QDialog::Accepted) {
+                if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
+                    // Store summary to send after session connects
+                    m_pendingSummaryContext = summary;
+                }
+                // NewSession: just proceed without summary context
+            } else {
+                // Cancelled - don't connect
+                return;
+            }
+        }
+    }
+
     m_pendingAction = PendingAction::CreateSession;
 
     // Add system message
@@ -180,7 +204,11 @@ void ChatWidget::onConnectClicked()
     sysMsg.id = QStringLiteral("sys_connect");
     sysMsg.role = QStringLiteral("system");
     sysMsg.timestamp = QDateTime::currentDateTime();
-    sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
+    if (m_pendingSummaryContext.isEmpty()) {
+        sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
+    } else {
+        sysMsg.content = QStringLiteral("Resuming session with prior context in: %1").arg(projectRoot);
+    }
     m_chatWebView->addMessage(sysMsg);
 
     m_session->start(projectRoot);
@@ -191,8 +219,9 @@ void ChatWidget::onNewSessionClicked()
     // Get current project root
     QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
 
-    // Clear stored session BEFORE starting new one
+    // Clear stored session and any pending summary context
     m_sessionStore->clearSession(projectRoot);
+    m_pendingSummaryContext.clear();
 
     // Stop current session, clear chat, and start a new session
     m_session->stop();
@@ -301,6 +330,14 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         if (m_fileListProvider) {
             QStringList files = m_fileListProvider();
             m_inputWidget->setAvailableFiles(files);
+        }
+
+        // Auto-send summary context if resuming a session
+        if (!m_pendingSummaryContext.isEmpty()) {
+            QString contextMessage = QStringLiteral(
+                "Summary from last session:\n\n%1").arg(m_pendingSummaryContext);
+            m_session->sendMessage(contextMessage, QString(), QString(), {});
+            m_pendingSummaryContext.clear();
         }
         break;
     case ConnectionStatus::Error:
@@ -559,6 +596,12 @@ void ChatWidget::updateContextChipsDisplay()
 
 void ChatWidget::triggerSummaryGeneration()
 {
+    qDebug() << "[ChatWidget] triggerSummaryGeneration called";
+    qDebug() << "[ChatWidget]   m_lastSessionId:" << m_lastSessionId;
+    qDebug() << "[ChatWidget]   m_lastProjectRoot:" << m_lastProjectRoot;
+    qDebug() << "[ChatWidget]   m_settingsStore:" << (m_settingsStore ? "set" : "null");
+    qDebug() << "[ChatWidget]   m_summaryGenerator:" << (m_summaryGenerator ? "set" : "null");
+
     // Check if we have what we need for summary generation
     if (m_lastSessionId.isEmpty() || m_lastProjectRoot.isEmpty()) {
         qDebug() << "[ChatWidget] No session to summarize";
@@ -569,6 +612,9 @@ void ChatWidget::triggerSummaryGeneration()
         qDebug() << "[ChatWidget] Settings or summary generator not available";
         return;
     }
+
+    qDebug() << "[ChatWidget]   summariesEnabled:" << m_settingsStore->summariesEnabled();
+    qDebug() << "[ChatWidget]   hasApiKey:" << m_settingsStore->hasApiKey();
 
     if (!m_settingsStore->summariesEnabled()) {
         qDebug() << "[ChatWidget] Summaries disabled in settings";
@@ -586,6 +632,8 @@ void ChatWidget::triggerSummaryGeneration()
         m_lastProjectRoot.mid(1).replace(QLatin1Char('/'), QLatin1Char('_')) +
         QStringLiteral("/") + m_lastSessionId + QStringLiteral(".md");
 
+    qDebug() << "[ChatWidget] Looking for transcript at:" << transcriptPath;
+
     QFile transcriptFile(transcriptPath);
     if (!transcriptFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qWarning() << "[ChatWidget] Could not read transcript:" << transcriptPath;
@@ -594,6 +642,8 @@ void ChatWidget::triggerSummaryGeneration()
 
     QString transcriptContent = QString::fromUtf8(transcriptFile.readAll());
     transcriptFile.close();
+
+    qDebug() << "[ChatWidget] Transcript length:" << transcriptContent.length();
 
     if (transcriptContent.isEmpty()) {
         qDebug() << "[ChatWidget] Empty transcript, skipping summary";
