@@ -69,6 +69,12 @@ function cleanReadResult(text) {
     // Remove <system-reminder>...</system-reminder> blocks (including multiline)
     let cleaned = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '');
 
+    // Strip leading triple backticks with optional language identifier
+    cleaned = cleaned.replace(/^```[a-zA-Z0-9]*\n?/, '');
+
+    // Strip trailing triple backticks
+    cleaned = cleaned.replace(/\n?```\s*$/, '');
+
     // Strip line number prefixes (e.g., "   921→" or "  42→")
     // Pattern: optional spaces, digits, arrow (→), then the actual content
     const lines = cleaned.split('\n');
