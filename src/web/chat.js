@@ -64,6 +64,27 @@ const extToLanguage = {
     'ui': 'xml', 'rc': 'xml', 'qrc': 'xml'
 };
 
+// Clean Read tool result by removing system-reminder tags and line number prefixes
+function cleanReadResult(text) {
+    // Remove <system-reminder>...</system-reminder> blocks (including multiline)
+    let cleaned = text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '');
+
+    // Strip line number prefixes (e.g., "   921→" or "  42→")
+    // Pattern: optional spaces, digits, arrow (→), then the actual content
+    const lines = cleaned.split('\n');
+    const strippedLines = lines.map(line => {
+        const match = line.match(/^\s*\d+→(.*)$/);
+        return match ? match[1] : line;
+    });
+
+    // Remove trailing empty lines that result from stripping
+    while (strippedLines.length > 0 && strippedLines[strippedLines.length - 1].trim() === '') {
+        strippedLines.pop();
+    }
+
+    return strippedLines.join('\n');
+}
+
 // Get highlight.js language from file path
 function getLanguageFromPath(filePath) {
     if (!filePath) return null;
@@ -655,7 +676,22 @@ function renderToolCall(toolCall) {
 
         // Show result if available (skip for Write since we show content above)
         if (toolCall.result && toolCall.name !== 'Write') {
-            html += `<div class="tool-call-result-section"><strong>Result:</strong><pre class="tool-call-result">${escapeHtml(toolCall.result)}</pre></div>`;
+            if (toolCall.name === 'Read') {
+                // For Read tool, clean and highlight the result
+                const cleanedCode = cleanReadResult(toolCall.result);
+                const language = getLanguageFromPath(toolCall.filePath);
+                const highlighted = highlightCode(cleanedCode, language);
+                const encodedCode = btoa(unescape(encodeURIComponent(cleanedCode)));
+                html += `<div class="tool-call-result-section">
+                    <strong>Result:</strong>
+                    <div class="code-block-wrapper">
+                        <button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="${encodedCode}" title="Copy code"><span class="material-icon material-icon-sm">content_copy</span></button>
+                        <pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre>
+                    </div>
+                </div>`;
+            } else {
+                html += `<div class="tool-call-result-section"><strong>Result:</strong><pre class="tool-call-result">${escapeHtml(toolCall.result)}</pre></div>`;
+            }
         }
 
         html += '</div>';
