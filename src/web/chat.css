@@ -229,6 +229,7 @@ body {
 .message.user .message-content {
     background-color: rgba(0, 122, 204, 0.1);
     border-left: 3px solid var(--accent);
+    padding-left: 16px;
 }
 
 /* Markdown paragraph styling for user messages */
@@ -268,6 +269,17 @@ body {
     border-radius: 0;
     font-size: var(--code-font-size, 11px);
     line-height: 1.5;
+}
+
+/* List styling for user messages */
+.message.user .message-content ul,
+.message.user .message-content ol {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.message.user .message-content li {
+    margin: 4px 0;
 }
 
 /* Remove default margins on first/last children */
