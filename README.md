@@ -214,6 +214,18 @@ When Claude needs approval to run certain tools:
 - Options typically include: "Always Allow", "Allow", "Reject"
 - Click an option to respond
 
+### Session Summarization & Resume (Experimental)
+
+Kate Code includes experimental support for session summarization and context re-seeding:
+
+- **Automatic Summarization**: When a session ends, the conversation is summarized and stored locally
+- **Context Resume**: Starting a new session can optionally re-seed context from the previous summary
+- **Continuity**: Helps maintain context across editor restarts or when switching between tasks
+
+**Setup**: This feature requires an Anthropic API key, which can be configured in the plugin settings (Settings → Configure Kate → Kate Code). The API key is securely stored in KWallet.
+
+This feature is experimental and behavior may change in future releases.
+
 ## Configuration
 
 ### Color Scheme
