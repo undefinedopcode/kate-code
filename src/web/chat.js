@@ -472,12 +472,12 @@ function createMessageHTML(message) {
         }
     } else {
         // No tool calls or not assistant - render content normally
-        if (message.role === 'assistant' && typeof marked !== 'undefined' && message.content) {
-            html += marked.parse(message.content);
+        const content = message.content || '';
+        if ((message.role === 'assistant' || message.role === 'user') && typeof marked !== 'undefined' && content) {
+            html += marked.parse(content.trim()).trim();
         } else {
-            // For user/system messages, trim to avoid leading/trailing whitespace
-            const content = message.content || '';
-            html += escapeHtml(message.role === 'user' || message.role === 'system' ? content.trim() : content);
+            // For system messages, just escape HTML
+            html += escapeHtml(message.role === 'system' ? content.trim() : content);
         }
     }
 
@@ -807,6 +807,17 @@ function toggleToolCall(toolCallId) {
 function clearMessages() {
     messages = {};
     document.getElementById('messages').innerHTML = '';
+    // Also clear todos when messages are cleared (new session)
+    clearTodos();
+}
+
+// Clear todos display
+function clearTodos() {
+    const container = document.getElementById('todos-container');
+    if (container) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+    }
 }
 
 // Update todos display

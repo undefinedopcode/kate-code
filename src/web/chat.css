@@ -221,8 +221,7 @@ body {
     word-wrap: break-word;
 }
 
-/* Preserve whitespace for user/system messages */
-.message.user .message-content,
+/* Preserve whitespace for system messages (user messages use markdown) */
 .message.system .message-content {
     white-space: pre-line;
 }
@@ -230,6 +229,45 @@ body {
 .message.user .message-content {
     background-color: rgba(0, 122, 204, 0.1);
     border-left: 3px solid var(--accent);
+}
+
+/* Markdown paragraph styling for user messages */
+.message.user .message-content p {
+    margin: 8px 0;
+}
+
+.message.user .message-content p:first-child {
+    margin-top: 0;
+}
+
+.message.user .message-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* Code styling for user messages */
+.message.user .message-content code {
+    background-color: var(--inline-code-bg, rgba(0, 0, 0, 0.3));
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: var(--code-font-family, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace);
+    font-size: 0.9em;
+}
+
+.message.user .message-content pre {
+    background-color: rgba(0, 0, 0, 0.4);
+    padding: 12px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 12px 0;
+    white-space: pre;
+}
+
+.message.user .message-content pre code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: var(--code-font-size, 11px);
+    line-height: 1.5;
 }
 
 /* Remove default margins on first/last children */
