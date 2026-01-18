@@ -228,7 +228,7 @@ body {
 }
 
 .message.user .message-content {
-    background-color: rgba(0, 122, 204, 0.1);
+    background-color: color-mix(in srgb, var(--accent) 10%, var(--bg-primary));
 }
 
 .user-markdown {
