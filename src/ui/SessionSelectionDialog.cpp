@@ -16,7 +16,8 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &sessionId,
     , m_result(Result::Cancelled)
 {
     setWindowTitle(tr("Session Selection"));
-    setMinimumWidth(400);
+    setMinimumSize(500, 400);
+    resize(600, 500);
 
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(12);
@@ -48,15 +49,11 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &sessionId,
         m_summaryPreview = new QTextEdit(this);
         m_summaryPreview->setPlainText(summaryContent);
         m_summaryPreview->setReadOnly(true);
-        m_summaryPreview->setMaximumHeight(150);
         m_summaryPreview->setStyleSheet(QStringLiteral(
             "QTextEdit { background-color: palette(alternate-base); font-size: small; }"));
         summaryLayout->addWidget(m_summaryPreview);
 
-        layout->addWidget(summaryGroup);
-
-        // Make dialog wider to show summary
-        setMinimumWidth(500);
+        layout->addWidget(summaryGroup, 1);  // stretch factor 1 to expand
     }
 
     // New session option
@@ -66,8 +63,6 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &sessionId,
     auto *newSessionLabel = new QLabel(tr("   Previous session will be preserved"), this);
     newSessionLabel->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
     layout->addWidget(newSessionLabel);
-
-    layout->addStretch();
 
     // Buttons
     auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Cancel, this);
