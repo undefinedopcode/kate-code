@@ -366,3 +366,10 @@ void KateCodeView::sendQuickAction(const QString &prompt)
         qWarning() << "[KateCode] Chat widget not available for quick action";
     }
 }
+
+void KateCodeView::prepareForShutdown()
+{
+    if (m_chatWidget) {
+        m_chatWidget->prepareForShutdown();
+    }
+}

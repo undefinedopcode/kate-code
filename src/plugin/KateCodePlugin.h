@@ -24,6 +24,9 @@ public:
     // Settings access for views
     SettingsStore *settings() const { return m_settings; }
 
+private Q_SLOTS:
+    void onAboutToQuit();
+
 private:
     QList<KateCodeView *> m_views;
     SettingsStore *m_settings;

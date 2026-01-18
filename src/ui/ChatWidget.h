@@ -43,6 +43,9 @@ public:
     // Quick Actions - send prompt directly with selection
     void sendPromptWithSelection(const QString &prompt, const QString &filePath, const QString &selection);
 
+    // Shutdown hook - generates summary and waits for completion
+    void prepareForShutdown();
+
 Q_SIGNALS:
     // Diff highlighting signals for KateCodeView integration
     void toolCallHighlightRequested(const QString &toolCallId, const ToolCall &toolCall);
