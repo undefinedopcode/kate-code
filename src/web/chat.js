@@ -474,7 +474,12 @@ function createMessageHTML(message) {
         // No tool calls or not assistant - render content normally
         const content = message.content || '';
         if ((message.role === 'assistant' || message.role === 'user') && typeof marked !== 'undefined' && content) {
-            html += marked.parse(content.trim()).trim();
+            const rendered = marked.parse(content.trim()).trim();
+            if (message.role === 'user') {
+                html += `<div class="user-markdown">${rendered}</div>`;
+            } else {
+                html += rendered;
+            }
         } else {
             // For system messages, just escape HTML
             html += escapeHtml(message.role === 'system' ? content.trim() : content);
