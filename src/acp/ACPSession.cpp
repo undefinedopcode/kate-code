@@ -167,6 +167,7 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
     userMsg.role = QStringLiteral("user");
     userMsg.timestamp = QDateTime::currentDateTime();
     userMsg.content = content;
+    userMsg.images = images;  // Include attached images for display
     Q_EMIT messageAdded(userMsg);
     m_transcript->recordMessage(userMsg);
 
