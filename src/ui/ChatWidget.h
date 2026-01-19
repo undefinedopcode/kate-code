@@ -40,6 +40,9 @@ public:
     void removeContextChunk(const QString &id);
     void clearContextChunks();
 
+    // Image attachment management
+    void clearImageAttachments();
+
     // Quick Actions - send prompt directly with selection
     void sendPromptWithSelection(const QString &prompt, const QString &filePath, const QString &selection);
 
@@ -70,6 +73,8 @@ private Q_SLOTS:
     void onError(const QString &message);
     void onRemoveContextChunk(const QString &id);
     void onPromptCancelled();
+    void onImageAttached(const ImageAttachment &image);
+    void onRemoveImageAttachment(const QString &id);
 
     // Session persistence
     void onInitializeComplete();
@@ -88,6 +93,7 @@ private:
         LoadSession
     };
     void updateContextChipsDisplay();
+    void updateImageChipsDisplay();
     ACPSession *m_session;
 
     // Context providers
@@ -99,6 +105,10 @@ private:
     // Context chunks
     QList<ContextChunk> m_contextChunks;
     int m_nextChunkId = 0;
+
+    // Image attachments
+    QList<ImageAttachment> m_imageAttachments;
+    int m_nextImageId = 0;
 
     // UI components
     ChatWebView *m_chatWebView;

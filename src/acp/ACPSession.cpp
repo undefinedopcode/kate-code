@@ -154,7 +154,7 @@ void ACPSession::loadSession(const QString &sessionId)
     qDebug() << "[ACPSession] Sent session/load request, id:" << m_sessionLoadRequestId;
 }
 
-void ACPSession::sendMessage(const QString &content, const QString &filePath, const QString &selection, const QList<ContextChunk> &contextChunks)
+void ACPSession::sendMessage(const QString &content, const QString &filePath, const QString &selection, const QList<ContextChunk> &contextChunks, const QList<ImageAttachment> &images)
 {
     if (m_status != ConnectionStatus::Connected) {
         qWarning() << "[ACPSession] Cannot send message: not connected";
@@ -249,6 +249,19 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
 
         resourceBlock[QStringLiteral("resource")] = resource;
         promptBlocks.append(resourceBlock);
+    }
+
+    // Add image attachments
+    for (const ImageAttachment &img : images) {
+        QJsonObject imageBlock;
+        imageBlock[QStringLiteral("type")] = QStringLiteral("image");
+        imageBlock[QStringLiteral("mimeType")] = img.mimeType;
+        imageBlock[QStringLiteral("data")] = QString::fromLatin1(img.data.toBase64());
+        promptBlocks.append(imageBlock);
+
+        qDebug() << "[ACPSession] Added image block - mimeType:" << img.mimeType
+                 << "data size:" << img.data.size() << "bytes"
+                 << "base64 length:" << img.data.toBase64().size();
     }
 
     // Add user's actual message

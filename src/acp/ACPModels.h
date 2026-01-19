@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QJsonObject>
 #include <QList>
+#include <QSize>
 #include <QString>
 
 enum class ConnectionStatus {
@@ -69,4 +70,11 @@ struct ContextChunk {
     int endLine;
     QString content;
     QString id;  // Unique identifier for removal
+};
+
+struct ImageAttachment {
+    QString id;           // Unique identifier for removal
+    QString mimeType;     // "image/png", "image/jpeg", "image/gif", "image/webp"
+    QByteArray data;      // Raw image bytes
+    QSize dimensions;     // Original dimensions for preview scaling
 };
