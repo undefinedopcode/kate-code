@@ -36,6 +36,7 @@ See what Claude is doing with inline tool call displays:
 - Kate theme colors applied to highlight.js syntax highlighting
 - Seamless side panel integration
 - Context-aware: passes current file, selection, and project root to Claude
+- Image paste support: paste images from clipboard directly into chat messages
 
 ### Architecture
 - **ACP Protocol**: JSON-RPC 2.0 over stdin/stdout with `claude-code-acp` subprocess
