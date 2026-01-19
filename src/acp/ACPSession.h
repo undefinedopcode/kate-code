@@ -23,7 +23,7 @@ public:
     void createNewSession();
     void loadSession(const QString &sessionId);
 
-    void sendMessage(const QString &content, const QString &filePath = QString(), const QString &selection = QString(), const QList<ContextChunk> &contextChunks = QList<ContextChunk>());
+    void sendMessage(const QString &content, const QString &filePath = QString(), const QString &selection = QString(), const QList<ContextChunk> &contextChunks = QList<ContextChunk>(), const QList<ImageAttachment> &images = QList<ImageAttachment>());
     void sendPermissionResponse(int requestId, const QJsonObject &outcome);
     void setMode(const QString &modeId);
 

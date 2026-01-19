@@ -14,7 +14,9 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QImage>
 #include <QLabel>
+#include <QPixmap>
 #include <QPushButton>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -92,6 +94,7 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_connectButton, &QPushButton::clicked, this, &ChatWidget::onConnectClicked);
     connect(m_newSessionButton, &QPushButton::clicked, this, &ChatWidget::onNewSessionClicked);
     connect(m_inputWidget, &ChatInputWidget::messageSubmitted, this, &ChatWidget::onMessageSubmitted);
+    connect(m_inputWidget, &ChatInputWidget::imageAttached, this, &ChatWidget::onImageAttached);
     connect(m_inputWidget, &ChatInputWidget::permissionModeChanged, this, &ChatWidget::onPermissionModeChanged);
     connect(m_inputWidget, &ChatInputWidget::stopClicked, this, &ChatWidget::onStopClicked);
 
@@ -291,11 +294,12 @@ void ChatWidget::onMessageSubmitted(const QString &message)
     QString filePath = m_filePathProvider ? m_filePathProvider() : QString();
     QString selection = m_selectionProvider ? m_selectionProvider() : QString();
 
-    // Send message with context (including added context chunks)
-    m_session->sendMessage(message, filePath, selection, m_contextChunks);
+    // Send message with context (including added context chunks and images)
+    m_session->sendMessage(message, filePath, selection, m_contextChunks, m_imageAttachments);
 
-    // Clear context chunks after sending
+    // Clear context chunks and images after sending
     clearContextChunks();
+    clearImageAttachments();
 }
 
 void ChatWidget::onStatusChanged(ConnectionStatus status)
@@ -562,13 +566,6 @@ void ChatWidget::updateContextChipsDisplay()
         delete item;
     }
 
-    if (m_contextChunks.isEmpty()) {
-        m_contextChipsContainer->setVisible(false);
-        return;
-    }
-
-    m_contextChipsContainer->setVisible(true);
-
     // Add chips for each context chunk
     for (const ContextChunk &chunk : m_contextChunks) {
         QFileInfo fileInfo(chunk.filePath);
@@ -617,6 +614,115 @@ void ChatWidget::updateContextChipsDisplay()
 
     // Add stretch to keep chips left-aligned
     qobject_cast<QHBoxLayout*>(layout)->addStretch();
+
+    // Also update image chips in the same container
+    updateImageChipsDisplay();
+}
+
+void ChatWidget::updateImageChipsDisplay()
+{
+    // Get layout (chips are added after context chips)
+    QLayout *layout = m_contextChipsContainer->layout();
+
+    // Remove the stretch first if present
+    QLayoutItem *lastItem = layout->itemAt(layout->count() - 1);
+    if (lastItem && lastItem->spacerItem()) {
+        layout->takeAt(layout->count() - 1);
+        delete lastItem;
+    }
+
+    // Add chips for each image attachment
+    for (const ImageAttachment &img : m_imageAttachments) {
+        auto *chipWidget = new QWidget(this);
+        auto *chipLayout = new QHBoxLayout(chipWidget);
+        chipLayout->setContentsMargins(4, 2, 4, 2);
+        chipLayout->setSpacing(4);
+
+        // Create thumbnail from image data
+        QImage image;
+        image.loadFromData(img.data, "PNG");
+        QPixmap thumbnail = QPixmap::fromImage(
+            image.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+
+        auto *thumbLabel = new QLabel(chipWidget);
+        thumbLabel->setPixmap(thumbnail);
+        thumbLabel->setFixedSize(32, 32);
+
+        // Size label
+        QString sizeLabel = QStringLiteral("%1x%2")
+                               .arg(img.dimensions.width())
+                               .arg(img.dimensions.height());
+        auto *sizeText = new QLabel(sizeLabel, chipWidget);
+        sizeText->setStyleSheet(QStringLiteral("QLabel { color: palette(text); font-size: 10px; }"));
+
+        auto *removeButton = new QPushButton(QStringLiteral("×"), chipWidget);
+        removeButton->setFixedSize(16, 16);
+        removeButton->setStyleSheet(QStringLiteral(
+            "QPushButton { "
+            "border: none; "
+            "background: transparent; "
+            "color: palette(text); "
+            "font-weight: bold; "
+            "} "
+            "QPushButton:hover { "
+            "background: rgba(255, 0, 0, 0.3); "
+            "}"));
+
+        connect(removeButton, &QPushButton::clicked, this, [this, id = img.id]() {
+            onRemoveImageAttachment(id);
+        });
+
+        chipLayout->addWidget(thumbLabel);
+        chipLayout->addWidget(sizeText);
+        chipLayout->addWidget(removeButton);
+
+        chipWidget->setStyleSheet(QStringLiteral(
+            "QWidget { "
+            "background-color: palette(alternate-base); "
+            "border: 1px solid palette(mid); "
+            "border-radius: 3px; "
+            "}"));
+
+        layout->addWidget(chipWidget);
+    }
+
+    // Re-add stretch to keep chips left-aligned
+    qobject_cast<QHBoxLayout*>(layout)->addStretch();
+
+    // Show container if we have any content
+    m_contextChipsContainer->setVisible(!m_contextChunks.isEmpty() || !m_imageAttachments.isEmpty());
+}
+
+void ChatWidget::onImageAttached(const ImageAttachment &image)
+{
+    ImageAttachment img = image;
+    img.id = QString::number(m_nextImageId++);
+    m_imageAttachments.append(img);
+
+    qDebug() << "[ChatWidget] Added image attachment:" << img.id
+             << "mimeType:" << img.mimeType
+             << "size:" << img.data.size() << "bytes"
+             << "dimensions:" << img.dimensions;
+
+    updateContextChipsDisplay();  // This will also call updateImageChipsDisplay
+}
+
+void ChatWidget::onRemoveImageAttachment(const QString &id)
+{
+    for (int i = 0; i < m_imageAttachments.size(); ++i) {
+        if (m_imageAttachments[i].id == id) {
+            m_imageAttachments.removeAt(i);
+            qDebug() << "[ChatWidget] Removed image attachment:" << id;
+            break;
+        }
+    }
+    updateContextChipsDisplay();  // This will also call updateImageChipsDisplay
+}
+
+void ChatWidget::clearImageAttachments()
+{
+    m_imageAttachments.clear();
+    updateContextChipsDisplay();  // This will also call updateImageChipsDisplay
 }
 
 void ChatWidget::triggerSummaryGeneration()

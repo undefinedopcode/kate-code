@@ -1,15 +1,18 @@
 #include "ChatInputWidget.h"
 
 #include <QAbstractItemView>
+#include <QBuffer>
 #include <QComboBox>
 #include <QCompleter>
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QMimeData>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QStringListModel>
@@ -94,11 +97,6 @@ void CommandTextEdit::keyPressEvent(QKeyEvent *e)
         return;
     }
 
-    // Log Ctrl+V paste events
-    if (e->modifiers().testFlag(Qt::ControlModifier) && e->key() == Qt::Key_V) {
-        qDebug() << "[ChatInputWidget] Ctrl+V detected - paste event";
-    }
-
     // Don't trigger completer on modifier keys
     const bool ctrlOrShift = e->modifiers().testFlag(Qt::ControlModifier) ||
                             e->modifiers().testFlag(Qt::ShiftModifier);
@@ -137,6 +135,27 @@ void CommandTextEdit::keyPressEvent(QKeyEvent *e)
     } else {
         m_completer->popup()->hide();
     }
+}
+
+bool CommandTextEdit::canInsertFromMimeData(const QMimeData *source) const
+{
+    // Accept images (we'll handle them specially)
+    if (source && source->hasImage()) {
+        return true;
+    }
+    // Fall back to default behavior for text, etc.
+    return QTextEdit::canInsertFromMimeData(source);
+}
+
+void CommandTextEdit::insertFromMimeData(const QMimeData *source)
+{
+    if (source && source->hasImage()) {
+        qDebug() << "[CommandTextEdit] Image paste detected via insertFromMimeData";
+        Q_EMIT imagePasteDetected(source);
+        return;  // Don't insert image into text edit
+    }
+    // Fall back to default behavior for text
+    QTextEdit::insertFromMimeData(source);
 }
 
 void CommandTextEdit::insertCompletion(const QString &completion)
@@ -304,6 +323,8 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     connect(m_stopButton, &QPushButton::clicked, this, &ChatInputWidget::onStopClicked);
     connect(m_modeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ChatInputWidget::onModeChanged);
+    connect(m_textEdit, &CommandTextEdit::imagePasteDetected,
+            this, &ChatInputWidget::onImagePasteDetected);
 }
 
 ChatInputWidget::~ChatInputWidget()
@@ -493,4 +514,37 @@ void ChatInputWidget::setPromptRunning(bool running)
 void ChatInputWidget::onStopClicked()
 {
     Q_EMIT stopClicked();
+}
+
+void ChatInputWidget::onImagePasteDetected(const QMimeData *mimeData)
+{
+    if (!mimeData || !mimeData->hasImage()) {
+        qDebug() << "[ChatInputWidget] No image in mime data";
+        return;
+    }
+
+    QImage image = qvariant_cast<QImage>(mimeData->imageData());
+    if (image.isNull()) {
+        qDebug() << "[ChatInputWidget] Failed to get image from clipboard";
+        return;
+    }
+
+    // Create image attachment
+    ImageAttachment attachment;
+    attachment.dimensions = image.size();
+    attachment.mimeType = QStringLiteral("image/png");
+
+    // Encode image as PNG
+    QBuffer buffer(&attachment.data);
+    buffer.open(QIODevice::WriteOnly);
+    if (!image.save(&buffer, "PNG")) {
+        qWarning() << "[ChatInputWidget] Failed to encode image as PNG";
+        return;
+    }
+
+    qDebug() << "[ChatInputWidget] Image captured from clipboard:"
+             << attachment.dimensions.width() << "x" << attachment.dimensions.height()
+             << "size:" << attachment.data.size() << "bytes";
+
+    Q_EMIT imageAttached(attachment);
 }

@@ -21,8 +21,13 @@ public:
     void setModels(QAbstractItemModel *commandModel, QAbstractItemModel *fileModel);
     QCompleter *completer() const { return m_completer; }
 
+Q_SIGNALS:
+    void imagePasteDetected(const QMimeData *mimeData);
+
 protected:
     void keyPressEvent(QKeyEvent *e) override;
+    bool canInsertFromMimeData(const QMimeData *source) const override;
+    void insertFromMimeData(const QMimeData *source) override;
 
 private Q_SLOTS:
     void insertCompletion(const QString &completion);
@@ -68,6 +73,7 @@ public:
 
 Q_SIGNALS:
     void messageSubmitted(const QString &message);
+    void imageAttached(const ImageAttachment &image);
     void permissionModeChanged(const QString &mode);
     void stopClicked();
 
@@ -78,6 +84,7 @@ private Q_SLOTS:
     void onSendClicked();
     void onStopClicked();
     void onModeChanged(int index);
+    void onImagePasteDetected(const QMimeData *mimeData);
 
 private:
     CommandTextEdit *m_textEdit;
