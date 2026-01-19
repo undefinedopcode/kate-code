@@ -1212,11 +1212,26 @@ function renderTerminalOutput(terminalId) {
     </div>`;
 }
 
-// Convert ANSI escape codes to HTML spans for terminal coloring
+// Convert ANSI escape codes to HTML using TerminalRenderer
+// This handles cursor positioning, colors, and other escape sequences
 function ansiToHtml(text) {
-    // First escape HTML
-    let escaped = escapeHtml(text);
+    // Use TerminalRenderer if available (handles cursor positioning)
+    if (typeof TerminalRenderer !== 'undefined') {
+        try {
+            return renderAnsiToHtml(text);
+        } catch (e) {
+            logToQt('TerminalRenderer error: ' + e);
+            // Fall through to simple implementation
+        }
+    }
 
+    // Fallback: simple color-only processing (no cursor support)
+    return ansiToHtmlSimple(text);
+}
+
+// Simple ANSI to HTML (colors only, no cursor positioning)
+// Used as fallback if TerminalRenderer is not available
+function ansiToHtmlSimple(text) {
     // ANSI color code mapping
     const ansiColors = {
         '30': 'ansi-black', '31': 'ansi-red', '32': 'ansi-green',
@@ -1242,11 +1257,7 @@ function ansiToHtml(text) {
     let result = '';
     let currentClasses = [];
 
-    // Match ANSI escape sequences: ESC[...m
-    // The escaped version has &amp;#x1b; or similar, but we're processing pre-escape
-    // Actually, we need to process before escaping HTML, then escape just the text parts
-
-    // Let's redo this - process ANSI codes first, then escape text within
+    // Process ANSI codes, then escape text within
     const unescaped = text;
     const regex = /\x1b\[([0-9;]*)m/g;
     let lastIndex = 0;
