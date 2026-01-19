@@ -4,6 +4,8 @@
 #include <QEventLoop>
 #include <QTimer>
 
+#include <KPtyDevice>
+
 TerminalManager::TerminalManager(QObject *parent)
     : QObject(parent)
     , m_idCounter(0)
@@ -28,19 +30,18 @@ QString TerminalManager::createTerminal(const QString &command, const QStringLis
 
     qDebug() << "[TerminalManager] Creating terminal" << terminalId << "command:" << command << "args:" << args;
 
-    auto *process = new QProcess(this);
+    auto *process = new KPtyProcess(this);
     process->setWorkingDirectory(cwd);
     process->setProcessEnvironment(env);
 
-    // Merge stdout and stderr for unified output
-    process->setProcessChannelMode(QProcess::MergedChannels);
+    // Use PTY for all channels - this makes programs think they're in a real terminal
+    process->setPtyChannels(KPtyProcess::AllChannels);
 
     // Store terminal ID in process property for slot handlers
     process->setProperty("terminalId", terminalId);
 
-    connect(process, &QProcess::readyReadStandardOutput, this, &TerminalManager::onProcessReadyRead);
-    connect(process, &QProcess::finished, this, &TerminalManager::onProcessFinished);
-    connect(process, &QProcess::errorOccurred, this, &TerminalManager::onProcessError);
+    connect(process, &KPtyProcess::finished, this, &TerminalManager::onProcessFinished);
+    connect(process, &KPtyProcess::errorOccurred, this, &TerminalManager::onProcessError);
 
     TerminalData data;
     data.process = process;
@@ -48,7 +49,9 @@ QString TerminalManager::createTerminal(const QString &command, const QStringLis
     data.command = command;
     m_terminals.insert(terminalId, data);
 
-    process->start(command, args);
+    process->setProgram(command);
+    process->setArguments(args);
+    process->start();
 
     if (!process->waitForStarted(5000)) {
         qWarning() << "[TerminalManager] Failed to start process for terminal" << terminalId;
@@ -57,23 +60,33 @@ QString TerminalManager::createTerminal(const QString &command, const QStringLis
         return QString();
     }
 
-    qDebug() << "[TerminalManager] Terminal" << terminalId << "started successfully";
+    // Connect to PTY device for reading output after process starts
+    KPtyDevice *pty = process->pty();
+    if (pty) {
+        pty->setProperty("terminalId", terminalId);
+        connect(pty, &KPtyDevice::readyRead, this, &TerminalManager::onProcessReadyRead);
+
+        // Set terminal window size so programs know available columns/rows
+        pty->setWinSize(m_defaultRows, m_defaultColumns);
+    }
+
+    qDebug() << "[TerminalManager] Terminal" << terminalId << "started with PTY size" << m_defaultColumns << "x" << m_defaultRows;
     return terminalId;
 }
 
 void TerminalManager::onProcessReadyRead()
 {
-    auto *process = qobject_cast<QProcess *>(sender());
-    if (!process) {
+    auto *pty = qobject_cast<KPtyDevice *>(sender());
+    if (!pty) {
         return;
     }
 
-    QString terminalId = process->property("terminalId").toString();
+    QString terminalId = pty->property("terminalId").toString();
     if (!m_terminals.contains(terminalId)) {
         return;
     }
 
-    QByteArray newData = process->readAllStandardOutput();
+    QByteArray newData = pty->readAll();
     m_terminals[terminalId].outputBuffer.append(newData);
 
     truncateOutputIfNeeded(terminalId);
@@ -88,7 +101,7 @@ void TerminalManager::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
 {
     Q_UNUSED(exitStatus);
 
-    auto *process = qobject_cast<QProcess *>(sender());
+    auto *process = qobject_cast<KPtyProcess *>(sender());
     if (!process) {
         return;
     }
@@ -100,11 +113,14 @@ void TerminalManager::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
 
     qDebug() << "[TerminalManager] Terminal" << terminalId << "finished with exit code:" << exitCode;
 
-    // Read any remaining output
-    QByteArray remaining = process->readAllStandardOutput();
-    if (!remaining.isEmpty()) {
-        m_terminals[terminalId].outputBuffer.append(remaining);
-        truncateOutputIfNeeded(terminalId);
+    // Read any remaining output from PTY
+    KPtyDevice *pty = process->pty();
+    if (pty) {
+        QByteArray remaining = pty->readAll();
+        if (!remaining.isEmpty()) {
+            m_terminals[terminalId].outputBuffer.append(remaining);
+            truncateOutputIfNeeded(terminalId);
+        }
     }
 
     m_terminals[terminalId].exitCode = exitCode;
@@ -120,7 +136,7 @@ void TerminalManager::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
 
 void TerminalManager::onProcessError(QProcess::ProcessError error)
 {
-    auto *process = qobject_cast<QProcess *>(sender());
+    auto *process = qobject_cast<KPtyProcess *>(sender());
     if (!process) {
         return;
     }
@@ -286,4 +302,11 @@ void TerminalManager::releaseAll()
     for (const QString &id : ids) {
         releaseTerminal(id);
     }
+}
+
+void TerminalManager::setDefaultTerminalSize(int columns, int rows)
+{
+    m_defaultColumns = qBound(40, columns, 500);  // Reasonable bounds
+    m_defaultRows = qBound(10, rows, 200);
+    qDebug() << "[TerminalManager] Default terminal size set to" << m_defaultColumns << "x" << m_defaultRows;
 }

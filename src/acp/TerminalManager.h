@@ -3,9 +3,10 @@
 #include "ACPModels.h"
 #include <QHash>
 #include <QObject>
-#include <QProcess>
 #include <QProcessEnvironment>
 #include <optional>
+
+#include <KPtyProcess>
 
 class TerminalManager : public QObject
 {
@@ -51,6 +52,13 @@ public:
     // Release all terminals (called on session end)
     void releaseAll();
 
+    // Set default terminal size for new terminals (columns x rows)
+    void setDefaultTerminalSize(int columns, int rows);
+
+    // Get current default terminal size
+    int defaultColumns() const { return m_defaultColumns; }
+    int defaultRows() const { return m_defaultRows; }
+
 Q_SIGNALS:
     // Emitted when new output is available (for live UI updates)
     void outputAvailable(const QString &terminalId, const QString &output, bool finished);
@@ -68,7 +76,7 @@ private:
     void truncateOutputIfNeeded(const QString &terminalId);
 
     struct TerminalData {
-        QProcess *process = nullptr;
+        KPtyProcess *process = nullptr;
         QByteArray outputBuffer;
         TerminalStatus status = TerminalStatus::Running;
         int exitCode = -1;
@@ -79,4 +87,6 @@ private:
 
     QHash<QString, TerminalData> m_terminals;
     int m_idCounter = 0;
+    int m_defaultColumns = 120;  // Default terminal width
+    int m_defaultRows = 40;      // Default terminal height
 };

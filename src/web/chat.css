@@ -646,9 +646,9 @@ body {
 
 .bash-output pre {
     margin: 0;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', 'Menlo', monospace;
-    font-size: 12px;
-    line-height: 1.4;
+    font-family: var(--code-font-family, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace);
+    font-size: var(--code-font-size, 11px);
+    line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
     color: #e0e0e0;

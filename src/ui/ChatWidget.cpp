@@ -18,6 +18,7 @@
 #include <QLabel>
 #include <QPixmap>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -815,4 +816,36 @@ void ChatWidget::onSummaryError(const QString &sessionId, const QString &error)
 {
     qWarning() << "[ChatWidget] Summary generation failed for" << sessionId << ":" << error;
     // Don't show error to user - summary is optional
+}
+
+void ChatWidget::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateTerminalSize();
+}
+
+void ChatWidget::updateTerminalSize()
+{
+    // Calculate terminal columns based on widget width
+    // Terminal output uses monospace font, character width is approximately 7.4px at 11px font size
+    //
+    // Bash output is nested in multiple containers with padding:
+    //   #messages: 16px padding × 2 = 32px
+    //   .message-content: 12px padding × 2 = 24px
+    //   .tool-call-details: 12px padding × 2 = 24px
+    //   .bash-output: 8px padding × 2 + 3px border-left = 19px
+    //   Scrollbar: ~10px
+    //   WebView margins/chrome: ~10px
+    // Total: ~119px
+    // Add safety margin for font rendering variations: 40px
+    const int padding = 160;
+    const double charWidth = 7.4;
+
+    int availableWidth = m_chatWebView->width() - padding;
+    int columns = qMax(40, static_cast<int>(availableWidth / charWidth));
+
+    // Set a reasonable row count (doesn't affect output much, but good for curses apps)
+    int rows = 40;
+
+    m_session->setTerminalSize(columns, rows);
 }

@@ -38,6 +38,9 @@ public:
     QString currentMode() const { return m_currentMode; }
     QList<SlashCommand> availableCommands() const { return m_availableCommands; }
 
+    // Set terminal size based on view width (columns calculated from pixel width)
+    void setTerminalSize(int columns, int rows = 40);
+
 Q_SIGNALS:
     void statusChanged(ConnectionStatus status);
     void messageAdded(const Message &message);
