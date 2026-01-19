@@ -49,6 +49,9 @@ public:
     // Shutdown hook - generates summary and waits for completion
     void prepareForShutdown();
 
+protected:
+    void resizeEvent(QResizeEvent *event) override;
+
 Q_SIGNALS:
     // Diff highlighting signals for KateCodeView integration
     void toolCallHighlightRequested(const QString &toolCallId, const ToolCall &toolCall);
@@ -86,6 +89,7 @@ private Q_SLOTS:
 
 private:
     void triggerSummaryGeneration();
+    void updateTerminalSize();
     // Pending session action for after initialize completes
     enum class PendingAction {
         None,

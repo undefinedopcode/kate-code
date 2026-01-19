@@ -20,6 +20,7 @@ find_package(KF6 ${REQUIRED_KF_VERSION} REQUIRED COMPONENTS
     XmlGui
     SyntaxHighlighting
     Wallet
+    Pty
 )
 
 find_package(Qt6 REQUIRED COMPONENTS

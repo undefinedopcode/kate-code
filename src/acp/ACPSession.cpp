@@ -72,6 +72,11 @@ void ACPSession::stop()
     Q_EMIT statusChanged(m_status);
 }
 
+void ACPSession::setTerminalSize(int columns, int rows)
+{
+    m_terminalManager->setDefaultTerminalSize(columns, rows);
+}
+
 void ACPSession::cancelPrompt()
 {
     if (m_promptRequestId < 0) {
