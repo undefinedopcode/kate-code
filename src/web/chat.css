@@ -632,6 +632,28 @@ body {
     line-height: 1.4;
 }
 
+/* Bash/Terminal output - dedicated styling separate from code blocks */
+.bash-output {
+    background-color: #1a1a1a;
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border-left: 3px solid var(--positive);
+}
+
+.bash-output pre {
+    margin: 0;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #e0e0e0;
+}
+
 /* Unified diff display */
 pre.diff {
     font-size: 11px;
@@ -922,3 +944,102 @@ pre.diff .diff-add span {
 ::-webkit-scrollbar-thumb:hover {
     background: var(--fg-secondary);
 }
+
+/* Terminal output styles */
+.terminal-output {
+    background-color: var(--bg-secondary);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 8px 0;
+    font-family: var(--code-font-family, 'JetBrains Mono', 'Fira Code', monospace);
+    font-size: var(--code-font-size, 12px);
+    line-height: 1.4;
+    max-height: 400px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.terminal-output pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+.terminal-running {
+    border-left: 3px solid var(--accent);
+}
+
+.terminal-finished {
+    border-left: 3px solid var(--positive);
+}
+
+.terminal-waiting {
+    border-left: 3px solid var(--fg-secondary);
+}
+
+.terminal-indicator {
+    display: inline-block;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--accent);
+    font-style: italic;
+}
+
+@keyframes terminal-blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.5; }
+}
+
+.terminal-running .terminal-indicator {
+    animation: terminal-blink 1s infinite;
+}
+
+.tool-call-terminal-section {
+    margin-top: 8px;
+}
+
+/* ANSI color classes */
+.ansi-bold { font-weight: bold; }
+.ansi-underline { text-decoration: underline; }
+
+/* Standard ANSI colors - high contrast on dark background */
+.ansi-black { color: #666666; }
+.ansi-red { color: #ff6b6b; }
+.ansi-green { color: #69db7c; }
+.ansi-yellow { color: #ffd43b; }
+.ansi-blue { color: #74c0fc; }
+.ansi-magenta { color: #da77f2; }
+.ansi-cyan { color: #66d9e8; }
+.ansi-white { color: #e0e0e0; }
+
+/* Bright ANSI colors - even more vibrant */
+.ansi-bright-black { color: #909090; }
+.ansi-bright-red { color: #ff8787; }
+.ansi-bright-green { color: #8ce99a; }
+.ansi-bright-yellow { color: #ffe066; }
+.ansi-bright-blue { color: #a5d8ff; }
+.ansi-bright-magenta { color: #e599f7; }
+.ansi-bright-cyan { color: #99e9f2; }
+.ansi-bright-white { color: #ffffff; }
+
+/* Background colors */
+.ansi-bg-black { background-color: #000000; }
+.ansi-bg-red { background-color: #ff5555; }
+.ansi-bg-green { background-color: #50fa7b; }
+.ansi-bg-yellow { background-color: #f1fa8c; }
+.ansi-bg-blue { background-color: #6272a4; }
+.ansi-bg-magenta { background-color: #ff79c6; }
+.ansi-bg-cyan { background-color: #8be9fd; }
+.ansi-bg-white { background-color: #bbbbbb; }
+
+/* Bright background colors */
+.ansi-bg-bright-black { background-color: #555555; }
+.ansi-bg-bright-red { background-color: #ff6e6e; }
+.ansi-bg-bright-green { background-color: #69ff94; }
+.ansi-bg-bright-yellow { background-color: #ffffa5; }
+.ansi-bg-bright-blue { background-color: #d6acff; }
+.ansi-bg-bright-magenta { background-color: #ff92df; }
+.ansi-bg-bright-cyan { background-color: #a4ffff; }
+.ansi-bg-bright-white { background-color: #ffffff; }

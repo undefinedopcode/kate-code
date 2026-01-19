@@ -13,6 +13,13 @@ enum class ConnectionStatus {
     Error
 };
 
+enum class TerminalStatus {
+    Running,
+    Exited,
+    Killed,
+    Released
+};
+
 struct EditDiff {
     QString oldText;  // Original text
     QString newText;  // New text
@@ -33,6 +40,9 @@ struct ToolCall {
     QString newText;  // For Edit tool - new text (deprecated, use edits)
     QString operationType;  // "create", "edit", etc.
     QList<EditDiff> edits;  // Multiple edits for Edit tool
+
+    // Terminal specific fields
+    QString terminalId;  // For embedded terminal output
 };
 
 struct ImageAttachment {
