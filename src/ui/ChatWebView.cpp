@@ -231,7 +231,8 @@ void ChatWebView::addToolCall(const QString &messageId, const ToolCall &toolCall
     }
     QString editsJson = QString::fromUtf8(QJsonDocument(editsArray).toJson(QJsonDocument::Compact));
 
-    QString script = QStringLiteral("addToolCall('%1', '%2', '%3', '%4', '%5', '%6', '%7', '%8', '%9');")
+    // Build script with all 10 arguments including terminalId
+    QString script = QStringLiteral("addToolCall('%1', '%2', '%3', '%4', '%5', '%6', '%7', '%8', '%9', '%10');")
                          .arg(escapeJsString(messageId),
                               escapeJsString(toolCall.id),
                               escapeJsString(toolCall.name),
@@ -240,7 +241,8 @@ void ChatWebView::addToolCall(const QString &messageId, const ToolCall &toolCall
                               escapeJsString(inputJson),
                               escapeJsString(toolCall.oldText),
                               escapeJsString(toolCall.newText),
-                              escapeJsString(editsJson));
+                              escapeJsString(editsJson),
+                              escapeJsString(toolCall.terminalId));
 
     runJavaScript(script);
 }
@@ -249,11 +251,15 @@ void ChatWebView::updateToolCall(const QString &messageId, const QString &toolCa
 {
     if (!m_isLoaded) return;
 
+    // Base64 encode result to safely pass ANSI escape codes and other special characters
+    QByteArray resultBytes = result.toUtf8();
+    QString base64Result = QString::fromLatin1(resultBytes.toBase64());
+
     QString script = QStringLiteral("updateToolCall('%1', '%2', '%3', '%4');")
                          .arg(escapeJsString(messageId),
                               escapeJsString(toolCallId),
                               escapeJsString(status),
-                              escapeJsString(result));
+                              base64Result);
 
     runJavaScript(script);
 }
@@ -325,6 +331,22 @@ void ChatWebView::clearMessages()
 {
     if (!m_isLoaded) return;
     runJavaScript(QStringLiteral("clearMessages();"));
+}
+
+void ChatWebView::updateTerminalOutput(const QString &terminalId, const QString &output, bool finished)
+{
+    if (!m_isLoaded) return;
+
+    // Base64 encode to safely pass terminal output with ANSI codes
+    QByteArray outputBytes = output.toUtf8();
+    QString base64Output = QString::fromLatin1(outputBytes.toBase64());
+
+    QString script = QStringLiteral("updateTerminal('%1', '%2', %3);")
+        .arg(escapeJsString(terminalId),
+             base64Output,
+             finished ? QStringLiteral("true") : QStringLiteral("false"));
+
+    runJavaScript(script);
 }
 
 void ChatWebView::setupBridge()

@@ -6,6 +6,7 @@
 #include <QString>
 
 class ACPService;
+class TerminalManager;
 class TranscriptWriter;
 
 class ACPSession : public QObject
@@ -58,6 +59,9 @@ Q_SIGNALS:
     // Emitted if session/load fails (caller should fall back to createNewSession)
     void sessionLoadFailed(const QString &error);
 
+    // Terminal signals for UI updates
+    void terminalOutputUpdated(const QString &terminalId, const QString &output, bool finished);
+
 private Q_SLOTS:
     void onConnected();
     void onDisconnected(int exitCode);
@@ -72,7 +76,15 @@ private:
     void handleSessionUpdate(const QJsonObject &params);
     void handlePermissionRequest(const QJsonObject &params, int requestId);
 
+    // Terminal request handlers
+    void handleTerminalCreate(const QJsonObject &params, int requestId);
+    void handleTerminalOutput(const QJsonObject &params, int requestId);
+    void handleTerminalWaitForExit(const QJsonObject &params, int requestId);
+    void handleTerminalKill(const QJsonObject &params, int requestId);
+    void handleTerminalRelease(const QJsonObject &params, int requestId);
+
     ACPService *m_service;
+    TerminalManager *m_terminalManager;
     TranscriptWriter *m_transcript;
     ConnectionStatus m_status;
     QString m_sessionId;

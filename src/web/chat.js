@@ -1,5 +1,6 @@
 // Chat state
 let messages = {};
+let terminals = {};  // Terminal output state keyed by terminalId
 let bridge = null;
 
 // Material Symbols icon helper - returns HTML span with icon ligature
@@ -63,6 +64,17 @@ const extToLanguage = {
     'pro': 'qmake', 'pri': 'qmake',
     'ui': 'xml', 'rc': 'xml', 'qrc': 'xml'
 };
+
+// Check if a tool is a Bash/terminal tool that should get ANSI color processing
+function isBashTool(toolName) {
+    if (!toolName) return false;
+    const name = toolName.toLowerCase();
+    return toolName === 'Bash' ||
+           toolName === 'mcp__acp__Bash' ||
+           name.includes('bash') ||
+           name.includes('shell') ||
+           name.includes('terminal');
+}
 
 // Clean Read tool result by removing system-reminder tags and line number prefixes
 function cleanReadResult(text) {
@@ -340,7 +352,7 @@ function finishMessage(id) {
 }
 
 // Add tool call to message
-function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, oldText, newText, editsJson) {
+function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, oldText, newText, editsJson, terminalId) {
     if (!messages[messageId]) return;
 
     // Parse input to extract command for Bash tools
@@ -370,6 +382,7 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, o
         existing.oldText = oldText || '';
         existing.newText = newText || '';
         existing.edits = edits.length > 0 ? edits : existing.edits;
+        existing.terminalId = terminalId || existing.terminalId;
     } else {
         // Add new tool call at current content length position
         const toolCall = {
@@ -382,7 +395,8 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, o
             position: messages[messageId].content.length,
             oldText: oldText || '',
             newText: newText || '',
-            edits: edits
+            edits: edits,
+            terminalId: terminalId || ''
         };
         messages[messageId].toolCalls.push(toolCall);
     }
@@ -391,9 +405,20 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, o
     scrollToBottom();
 }
 
-// Update tool call status
-function updateToolCall(messageId, toolCallId, status, result) {
+// Update tool call status - result is Base64 encoded to handle ANSI escape codes
+function updateToolCall(messageId, toolCallId, status, base64Result) {
     if (!messages[messageId]) return;
+
+    // Decode base64 result
+    let result = '';
+    if (base64Result) {
+        try {
+            result = decodeURIComponent(escape(atob(base64Result)));
+        } catch (e) {
+            console.error('Failed to decode tool result:', e);
+            result = base64Result;  // Fall back to raw value
+        }
+    }
 
     let toolCall = messages[messageId].toolCalls.find(tc => tc.id === toolCallId);
 
@@ -534,9 +559,9 @@ function renderToolCall(toolCall) {
     // Edit tools are expanded by default to show the diff inline
     const isExpanded = toolCall.expanded !== undefined ? toolCall.expanded : (toolCall.name === 'Edit');
 
-    // Extract command for Bash tools
+    // Extract command for Bash tools (including MCP variants like mcp__acp__Bash)
     let commandDisplay = '';
-    if (toolCall.name === 'Bash' && toolCall.input && toolCall.input.command) {
+    if (isBashTool(toolCall.name) && toolCall.input && toolCall.input.command) {
         const cmd = toolCall.input.command;
         // Show first 50 chars of command
         commandDisplay = cmd.length > 50 ? cmd.substring(0, 50) + '...' : cmd;
@@ -546,7 +571,7 @@ function renderToolCall(toolCall) {
     let toolIconName = 'build'; // default (wrench/tool icon)
     if (toolCall.name === 'Task') toolIconName = 'smart_toy';
     else if (toolCall.name === 'TaskOutput') toolIconName = 'download';
-    else if (toolCall.name === 'Bash') toolIconName = 'terminal';
+    else if (isBashTool(toolCall.name)) toolIconName = 'terminal';
     else if (toolCall.name === 'Edit') toolIconName = 'edit';
     else if (toolCall.name === 'Write') toolIconName = 'edit_document';
     else if (toolCall.name === 'Read') toolIconName = 'description';
@@ -608,8 +633,8 @@ function renderToolCall(toolCall) {
     if (isExpanded) {
         html += '<div class="tool-call-details">';
 
-        // Show full command for Bash tools
-        if (toolCall.name === 'Bash' && toolCall.input && toolCall.input.command) {
+        // Show full command for Bash tools (including MCP variants)
+        if (isBashTool(toolCall.name) && toolCall.input && toolCall.input.command) {
             html += `<div class="tool-call-input"><strong>Command:</strong><pre>${escapeHtml(toolCall.input.command)}</pre></div>`;
         }
 
@@ -692,7 +717,8 @@ function renderToolCall(toolCall) {
         }
 
         // Show result if available (skip for Write since we show content above)
-        if (toolCall.result && toolCall.name !== 'Write') {
+        // Also skip if we have terminal output (terminal replaces the result display)
+        if (toolCall.result && toolCall.name !== 'Write' && !toolCall.terminalId) {
             if (toolCall.name === 'Read') {
                 // For Read tool, clean and highlight the result
                 const cleanedCode = cleanReadResult(toolCall.result);
@@ -706,9 +732,24 @@ function renderToolCall(toolCall) {
                         <pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre>
                     </div>
                 </div>`;
+            } else if (isBashTool(toolCall.name)) {
+                // Bash/terminal tools get ANSI color processing with dedicated styling
+                const ansiRendered = ansiToHtml(toolCall.result);
+                html += `<div class="tool-call-result-section">
+                    <strong>Output:</strong>
+                    <div class="bash-output"><pre>${ansiRendered}</pre></div>
+                </div>`;
             } else {
                 html += `<div class="tool-call-result-section"><strong>Result:</strong><pre class="tool-call-result">${escapeHtml(toolCall.result)}</pre></div>`;
             }
+        }
+
+        // Show terminal output if this tool call has embedded terminal
+        if (toolCall.terminalId) {
+            html += `<div class="tool-call-terminal-section">
+                <strong>Output:</strong>
+                ${renderTerminalOutput(toolCall.terminalId)}
+            </div>`;
         }
 
         html += '</div>';
@@ -1121,6 +1162,153 @@ function respondToPermission(requestId, optionId) {
     }
 }
 
+// Terminal support - update terminal output (called from C++ via base64)
+function updateTerminal(terminalId, base64Output, finished) {
+    // Decode base64 output
+    let output;
+    try {
+        output = decodeURIComponent(escape(atob(base64Output)));
+    } catch (e) {
+        console.error('Failed to decode terminal output:', e);
+        output = '[Decode error]';
+    }
+
+    terminals[terminalId] = {
+        output: output,
+        finished: finished
+    };
+
+    logToQt('updateTerminal: ' + terminalId + ' finished=' + finished + ' output=' + output.length + ' chars');
+
+    // Find and update any tool calls with this terminal
+    for (const messageId in messages) {
+        const msg = messages[messageId];
+        if (msg.toolCalls) {
+            for (const tc of msg.toolCalls) {
+                if (tc.terminalId === terminalId) {
+                    // Re-render the message to update terminal display
+                    updateMessageDOM(messageId);
+                    scrollToBottom();
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// Render terminal output with ANSI color support
+function renderTerminalOutput(terminalId) {
+    const term = terminals[terminalId];
+    if (!term) {
+        return '<div class="terminal-output terminal-waiting"><span class="terminal-indicator">Waiting for output...</span></div>';
+    }
+
+    const htmlOutput = ansiToHtml(term.output);
+    const statusClass = term.finished ? 'terminal-finished' : 'terminal-running';
+
+    return `<div class="terminal-output ${statusClass}">
+        <pre>${htmlOutput}</pre>
+        ${!term.finished ? '<span class="terminal-indicator">Running...</span>' : ''}
+    </div>`;
+}
+
+// Convert ANSI escape codes to HTML spans for terminal coloring
+function ansiToHtml(text) {
+    // First escape HTML
+    let escaped = escapeHtml(text);
+
+    // ANSI color code mapping
+    const ansiColors = {
+        '30': 'ansi-black', '31': 'ansi-red', '32': 'ansi-green',
+        '33': 'ansi-yellow', '34': 'ansi-blue', '35': 'ansi-magenta',
+        '36': 'ansi-cyan', '37': 'ansi-white',
+        '90': 'ansi-bright-black', '91': 'ansi-bright-red',
+        '92': 'ansi-bright-green', '93': 'ansi-bright-yellow',
+        '94': 'ansi-bright-blue', '95': 'ansi-bright-magenta',
+        '96': 'ansi-bright-cyan', '97': 'ansi-bright-white'
+    };
+
+    // Background colors
+    const ansiBgColors = {
+        '40': 'ansi-bg-black', '41': 'ansi-bg-red', '42': 'ansi-bg-green',
+        '43': 'ansi-bg-yellow', '44': 'ansi-bg-blue', '45': 'ansi-bg-magenta',
+        '46': 'ansi-bg-cyan', '47': 'ansi-bg-white',
+        '100': 'ansi-bg-bright-black', '101': 'ansi-bg-bright-red',
+        '102': 'ansi-bg-bright-green', '103': 'ansi-bg-bright-yellow',
+        '104': 'ansi-bg-bright-blue', '105': 'ansi-bg-bright-magenta',
+        '106': 'ansi-bg-bright-cyan', '107': 'ansi-bg-bright-white'
+    };
+
+    let result = '';
+    let currentClasses = [];
+
+    // Match ANSI escape sequences: ESC[...m
+    // The escaped version has &amp;#x1b; or similar, but we're processing pre-escape
+    // Actually, we need to process before escaping HTML, then escape just the text parts
+
+    // Let's redo this - process ANSI codes first, then escape text within
+    const unescaped = text;
+    const regex = /\x1b\[([0-9;]*)m/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(unescaped)) !== null) {
+        // Add escaped text before this match
+        if (match.index > lastIndex) {
+            result += escapeHtml(unescaped.substring(lastIndex, match.index));
+        }
+        lastIndex = regex.lastIndex;
+
+        const codes = match[1].split(';').filter(c => c !== '');
+
+        for (const code of codes) {
+            if (code === '0' || code === '') {
+                // Reset - close any open spans
+                if (currentClasses.length > 0) {
+                    result += '</span>';
+                    currentClasses = [];
+                }
+            } else if (code === '1') {
+                // Bold
+                if (currentClasses.length > 0) result += '</span>';
+                currentClasses.push('ansi-bold');
+                result += `<span class="${currentClasses.join(' ')}">`;
+            } else if (code === '4') {
+                // Underline
+                if (currentClasses.length > 0) result += '</span>';
+                currentClasses.push('ansi-underline');
+                result += `<span class="${currentClasses.join(' ')}">`;
+            } else if (ansiColors[code]) {
+                // Foreground color
+                if (currentClasses.length > 0) result += '</span>';
+                // Remove any existing fg color and add new one
+                currentClasses = currentClasses.filter(c => !c.startsWith('ansi-') || c.startsWith('ansi-bg-') || c === 'ansi-bold' || c === 'ansi-underline');
+                currentClasses.push(ansiColors[code]);
+                result += `<span class="${currentClasses.join(' ')}">`;
+            } else if (ansiBgColors[code]) {
+                // Background color
+                if (currentClasses.length > 0) result += '</span>';
+                // Remove any existing bg color and add new one
+                currentClasses = currentClasses.filter(c => !c.startsWith('ansi-bg-'));
+                currentClasses.push(ansiBgColors[code]);
+                result += `<span class="${currentClasses.join(' ')}">`;
+            }
+        }
+    }
+
+    // Add any remaining text
+    if (lastIndex < unescaped.length) {
+        result += escapeHtml(unescaped.substring(lastIndex));
+    }
+
+    // Close any remaining open spans
+    if (currentClasses.length > 0) {
+        result += '</span>';
+    }
+
+    return result;
+}
+
 // Make functions available globally for Qt calls
 window.addMessage = addMessage;
 window.updateMessage = updateMessage;
@@ -1133,3 +1321,4 @@ window.applyColorScheme = applyColorScheme;
 window.toggleToolCall = toggleToolCall;
 window.showPermissionRequest = showPermissionRequest;
 window.copyCode = copyCode;
+window.updateTerminal = updateTerminal;

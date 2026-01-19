@@ -22,6 +22,9 @@ public:
     void updateTodos(const QList<TodoItem> &todos);
     void clearMessages();
 
+    // Terminal support
+    void updateTerminalOutput(const QString &terminalId, const QString &output, bool finished);
+
 Q_SIGNALS:
     void permissionResponseReady(int requestId, const QString &optionId);
 

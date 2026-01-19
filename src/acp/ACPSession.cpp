@@ -1,16 +1,19 @@
 #include "ACPSession.h"
 #include "ACPService.h"
+#include "TerminalManager.h"
 #include "../util/TranscriptWriter.h"
 
 #include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QProcessEnvironment>
 #include <QUrl>
 #include <QUuid>
 
 ACPSession::ACPSession(QObject *parent)
     : QObject(parent)
     , m_service(new ACPService(this))
+    , m_terminalManager(new TerminalManager(this))
     , m_transcript(new TranscriptWriter(this))
     , m_status(ConnectionStatus::Disconnected)
     , m_initializeRequestId(-1)
@@ -24,6 +27,10 @@ ACPSession::ACPSession(QObject *parent)
     connect(m_service, &ACPService::notificationReceived, this, &ACPSession::onNotification);
     connect(m_service, &ACPService::responseReceived, this, &ACPSession::onResponse);
     connect(m_service, &ACPService::errorOccurred, this, &ACPSession::onError);
+
+    // Forward terminal output to UI
+    connect(m_terminalManager, &TerminalManager::outputAvailable,
+            this, &ACPSession::terminalOutputUpdated);
 }
 
 ACPSession::~ACPSession()
@@ -57,6 +64,7 @@ void ACPSession::start(const QString &workingDir, const QString &permissionMode)
 void ACPSession::stop()
 {
     m_transcript->finishSession();
+    m_terminalManager->releaseAll();
     m_service->stop();
     m_status = ConnectionStatus::Disconnected;
     m_sessionId.clear();
@@ -289,6 +297,11 @@ void ACPSession::onConnected()
     QJsonObject params;
     params[QStringLiteral("protocolVersion")] = 1;
 
+    // Advertise terminal support so agent uses terminal/* methods
+    QJsonObject capabilities;
+    capabilities[QStringLiteral("terminal")] = true;
+    params[QStringLiteral("clientCapabilities")] = capabilities;
+
     m_initializeRequestId = m_service->sendRequest(QStringLiteral("initialize"), params);
     qDebug() << "[ACPSession] Sent initialize request, id:" << m_initializeRequestId;
 }
@@ -307,6 +320,16 @@ void ACPSession::onNotification(const QString &method, const QJsonObject &params
         handleSessionUpdate(params);
     } else if (method == QStringLiteral("session/request_permission")) {
         handlePermissionRequest(params, requestId);
+    } else if (method == QStringLiteral("terminal/create")) {
+        handleTerminalCreate(params, requestId);
+    } else if (method == QStringLiteral("terminal/output")) {
+        handleTerminalOutput(params, requestId);
+    } else if (method == QStringLiteral("terminal/wait_for_exit")) {
+        handleTerminalWaitForExit(params, requestId);
+    } else if (method == QStringLiteral("terminal/kill")) {
+        handleTerminalKill(params, requestId);
+    } else if (method == QStringLiteral("terminal/release")) {
+        handleTerminalRelease(params, requestId);
     }
 }
 
@@ -526,6 +549,10 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
 
                 qDebug() << "[ACPSession] Edit" << i + 1 << "detected - old:" << edit.oldText.length()
                          << "chars, new:" << edit.newText.length() << "chars";
+            } else if (type == QStringLiteral("terminal")) {
+                // This tool call has embedded terminal output
+                toolCall.terminalId = contentItem[QStringLiteral("terminalId")].toString();
+                qDebug() << "[ACPSession] Terminal embedded - id:" << toolCall.terminalId;
             }
         }
 
@@ -566,17 +593,33 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             result = content[QStringLiteral("text")].toString();
         }
 
-        // Check for Write tool response in _meta.claudeCode.toolResponse
+        // Check for tool response in _meta.claudeCode.toolResponse
+        // toolResponse can be either an object (Write tool) or an array (Bash/other tools)
         QJsonObject meta = update[QStringLiteral("_meta")].toObject();
         QJsonObject claudeCode = meta[QStringLiteral("claudeCode")].toObject();
         QString toolName = claudeCode[QStringLiteral("toolName")].toString();
-        QJsonObject toolResponse = claudeCode[QStringLiteral("toolResponse")].toObject();
+        QJsonValue toolResponseValue = claudeCode[QStringLiteral("toolResponse")];
 
         qDebug() << "[ACPSession] DEBUG - toolName:" << toolName
-                 << "toolResponse.isEmpty:" << toolResponse.isEmpty()
+                 << "toolResponse isArray:" << toolResponseValue.isArray()
+                 << "toolResponse isObject:" << toolResponseValue.isObject()
                  << "has _meta:" << !meta.isEmpty();
 
-        if (!toolResponse.isEmpty()) {
+        if (toolResponseValue.isArray()) {
+            // Bash and other tools return an array of content items
+            QJsonArray toolResponseArray = toolResponseValue.toArray();
+            for (const QJsonValue &item : toolResponseArray) {
+                QJsonObject itemObj = item.toObject();
+                QString text = itemObj[QStringLiteral("text")].toString();
+                if (!text.isEmpty()) {
+                    result = text;
+                    qDebug() << "[ACPSession] Tool response (array) - text length:" << text.length();
+                    break;
+                }
+            }
+        } else if (toolResponseValue.isObject()) {
+            // Write tool returns an object with type, content, filePath
+            QJsonObject toolResponse = toolResponseValue.toObject();
             operationType = toolResponse[QStringLiteral("type")].toString();
             newText = toolResponse[QStringLiteral("content")].toString();
             QString filePath = toolResponse[QStringLiteral("filePath")].toString();
@@ -589,11 +632,6 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
                 // Write tool result - show the actual file content
                 result = newText;
                 qDebug() << "[ACPSession] Write tool - created file" << filePath << "with" << newText.length() << "bytes";
-                // Fall through to emit toolCallUpdated below
-            } else {
-                qDebug() << "[ACPSession] DEBUG - NOT Write tool, operationType check:"
-                         << (operationType == QStringLiteral("create"))
-                         << "toolName check:" << (toolName == QStringLiteral("Write"));
             }
         }
 
@@ -715,4 +753,177 @@ void ACPSession::handlePermissionRequest(const QJsonObject &params, int requestI
              << "options count:" << request.options.size();
 
     Q_EMIT permissionRequested(request);
+}
+
+void ACPSession::handleTerminalCreate(const QJsonObject &params, int requestId)
+{
+    QString command = params[QStringLiteral("command")].toString();
+    QJsonArray argsArray = params[QStringLiteral("args")].toArray();
+    QJsonArray envArray = params[QStringLiteral("env")].toArray();
+    QString cwd = params[QStringLiteral("cwd")].toString();
+    qint64 outputByteLimit = params[QStringLiteral("outputByteLimit")].toVariant().toLongLong();
+
+    qDebug() << "[ACPSession] terminal/create - command:" << command << "cwd:" << cwd;
+
+    // Build the full command string including any args
+    QString fullCommand = command;
+    for (const QJsonValue &v : argsArray) {
+        fullCommand += QLatin1Char(' ') + v.toString();
+    }
+
+    // Build environment from base system environment plus any overrides
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    for (const QJsonValue &v : envArray) {
+        QJsonObject e = v.toObject();
+        env.insert(e[QStringLiteral("name")].toString(), e[QStringLiteral("value")].toString());
+    }
+
+    // Use working dir from params, or fall back to session working dir
+    if (cwd.isEmpty()) {
+        cwd = m_workingDir;
+    }
+
+    // Run command through shell - QProcess needs executable separate from args,
+    // but ACP sends full command strings like "git status"
+    QString terminalId = m_terminalManager->createTerminal(
+        QStringLiteral("/bin/bash"),
+        QStringList{QStringLiteral("-c"), fullCommand},
+        env, cwd, outputByteLimit);
+
+    if (terminalId.isEmpty()) {
+        // Failed to create terminal
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32000;
+        error[QStringLiteral("message")] = QStringLiteral("Failed to create terminal");
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    QJsonObject result;
+    result[QStringLiteral("terminalId")] = terminalId;
+    m_service->sendResponse(requestId, result);
+}
+
+void ACPSession::handleTerminalOutput(const QJsonObject &params, int requestId)
+{
+    QString terminalId = params[QStringLiteral("terminalId")].toString();
+
+    qDebug() << "[ACPSession] terminal/output - terminalId:" << terminalId;
+
+    if (!m_terminalManager->isValid(terminalId)) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32001;
+        error[QStringLiteral("message")] = QStringLiteral("Terminal not found");
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    auto outputResult = m_terminalManager->getOutput(terminalId);
+
+    QJsonObject result;
+    result[QStringLiteral("output")] = outputResult.output;
+    result[QStringLiteral("truncated")] = outputResult.truncated;
+
+    if (outputResult.exitStatus.has_value()) {
+        QJsonObject exitStatus;
+        exitStatus[QStringLiteral("exitCode")] = outputResult.exitStatus.value();
+        result[QStringLiteral("exitStatus")] = exitStatus;
+    }
+
+    m_service->sendResponse(requestId, result);
+}
+
+void ACPSession::handleTerminalWaitForExit(const QJsonObject &params, int requestId)
+{
+    QString terminalId = params[QStringLiteral("terminalId")].toString();
+    int timeoutMs = params[QStringLiteral("timeout")].toInt(-1);
+
+    qDebug() << "[ACPSession] terminal/wait_for_exit - terminalId:" << terminalId << "timeout:" << timeoutMs;
+
+    if (!m_terminalManager->isValid(terminalId)) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32001;
+        error[QStringLiteral("message")] = QStringLiteral("Terminal not found");
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    auto waitResult = m_terminalManager->waitForExit(terminalId, timeoutMs);
+
+    QJsonObject result;
+    result[QStringLiteral("output")] = waitResult.output;
+    result[QStringLiteral("truncated")] = waitResult.truncated;
+
+    if (waitResult.success) {
+        QJsonObject exitStatus;
+        exitStatus[QStringLiteral("exitCode")] = waitResult.exitStatus;
+        result[QStringLiteral("exitStatus")] = exitStatus;
+    }
+
+    m_service->sendResponse(requestId, result);
+}
+
+void ACPSession::handleTerminalKill(const QJsonObject &params, int requestId)
+{
+    QString terminalId = params[QStringLiteral("terminalId")].toString();
+
+    qDebug() << "[ACPSession] terminal/kill - terminalId:" << terminalId;
+
+    if (!m_terminalManager->isValid(terminalId)) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32001;
+        error[QStringLiteral("message")] = QStringLiteral("Terminal not found");
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    m_terminalManager->killTerminal(terminalId);
+
+    // Get final output after kill
+    auto outputResult = m_terminalManager->getOutput(terminalId);
+
+    QJsonObject result;
+    result[QStringLiteral("output")] = outputResult.output;
+    result[QStringLiteral("truncated")] = outputResult.truncated;
+
+    if (outputResult.exitStatus.has_value()) {
+        QJsonObject exitStatus;
+        exitStatus[QStringLiteral("exitCode")] = outputResult.exitStatus.value();
+        result[QStringLiteral("exitStatus")] = exitStatus;
+    }
+
+    m_service->sendResponse(requestId, result);
+}
+
+void ACPSession::handleTerminalRelease(const QJsonObject &params, int requestId)
+{
+    QString terminalId = params[QStringLiteral("terminalId")].toString();
+
+    qDebug() << "[ACPSession] terminal/release - terminalId:" << terminalId;
+
+    if (!m_terminalManager->isValid(terminalId)) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32001;
+        error[QStringLiteral("message")] = QStringLiteral("Terminal not found");
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    // Get output before releasing
+    auto outputResult = m_terminalManager->getOutput(terminalId);
+
+    // Release the terminal (this kills and cleans up)
+    m_terminalManager->releaseTerminal(terminalId);
+
+    QJsonObject result;
+    result[QStringLiteral("output")] = outputResult.output;
+    result[QStringLiteral("truncated")] = outputResult.truncated;
+
+    if (outputResult.exitStatus.has_value()) {
+        QJsonObject exitStatus;
+        exitStatus[QStringLiteral("exitCode")] = outputResult.exitStatus.value();
+        result[QStringLiteral("exitStatus")] = exitStatus;
+    }
+
+    m_service->sendResponse(requestId, result);
 }

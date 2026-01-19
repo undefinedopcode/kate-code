@@ -117,6 +117,9 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::initializeComplete, this, &ChatWidget::onInitializeComplete);
     connect(m_session, &ACPSession::sessionLoadFailed, this, &ChatWidget::onSessionLoadFailed);
 
+    // Terminal output updates (forward to web view for live display)
+    connect(m_session, &ACPSession::terminalOutputUpdated, m_chatWebView, &ChatWebView::updateTerminalOutput);
+
     // Connect web view permission responses back to ACP
     connect(m_chatWebView, &ChatWebView::permissionResponseReady, this, [this](int requestId, const QString &optionId) {
         QJsonObject outcomeObj;
