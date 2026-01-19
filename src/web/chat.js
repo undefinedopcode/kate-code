@@ -306,14 +306,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Add a new message
-function addMessage(id, role, content, timestamp, isStreaming) {
+function addMessage(id, role, content, timestamp, isStreaming, images) {
     const message = {
         id: id,
         role: role,
         content: content || '',
         timestamp: timestamp || new Date().toISOString(),
         isStreaming: isStreaming || false,
-        toolCalls: []
+        toolCalls: [],
+        images: images || []  // Array of {data, mimeType, width, height}
     };
 
     messages[id] = message;
@@ -510,6 +511,16 @@ function createMessageHTML(message) {
         } else {
             // For system messages, just escape HTML
             html += escapeHtml(message.role === 'system' ? content.trim() : content);
+        }
+
+        // Render images for user messages (below text content)
+        if (message.role === 'user' && message.images && message.images.length > 0) {
+            html += '<div class="message-images">';
+            for (const img of message.images) {
+                const dataUrl = `data:${img.mimeType};base64,${img.data}`;
+                html += `<img src="${dataUrl}" class="message-image" alt="Attached image" style="max-width: 300px; max-height: 300px; border-radius: 4px; margin-top: 8px;">`;
+            }
+            html += '</div>';
         }
     }
 

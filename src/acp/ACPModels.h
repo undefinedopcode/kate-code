@@ -35,6 +35,13 @@ struct ToolCall {
     QList<EditDiff> edits;  // Multiple edits for Edit tool
 };
 
+struct ImageAttachment {
+    QString id;           // Unique identifier for removal
+    QString mimeType;     // "image/png", "image/jpeg", "image/gif", "image/webp"
+    QByteArray data;      // Raw image bytes
+    QSize dimensions;     // Original dimensions for preview scaling
+};
+
 struct Message {
     QString id;
     QString role;  // "user", "assistant", "system"
@@ -42,6 +49,7 @@ struct Message {
     QDateTime timestamp;
     bool isStreaming = false;
     QList<ToolCall> toolCalls;
+    QList<ImageAttachment> images;  // For user messages with image attachments
 };
 
 struct TodoItem {
@@ -70,11 +78,4 @@ struct ContextChunk {
     int endLine;
     QString content;
     QString id;  // Unique identifier for removal
-};
-
-struct ImageAttachment {
-    QString id;           // Unique identifier for removal
-    QString mimeType;     // "image/png", "image/jpeg", "image/gif", "image/webp"
-    QByteArray data;      // Raw image bytes
-    QSize dimensions;     // Original dimensions for preview scaling
 };

@@ -157,12 +157,33 @@ void ChatWebView::addMessage(const Message &message)
     }
 
     QString timestamp = message.timestamp.toString(Qt::ISODate);
-    QString script = QStringLiteral("addMessage('%1', '%2', '%3', '%4', %5);")
-                         .arg(escapeJsString(message.id),
-                              escapeJsString(message.role),
-                              escapeJsString(message.content),
-                              timestamp,
-                              message.isStreaming ? QStringLiteral("true") : QStringLiteral("false"));
+
+    // Build images JSON array for user messages with attachments
+    QString imagesJson = QStringLiteral("[]");
+    if (!message.images.isEmpty()) {
+        QJsonArray imagesArray;
+        for (const ImageAttachment &img : message.images) {
+            QJsonObject imgObj;
+            imgObj[QStringLiteral("data")] = QString::fromLatin1(img.data.toBase64());
+            imgObj[QStringLiteral("mimeType")] = img.mimeType;
+            imgObj[QStringLiteral("width")] = img.dimensions.width();
+            imgObj[QStringLiteral("height")] = img.dimensions.height();
+            imagesArray.append(imgObj);
+        }
+        imagesJson = QString::fromUtf8(QJsonDocument(imagesArray).toJson(QJsonDocument::Compact));
+    }
+
+    // Use Base64 encoding to safely pass images JSON through JavaScript
+    QString imagesBase64 = QString::fromLatin1(imagesJson.toUtf8().toBase64());
+
+    QString script = QStringLiteral(
+        "addMessage('%1', '%2', '%3', '%4', %5, JSON.parse(atob('%6')));"
+    ).arg(escapeJsString(message.id),
+          escapeJsString(message.role),
+          escapeJsString(message.content),
+          timestamp,
+          message.isStreaming ? QStringLiteral("true") : QStringLiteral("false"),
+          imagesBase64);
 
     runJavaScript(script);
 }
