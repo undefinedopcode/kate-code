@@ -203,23 +203,21 @@ void ChatWidget::onConnectClicked()
     // Clear any pending summary from previous attempt
     m_pendingSummaryContext.clear();
 
-    // Check if a previous session exists with a summary
-    QString lastSessionId = m_sessionStore->getLastSession(projectRoot);
-    if (!lastSessionId.isEmpty()) {
-        QString summary = m_summaryStore->loadSummary(projectRoot, lastSessionId);
-        if (!summary.isEmpty()) {
-            // Show dialog to ask user whether to resume with context
-            SessionSelectionDialog dialog(lastSessionId, summary, this);
-            if (dialog.exec() == QDialog::Accepted) {
-                if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
-                    // Store summary to send after session connects
-                    m_pendingSummaryContext = summary;
-                }
-                // NewSession: just proceed without summary context
-            } else {
-                // Cancelled - don't connect
-                return;
+    // Check if any sessions with summaries exist
+    QStringList sessionIds = m_summaryStore->listSessionSummaries(projectRoot);
+    if (!sessionIds.isEmpty()) {
+        // Show dialog to let user select a session to resume
+        SessionSelectionDialog dialog(projectRoot, m_summaryStore, this);
+        if (dialog.exec() == QDialog::Accepted) {
+            if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
+                // Store summary of selected session to send after session connects
+                QString selectedId = dialog.selectedSessionId();
+                m_pendingSummaryContext = m_summaryStore->loadSummary(projectRoot, selectedId);
             }
+            // NewSession: just proceed without summary context
+        } else {
+            // Cancelled - don't connect
+            return;
         }
     }
 
