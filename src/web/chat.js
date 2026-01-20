@@ -1200,16 +1200,13 @@ function updateTerminal(terminalId, base64Output, finished) {
 function renderTerminalOutput(terminalId) {
     const term = terminals[terminalId];
     if (!term) {
-        return '<div class="terminal-output terminal-waiting"><span class="terminal-indicator">Waiting for output...</span></div>';
+        return '<pre class="terminal-output terminal-waiting">Waiting for output...</pre>';
     }
 
     const htmlOutput = ansiToHtml(term.output);
     const statusClass = term.finished ? 'terminal-finished' : 'terminal-running';
 
-    return `<div class="terminal-output ${statusClass}">
-        <pre>${htmlOutput}</pre>
-        ${!term.finished ? '<span class="terminal-indicator">Running...</span>' : ''}
-    </div>`;
+    return `<pre class="terminal-output ${statusClass}">${htmlOutput}${!term.finished ? '<span class="terminal-indicator">Running...</span>' : ''}</pre>`;
 }
 
 // Convert ANSI escape codes to HTML using TerminalRenderer

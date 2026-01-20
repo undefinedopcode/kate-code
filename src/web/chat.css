@@ -945,42 +945,34 @@ pre.diff .diff-add span {
     background: var(--fg-secondary);
 }
 
-/* Terminal output styles */
-.terminal-output {
-    background-color: var(--bg-secondary);
-    border-radius: 4px;
-    padding: 8px;
+/* Terminal output styles - pre element directly styled */
+pre.terminal-output {
     margin: 8px 0;
+    padding: 8px;
     font-family: var(--code-font-family, 'JetBrains Mono', 'Fira Code', monospace);
     font-size: var(--code-font-size, 12px);
     line-height: 1.4;
     max-height: 400px;
     overflow-y: auto;
     overflow-x: auto;
-}
-
-.terminal-output pre {
-    margin: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: inherit;
-    font-size: inherit;
 }
 
-.terminal-running {
+pre.terminal-output.terminal-running {
     border-left: 3px solid var(--accent);
 }
 
-.terminal-finished {
+pre.terminal-output.terminal-finished {
     border-left: 3px solid var(--positive);
 }
 
-.terminal-waiting {
+pre.terminal-output.terminal-waiting {
     border-left: 3px solid var(--fg-secondary);
 }
 
 .terminal-indicator {
-    display: inline-block;
+    display: block;
     margin-top: 8px;
     font-size: 11px;
     color: var(--accent);
@@ -992,7 +984,7 @@ pre.diff .diff-add span {
     51%, 100% { opacity: 0.5; }
 }
 
-.terminal-running .terminal-indicator {
+pre.terminal-output.terminal-running .terminal-indicator {
     animation: terminal-blink 1s infinite;
 }
 
