@@ -129,6 +129,9 @@ void CommandTextEdit::keyPressEvent(QKeyEvent *e)
             cr.setWidth(m_completer->popup()->sizeHintForColumn(0) +
                        m_completer->popup()->verticalScrollBar()->sizeHint().width());
             m_completer->complete(cr);
+
+            // Autoselect the first entry
+            m_completer->popup()->setCurrentIndex(m_completer->completionModel()->index(0, 0));
         } else {
             m_completer->popup()->hide();
         }
