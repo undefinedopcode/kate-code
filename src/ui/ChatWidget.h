@@ -86,6 +86,7 @@ private Q_SLOTS:
     // Summary generation
     void onSummaryReady(const QString &sessionId, const QString &projectRoot, const QString &summary);
     void onSummaryError(const QString &sessionId, const QString &error);
+    void onApiKeyLoadedForSummary(bool success);
 
 private:
     void triggerSummaryGeneration();
@@ -140,4 +141,7 @@ private:
 
     // Track whether user has sent a message (for summary generation decision)
     bool m_userSentMessage = false;
+
+    // Track pending summary generation waiting for API key
+    bool m_pendingSummaryAfterKeyLoad = false;
 };
