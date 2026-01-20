@@ -182,7 +182,11 @@ void ChatWidget::setSettingsStore(SettingsStore *settings)
         connect(m_summaryGenerator, &SummaryGenerator::summaryError,
                 this, &ChatWidget::onSummaryError);
 
-        // Load API key from KWallet for summary generation
+        // Connect API key loaded signal for deferred summary generation
+        connect(m_settingsStore, &SettingsStore::apiKeyLoaded,
+                this, &ChatWidget::onApiKeyLoadedForSummary);
+
+        // Try to load API key from KWallet (async)
         m_settingsStore->loadApiKey();
     }
 }
@@ -762,7 +766,9 @@ void ChatWidget::triggerSummaryGeneration()
     }
 
     if (!m_settingsStore->hasApiKey()) {
-        qDebug() << "[ChatWidget] No API key configured for summaries";
+        qDebug() << "[ChatWidget] No API key loaded yet, triggering load from KWallet";
+        m_pendingSummaryAfterKeyLoad = true;
+        m_settingsStore->loadApiKey();
         return;
     }
 
@@ -814,6 +820,24 @@ void ChatWidget::onSummaryError(const QString &sessionId, const QString &error)
 {
     qWarning() << "[ChatWidget] Summary generation failed for" << sessionId << ":" << error;
     // Don't show error to user - summary is optional
+}
+
+void ChatWidget::onApiKeyLoadedForSummary(bool success)
+{
+    qDebug() << "[ChatWidget] API key loaded for summary, success:" << success;
+
+    if (!m_pendingSummaryAfterKeyLoad) {
+        return;
+    }
+    m_pendingSummaryAfterKeyLoad = false;
+
+    if (!success) {
+        qWarning() << "[ChatWidget] Failed to load API key from KWallet, skipping summary";
+        return;
+    }
+
+    // Now that we have the API key, retry summary generation
+    triggerSummaryGeneration();
 }
 
 void ChatWidget::resizeEvent(QResizeEvent *event)
