@@ -4,9 +4,13 @@
 #include "../util/TranscriptWriter.h"
 
 #include <QDebug>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcessEnvironment>
+#include <QTextStream>
 #include <QUrl>
 #include <QUuid>
 
@@ -305,6 +309,13 @@ void ACPSession::onConnected()
     // Advertise terminal support so agent uses terminal/* methods
     QJsonObject capabilities;
     capabilities[QStringLiteral("terminal")] = true;
+
+    // Advertise filesystem support
+    QJsonObject fsCapabilities;
+    fsCapabilities[QStringLiteral("readTextFile")] = true;
+    fsCapabilities[QStringLiteral("writeTextFile")] = true;
+    capabilities[QStringLiteral("fs")] = fsCapabilities;
+
     params[QStringLiteral("clientCapabilities")] = capabilities;
 
     m_initializeRequestId = m_service->sendRequest(QStringLiteral("initialize"), params);
@@ -335,6 +346,10 @@ void ACPSession::onNotification(const QString &method, const QJsonObject &params
         handleTerminalKill(params, requestId);
     } else if (method == QStringLiteral("terminal/release")) {
         handleTerminalRelease(params, requestId);
+    } else if (method == QStringLiteral("fs/read_text_file")) {
+        handleFsReadTextFile(params, requestId);
+    } else if (method == QStringLiteral("fs/write_text_file")) {
+        handleFsWriteTextFile(params, requestId);
     }
 }
 
@@ -778,6 +793,7 @@ void ACPSession::handleTerminalCreate(const QJsonObject &params, int requestId)
 
     // Build environment from base system environment plus any overrides
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("GIT_PAGER"), QStringLiteral("cat"));  // Prevent git from using pager
     for (const QJsonValue &v : envArray) {
         QJsonObject e = v.toObject();
         env.insert(e[QStringLiteral("name")].toString(), e[QStringLiteral("value")].toString());
@@ -930,5 +946,112 @@ void ACPSession::handleTerminalRelease(const QJsonObject &params, int requestId)
         result[QStringLiteral("exitStatus")] = exitStatus;
     }
 
+    m_service->sendResponse(requestId, result);
+}
+
+void ACPSession::handleFsReadTextFile(const QJsonObject &params, int requestId)
+{
+    QString path = params[QStringLiteral("path")].toString();
+    int line = params[QStringLiteral("line")].toInt(1);  // 1-based, default to 1
+    int limit = params[QStringLiteral("limit")].toInt(-1);  // -1 means no limit
+
+    qDebug() << "[ACPSession] fs/read_text_file - path:" << path << "line:" << line << "limit:" << limit;
+
+    if (path.isEmpty()) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32602;
+        error[QStringLiteral("message")] = QStringLiteral("Missing required parameter: path");
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    QFile file(path);
+    if (!file.exists()) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32001;
+        error[QStringLiteral("message")] = QString(QStringLiteral("File not found: ") + path);
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32001;
+        error[QStringLiteral("message")] = QString(QStringLiteral("Cannot open file: ") + file.errorString());
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    QTextStream in(&file);
+    QStringList lines;
+    int currentLine = 0;
+
+    while (!in.atEnd()) {
+        QString lineContent = in.readLine();
+        currentLine++;
+
+        // Skip lines before the requested start line (1-based)
+        if (currentLine < line) {
+            continue;
+        }
+
+        lines.append(lineContent);
+
+        // Check limit
+        if (limit > 0 && lines.size() >= limit) {
+            break;
+        }
+    }
+
+    file.close();
+
+    QJsonObject result;
+    result[QStringLiteral("content")] = lines.join(QStringLiteral("\n"));
+    m_service->sendResponse(requestId, result);
+}
+
+void ACPSession::handleFsWriteTextFile(const QJsonObject &params, int requestId)
+{
+    QString path = params[QStringLiteral("path")].toString();
+    QString content = params[QStringLiteral("content")].toString();
+
+    qDebug() << "[ACPSession] fs/write_text_file - path:" << path << "content length:" << content.length();
+
+    if (path.isEmpty()) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32602;
+        error[QStringLiteral("message")] = QStringLiteral("Missing required parameter: path");
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    // Ensure parent directory exists
+    QFileInfo fileInfo(path);
+    QDir parentDir = fileInfo.absoluteDir();
+    if (!parentDir.exists()) {
+        if (!parentDir.mkpath(QStringLiteral("."))) {
+            QJsonObject error;
+            error[QStringLiteral("code")] = -32001;
+            error[QStringLiteral("message")] = QString(QStringLiteral("Cannot create parent directory: ") + parentDir.absolutePath());
+            m_service->sendResponse(requestId, QJsonObject(), error);
+            return;
+        }
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QJsonObject error;
+        error[QStringLiteral("code")] = -32001;
+        error[QStringLiteral("message")] = QString(QStringLiteral("Cannot open file for writing: ") + file.errorString());
+        m_service->sendResponse(requestId, QJsonObject(), error);
+        return;
+    }
+
+    QTextStream out(&file);
+    out << content;
+    file.close();
+
+    QJsonObject result;
+    result[QStringLiteral("result")] = QJsonValue::Null;
     m_service->sendResponse(requestId, result);
 }

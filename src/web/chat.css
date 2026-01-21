@@ -520,6 +520,7 @@ body {
     padding: 4px 8px;
     cursor: pointer;
     user-select: none;
+    flex-wrap: nowrap;
 }
 
 .tool-call-summary:hover {
@@ -533,6 +534,18 @@ body {
 .tool-call-name {
     color: var(--positive);
     font-weight: 500;
+}
+
+.tool-call-kate-badge {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background-color: color-mix(in srgb, var(--accent) 50%, transparent);
+    color: var(--fg-primary);
+    margin-left: auto;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .tool-call-inline.pending .tool-call-name {
@@ -573,7 +586,6 @@ body {
 .tool-call-toggle {
     font-size: 10px;
     color: var(--fg-secondary);
-    margin-left: auto;
 }
 
 .tool-call-details {
