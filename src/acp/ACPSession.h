@@ -86,6 +86,10 @@ private:
     void handleTerminalKill(const QJsonObject &params, int requestId);
     void handleTerminalRelease(const QJsonObject &params, int requestId);
 
+    // Filesystem request handlers
+    void handleFsReadTextFile(const QJsonObject &params, int requestId);
+    void handleFsWriteTextFile(const QJsonObject &params, int requestId);
+
     ACPService *m_service;
     TerminalManager *m_terminalManager;
     TranscriptWriter *m_transcript;
