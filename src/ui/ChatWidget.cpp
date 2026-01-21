@@ -249,6 +249,11 @@ void ChatWidget::onConnectClicked()
 
 void ChatWidget::onNewSessionClicked()
 {
+    // Trigger summary generation BEFORE resetting state, since stop() will
+    // emit statusChanged(Disconnected) which calls triggerSummaryGeneration()
+    // and that checks m_userSentMessage
+    triggerSummaryGeneration();
+
     // Reset user message tracking for new session
     m_userSentMessage = false;
 
