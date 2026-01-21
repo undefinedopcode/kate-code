@@ -76,6 +76,35 @@ function isBashTool(toolName) {
            name.includes('terminal');
 }
 
+// Check if a tool is a Read tool (standard or MCP variant)
+function isReadTool(toolName) {
+    return toolName === 'Read' || toolName === 'mcp__acp__Read';
+}
+
+// Check if a tool is a Write tool (standard or MCP variant)
+function isWriteTool(toolName) {
+    return toolName === 'Write' || toolName === 'mcp__acp__Write';
+}
+
+// Check if a tool is an Edit tool (standard or MCP variant)
+function isEditTool(toolName) {
+    return toolName === 'Edit' || toolName === 'mcp__acp__Edit';
+}
+
+// Check if a tool is a Kate MCP tool (mcp__acp__ prefix)
+function isKateTool(toolName) {
+    return toolName && toolName.startsWith('mcp__acp__');
+}
+
+// Get display name for a tool (strips mcp__acp__ prefix if present)
+function getToolDisplayName(toolName) {
+    if (!toolName) return 'Tool';
+    if (toolName.startsWith('mcp__acp__')) {
+        return toolName.substring('mcp__acp__'.length);
+    }
+    return toolName;
+}
+
 // Clean Read tool result by removing system-reminder tags and line number prefixes
 function cleanReadResult(text) {
     // Remove <system-reminder>...</system-reminder> blocks (including multiline)
@@ -557,7 +586,7 @@ function createMessageHTML(message) {
 function renderToolCall(toolCall) {
     const fileName = toolCall.filePath ? toolCall.filePath.split('/').pop() : '';
     // Edit tools are expanded by default to show the diff inline
-    const isExpanded = toolCall.expanded !== undefined ? toolCall.expanded : (toolCall.name === 'Edit');
+    const isExpanded = toolCall.expanded !== undefined ? toolCall.expanded : isEditTool(toolCall.name);
 
     // Extract command for Bash tools (including MCP variants like mcp__acp__Bash)
     let commandDisplay = '';
@@ -572,9 +601,9 @@ function renderToolCall(toolCall) {
     if (toolCall.name === 'Task') toolIconName = 'smart_toy';
     else if (toolCall.name === 'TaskOutput') toolIconName = 'download';
     else if (isBashTool(toolCall.name)) toolIconName = 'terminal';
-    else if (toolCall.name === 'Edit') toolIconName = 'edit';
-    else if (toolCall.name === 'Write') toolIconName = 'edit_document';
-    else if (toolCall.name === 'Read') toolIconName = 'description';
+    else if (isEditTool(toolCall.name)) toolIconName = 'edit';
+    else if (isWriteTool(toolCall.name)) toolIconName = 'edit_document';
+    else if (isReadTool(toolCall.name)) toolIconName = 'description';
     else if (toolCall.name === 'Glob' || toolCall.name === 'Grep') toolIconName = 'search';
     const toolIcon = materialIcon(toolIconName, 'material-icon-sm');
 
@@ -617,15 +646,20 @@ function renderToolCall(toolCall) {
         taskOutputSummaryHtml += `<span class="task-indicator ${blocking ? 'task-blocking' : 'task-nonblocking'}" title="${blocking ? 'Waiting for completion' : 'Non-blocking'}">${materialIcon(blocking ? 'hourglass_empty' : 'sync', 'material-icon-sm')}</span>`;
     }
 
+    // Get display name (strip mcp__acp__ prefix) and check if Kate tool
+    const displayName = getToolDisplayName(toolCall.name);
+    const isKate = isKateTool(toolCall.name);
+
     let html = `
         <div class="tool-call-inline ${toolCall.status}${extraClasses}" data-tool-id="${escapeHtml(toolCall.id)}">
             <div class="tool-call-summary" onclick="toggleToolCall('${escapeHtml(toolCall.id)}')">
                 <span class="tool-call-icon">${toolIcon}</span>
-                <span class="tool-call-name">${escapeHtml(toolCall.name || 'Tool')}</span>
+                <span class="tool-call-name">${escapeHtml(displayName)}</span>
                 ${taskSummaryHtml}
                 ${taskOutputSummaryHtml}
                 ${commandDisplay ? `<span class="tool-call-command">${escapeHtml(commandDisplay)}</span>` : ''}
                 ${fileName ? `<span class="tool-call-file">${escapeHtml(fileName)}</span>` : ''}
+                ${isKate ? '<span class="tool-call-kate-badge">Kate</span>' : ''}
                 <span class="tool-call-toggle">${materialIcon(isExpanded ? 'expand_more' : 'chevron_right', 'material-icon-sm')}</span>
             </div>
     `;
@@ -639,7 +673,7 @@ function renderToolCall(toolCall) {
         }
 
         // Show Edit tool as unified diff(s)
-        if (toolCall.name === 'Edit') {
+        if (isEditTool(toolCall.name)) {
             // Check if we have multiple edits array
             if (toolCall.edits && toolCall.edits.length > 0) {
                 html += `<div class="tool-call-input">
@@ -672,7 +706,7 @@ function renderToolCall(toolCall) {
         }
 
         // Show Write tool content with syntax highlighting
-        if (toolCall.name === 'Write' && toolCall.newText) {
+        if (isWriteTool(toolCall.name) && toolCall.newText) {
             const language = getLanguageFromPath(toolCall.filePath);
             const highlighted = highlightCode(toolCall.newText, language);
             const encodedCode = btoa(unescape(encodeURIComponent(toolCall.newText)));
@@ -716,10 +750,10 @@ function renderToolCall(toolCall) {
             html += `</div>`;
         }
 
-        // Show result if available (skip for Write since we show content above)
+        // Show result if available (skip for Write/Edit since we show content above)
         // Also skip if we have terminal output (terminal replaces the result display)
-        if (toolCall.result && toolCall.name !== 'Write' && !toolCall.terminalId) {
-            if (toolCall.name === 'Read') {
+        if (toolCall.result && !isWriteTool(toolCall.name) && !isEditTool(toolCall.name) && !toolCall.terminalId) {
+            if (isReadTool(toolCall.name)) {
                 // For Read tool, clean and highlight the result
                 const cleanedCode = cleanReadResult(toolCall.result);
                 const language = getLanguageFromPath(toolCall.filePath);
