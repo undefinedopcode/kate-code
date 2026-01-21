@@ -1,5 +1,6 @@
 #pragma once
 
+#include <KTextEditor/Document>
 #include <KTextEditor/MainWindow>
 #include <KXMLGUIClient>
 #include <QObject>
@@ -22,6 +23,7 @@ public:
     QString getCurrentSelection() const;
     QString getProjectRoot() const;
     QStringList getProjectFiles() const;
+    KTextEditor::Document *findDocumentByPath(const QString &path) const;
 
     // Shutdown hook for summary generation
     void prepareForShutdown();

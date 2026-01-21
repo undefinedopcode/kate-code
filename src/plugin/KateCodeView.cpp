@@ -7,7 +7,9 @@
 
 #include <KActionCollection>
 #include <KLocalizedString>
+#include <KTextEditor/Application>
 #include <KTextEditor/Document>
+#include <KTextEditor/Editor>
 #include <KTextEditor/View>
 #include <KXMLGUIFactory>
 #include <QAction>
@@ -136,6 +138,7 @@ void KateCodeView::createToolView()
     m_chatWidget->setSelectionProvider([this]() { return getCurrentSelection(); });
     m_chatWidget->setProjectRootProvider([this]() { return getProjectRoot(); });
     m_chatWidget->setFileListProvider([this]() { return getProjectFiles(); });
+    m_chatWidget->setDocumentProvider([this](const QString &path) { return findDocumentByPath(path); });
 
     // Inject settings store for summary generation
     m_chatWidget->setSettingsStore(m_plugin->settings());
@@ -281,6 +284,33 @@ QStringList KateCodeView::getProjectFiles() const
 
     qDebug() << "[KateCode] Found" << files.size() << "files in project";
     return files;
+}
+
+KTextEditor::Document *KateCodeView::findDocumentByPath(const QString &path) const
+{
+    if (path.isEmpty()) {
+        return nullptr;
+    }
+
+    // Normalize the file path
+    QString normalizedPath = QDir::cleanPath(path);
+    QUrl fileUrl = QUrl::fromLocalFile(normalizedPath);
+
+    // Get all documents from the application
+    KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+    if (!app) {
+        qWarning() << "[KateCodeView] No KTextEditor application available";
+        return nullptr;
+    }
+
+    const QList<KTextEditor::Document *> docs = app->documents();
+    for (KTextEditor::Document *doc : docs) {
+        if (doc->url() == fileUrl || doc->url().toLocalFile() == normalizedPath) {
+            return doc;
+        }
+    }
+
+    return nullptr;
 }
 
 void KateCodeView::addSelectionToContext()

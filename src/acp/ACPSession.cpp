@@ -3,6 +3,8 @@
 #include "TerminalManager.h"
 #include "../util/TranscriptWriter.h"
 
+#include <KTextEditor/Document>
+
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -79,6 +81,11 @@ void ACPSession::stop()
 void ACPSession::setTerminalSize(int columns, int rows)
 {
     m_terminalManager->setDefaultTerminalSize(columns, rows);
+}
+
+void ACPSession::setDocumentProvider(DocumentProvider provider)
+{
+    m_documentProvider = provider;
 }
 
 void ACPSession::cancelPrompt()
@@ -965,48 +972,64 @@ void ACPSession::handleFsReadTextFile(const QJsonObject &params, int requestId)
         return;
     }
 
-    QFile file(path);
-    if (!file.exists()) {
-        QJsonObject error;
-        error[QStringLiteral("code")] = -32001;
-        error[QStringLiteral("message")] = QString(QStringLiteral("File not found: ") + path);
-        m_service->sendResponse(requestId, QJsonObject(), error);
-        return;
+    QString content;
+    bool fromKate = false;
+
+    // Try to get content from Kate document first (may have unsaved changes)
+    if (m_documentProvider) {
+        KTextEditor::Document *doc = m_documentProvider(path);
+        if (doc) {
+            content = doc->text();
+            fromKate = true;
+            qDebug() << "[ACPSession] Reading from Kate document:" << path;
+        }
     }
 
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QJsonObject error;
-        error[QStringLiteral("code")] = -32001;
-        error[QStringLiteral("message")] = QString(QStringLiteral("Cannot open file: ") + file.errorString());
-        m_service->sendResponse(requestId, QJsonObject(), error);
-        return;
+    // Fall back to filesystem if not open in Kate
+    if (!fromKate) {
+        QFile file(path);
+        if (!file.exists()) {
+            QJsonObject error;
+            error[QStringLiteral("code")] = -32001;
+            error[QStringLiteral("message")] = QString(QStringLiteral("File not found: ") + path);
+            m_service->sendResponse(requestId, QJsonObject(), error);
+            return;
+        }
+
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QJsonObject error;
+            error[QStringLiteral("code")] = -32001;
+            error[QStringLiteral("message")] = QString(QStringLiteral("Cannot open file: ") + file.errorString());
+            m_service->sendResponse(requestId, QJsonObject(), error);
+            return;
+        }
+
+        content = QString::fromUtf8(file.readAll());
+        file.close();
     }
 
-    QTextStream in(&file);
-    QStringList lines;
-    int currentLine = 0;
+    // Apply line offset and limit
+    QStringList lines = content.split(QLatin1Char('\n'));
+    QStringList resultLines;
 
-    while (!in.atEnd()) {
-        QString lineContent = in.readLine();
-        currentLine++;
+    for (int i = 0; i < lines.size(); ++i) {
+        int currentLine = i + 1;  // 1-based line numbers
 
-        // Skip lines before the requested start line (1-based)
+        // Skip lines before the requested start line
         if (currentLine < line) {
             continue;
         }
 
-        lines.append(lineContent);
+        resultLines.append(lines[i]);
 
         // Check limit
-        if (limit > 0 && lines.size() >= limit) {
+        if (limit > 0 && resultLines.size() >= limit) {
             break;
         }
     }
 
-    file.close();
-
     QJsonObject result;
-    result[QStringLiteral("content")] = lines.join(QStringLiteral("\n"));
+    result[QStringLiteral("content")] = resultLines.join(QLatin1Char('\n'));
     m_service->sendResponse(requestId, result);
 }
 
@@ -1025,31 +1048,58 @@ void ACPSession::handleFsWriteTextFile(const QJsonObject &params, int requestId)
         return;
     }
 
-    // Ensure parent directory exists
-    QFileInfo fileInfo(path);
-    QDir parentDir = fileInfo.absoluteDir();
-    if (!parentDir.exists()) {
-        if (!parentDir.mkpath(QStringLiteral("."))) {
-            QJsonObject error;
-            error[QStringLiteral("code")] = -32001;
-            error[QStringLiteral("message")] = QString(QStringLiteral("Cannot create parent directory: ") + parentDir.absolutePath());
-            m_service->sendResponse(requestId, QJsonObject(), error);
-            return;
+    bool writtenViaKate = false;
+
+    // Try to write through Kate document if open
+    if (m_documentProvider) {
+        KTextEditor::Document *doc = m_documentProvider(path);
+        if (doc) {
+            qDebug() << "[ACPSession] Writing through Kate document:" << path;
+
+            // Use setText to replace entire content, then save
+            bool textSet = doc->setText(content);
+            if (textSet) {
+                bool saved = doc->save();
+                if (saved) {
+                    writtenViaKate = true;
+                    qDebug() << "[ACPSession] Kate document saved successfully";
+                } else {
+                    qWarning() << "[ACPSession] Failed to save Kate document, falling back to direct write";
+                }
+            } else {
+                qWarning() << "[ACPSession] Failed to set Kate document text, falling back to direct write";
+            }
         }
     }
 
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QJsonObject error;
-        error[QStringLiteral("code")] = -32001;
-        error[QStringLiteral("message")] = QString(QStringLiteral("Cannot open file for writing: ") + file.errorString());
-        m_service->sendResponse(requestId, QJsonObject(), error);
-        return;
-    }
+    // Fall back to direct filesystem write
+    if (!writtenViaKate) {
+        // Ensure parent directory exists
+        QFileInfo fileInfo(path);
+        QDir parentDir = fileInfo.absoluteDir();
+        if (!parentDir.exists()) {
+            if (!parentDir.mkpath(QStringLiteral("."))) {
+                QJsonObject error;
+                error[QStringLiteral("code")] = -32001;
+                error[QStringLiteral("message")] = QString(QStringLiteral("Cannot create parent directory: ") + parentDir.absolutePath());
+                m_service->sendResponse(requestId, QJsonObject(), error);
+                return;
+            }
+        }
 
-    QTextStream out(&file);
-    out << content;
-    file.close();
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QJsonObject error;
+            error[QStringLiteral("code")] = -32001;
+            error[QStringLiteral("message")] = QString(QStringLiteral("Cannot open file for writing: ") + file.errorString());
+            m_service->sendResponse(requestId, QJsonObject(), error);
+            return;
+        }
+
+        QTextStream out(&file);
+        out << content;
+        file.close();
+    }
 
     QJsonObject result;
     result[QStringLiteral("result")] = QJsonValue::Null;

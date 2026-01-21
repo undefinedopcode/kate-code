@@ -4,6 +4,11 @@
 #include <QJsonArray>
 #include <QObject>
 #include <QString>
+#include <functional>
+
+namespace KTextEditor {
+class Document;
+}
 
 class ACPService;
 class TerminalManager;
@@ -40,6 +45,10 @@ public:
 
     // Set terminal size based on view width (columns calculated from pixel width)
     void setTerminalSize(int columns, int rows = 40);
+
+    // Document provider for Kate integration (reads/writes use Kate documents when open)
+    using DocumentProvider = std::function<KTextEditor::Document*(const QString &path)>;
+    void setDocumentProvider(DocumentProvider provider);
 
 Q_SIGNALS:
     void statusChanged(ConnectionStatus status);
@@ -112,4 +121,7 @@ private:
 
     // Message counter
     int m_messageCounter;
+
+    // Kate document provider
+    DocumentProvider m_documentProvider;
 };

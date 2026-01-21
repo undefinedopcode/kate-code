@@ -170,6 +170,11 @@ void ChatWidget::setFileListProvider(FileListProvider provider)
     m_fileListProvider = provider;
 }
 
+void ChatWidget::setDocumentProvider(DocumentProvider provider)
+{
+    m_session->setDocumentProvider(provider);
+}
+
 void ChatWidget::setSettingsStore(SettingsStore *settings)
 {
     m_settingsStore = settings;
