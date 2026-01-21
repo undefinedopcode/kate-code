@@ -5,6 +5,10 @@
 #include <QWidget>
 #include <functional>
 
+namespace KTextEditor {
+class Document;
+}
+
 class ACPSession;
 class ChatWebView;
 class ChatInputWidget;
@@ -30,10 +34,12 @@ public:
     // Context providers (callbacks to get current file/selection/project root from Kate)
     using ContextProvider = std::function<QString()>;
     using FileListProvider = std::function<QStringList()>;
+    using DocumentProvider = std::function<KTextEditor::Document*(const QString &path)>;
     void setFilePathProvider(ContextProvider provider);
     void setSelectionProvider(ContextProvider provider);
     void setProjectRootProvider(ContextProvider provider);
     void setFileListProvider(FileListProvider provider);
+    void setDocumentProvider(DocumentProvider provider);
 
     // Context chunk management
     void addContextChunk(const QString &filePath, int startLine, int endLine, const QString &content);
