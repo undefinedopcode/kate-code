@@ -3,7 +3,10 @@
 #include "TerminalManager.h"
 #include "../util/TranscriptWriter.h"
 
+#include <KTextEditor/Cursor>
 #include <KTextEditor/Document>
+#include <KTextEditor/Range>
+#include <KTextEditor/View>
 
 #include <QDebug>
 #include <QDir>
@@ -1033,6 +1036,180 @@ void ACPSession::handleFsReadTextFile(const QJsonObject &params, int requestId)
     m_service->sendResponse(requestId, result);
 }
 
+// Helper struct for tracking line changes
+struct LineChange {
+    int startLine;      // 0-based start line in old document
+    int oldLineCount;   // Number of lines to remove
+    int newLineCount;   // Number of lines to insert
+    QStringList newLines;  // The new lines to insert
+};
+
+// Compute minimal line-based changes between old and new content
+static QList<LineChange> computeLineChanges(const QStringList &oldLines, const QStringList &newLines)
+{
+    QList<LineChange> changes;
+
+    int oldSize = oldLines.size();
+    int newSize = newLines.size();
+    int i = 0, j = 0;
+
+    while (i < oldSize || j < newSize) {
+        // Find common prefix from current position
+        int commonStart = 0;
+        while (i + commonStart < oldSize && j + commonStart < newSize &&
+               oldLines[i + commonStart] == newLines[j + commonStart]) {
+            ++commonStart;
+        }
+        i += commonStart;
+        j += commonStart;
+
+        if (i >= oldSize && j >= newSize) {
+            break;  // Done
+        }
+
+        // Find common suffix from the end of remaining content
+        int oldRemaining = oldSize - i;
+        int newRemaining = newSize - j;
+        int commonEnd = 0;
+        while (commonEnd < oldRemaining && commonEnd < newRemaining &&
+               oldLines[oldSize - 1 - commonEnd] == newLines[newSize - 1 - commonEnd]) {
+            ++commonEnd;
+        }
+
+        // The change spans from current position to just before the common suffix
+        int oldChangeCount = oldRemaining - commonEnd;
+        int newChangeCount = newRemaining - commonEnd;
+
+        if (oldChangeCount > 0 || newChangeCount > 0) {
+            LineChange change;
+            change.startLine = i;
+            change.oldLineCount = oldChangeCount;
+            change.newLineCount = newChangeCount;
+            for (int k = 0; k < newChangeCount; ++k) {
+                change.newLines.append(newLines[j + k]);
+            }
+            changes.append(change);
+        }
+
+        // Move past the changed region
+        i += oldChangeCount;
+        j += newChangeCount;
+    }
+
+    return changes;
+}
+
+// Apply surgical edits to a Kate document, preserving cursor position where possible
+static bool applySurgicalEdits(KTextEditor::Document *doc, const QString &newContent)
+{
+    QString oldContent = doc->text();
+
+    // If content is identical, no changes needed
+    if (oldContent == newContent) {
+        return true;
+    }
+
+    // Split into lines for comparison
+    QStringList oldLines = oldContent.split(QLatin1Char('\n'));
+    QStringList newLines = newContent.split(QLatin1Char('\n'));
+
+    // Compute the changes
+    QList<LineChange> changes = computeLineChanges(oldLines, newLines);
+
+    if (changes.isEmpty()) {
+        // Content differs only in ways not captured by line comparison (shouldn't happen)
+        return doc->setText(newContent);
+    }
+
+    // Save cursor positions from all views
+    QList<KTextEditor::View *> views = doc->views();
+    QList<KTextEditor::Cursor> savedCursors;
+    for (KTextEditor::View *view : views) {
+        savedCursors.append(view->cursorPosition());
+    }
+
+    // Start an editing transaction for undo grouping (RAII - finishes when scope exits)
+    KTextEditor::Document::EditingTransaction transaction(doc);
+
+    // Apply changes in reverse order to avoid line number shifting issues
+    for (int changeIdx = changes.size() - 1; changeIdx >= 0; --changeIdx) {
+        const LineChange &change = changes[changeIdx];
+
+        // Calculate the range to replace
+        int startLine = change.startLine;
+        int endLine = change.startLine + change.oldLineCount;
+
+        KTextEditor::Cursor startPos(startLine, 0);
+        KTextEditor::Cursor endPos;
+
+        if (endLine >= oldLines.size()) {
+            // Replacing to end of document
+            int lastLine = oldLines.size() - 1;
+            endPos = KTextEditor::Cursor(lastLine, oldLines[lastLine].length());
+        } else {
+            // Replacing up to start of next unchanged line
+            endPos = KTextEditor::Cursor(endLine, 0);
+        }
+
+        // Build replacement text
+        QString replacement = change.newLines.join(QLatin1Char('\n'));
+
+        // Add trailing newline if we're not at document end and replacing full lines
+        if (endLine < oldLines.size() && !replacement.isEmpty()) {
+            replacement += QLatin1Char('\n');
+        } else if (change.oldLineCount > 0 && endLine < oldLines.size()) {
+            // We're deleting lines that had a trailing newline
+            // The replacement should not add one if empty
+        }
+
+        // Special case: inserting new lines at document end
+        if (startLine >= oldLines.size()) {
+            startPos = KTextEditor::Cursor(oldLines.size() - 1, oldLines.last().length());
+            if (!replacement.isEmpty()) {
+                replacement = QLatin1Char('\n') + replacement;
+            }
+        }
+
+        KTextEditor::Range range(startPos, endPos);
+        doc->replaceText(range, replacement);
+
+        // Update oldLines to reflect the change for subsequent iterations
+        // (since we're going in reverse, this updates line count for earlier changes)
+        for (int r = 0; r < change.oldLineCount && startLine < oldLines.size(); ++r) {
+            oldLines.removeAt(startLine);
+        }
+        for (int a = 0; a < change.newLines.size(); ++a) {
+            oldLines.insert(startLine + a, change.newLines[a]);
+        }
+    }
+
+    // Transaction finishes automatically when 'transaction' goes out of scope
+
+    // Restore cursor positions, clamping to valid positions
+    for (int v = 0; v < views.size(); ++v) {
+        KTextEditor::Cursor savedCursor = savedCursors[v];
+        int newLine = savedCursor.line();
+
+        // Clamp to valid range
+        if (newLine >= doc->lines()) {
+            newLine = doc->lines() - 1;
+        }
+        if (newLine < 0) {
+            newLine = 0;
+        }
+
+        int newCol = savedCursor.column();
+        int lineLength = doc->lineLength(newLine);
+        if (newCol > lineLength) {
+            newCol = lineLength;
+        }
+
+        views[v]->setCursorPosition(KTextEditor::Cursor(newLine, newCol));
+    }
+
+    return true;
+}
+
 void ACPSession::handleFsWriteTextFile(const QJsonObject &params, int requestId)
 {
     QString path = params[QStringLiteral("path")].toString();
@@ -1056,18 +1233,18 @@ void ACPSession::handleFsWriteTextFile(const QJsonObject &params, int requestId)
         if (doc) {
             qDebug() << "[ACPSession] Writing through Kate document:" << path;
 
-            // Use setText to replace entire content, then save
-            bool textSet = doc->setText(content);
+            // Use surgical edits to preserve cursor position and minimize gutter markers
+            bool textSet = applySurgicalEdits(doc, content);
             if (textSet) {
                 bool saved = doc->save();
                 if (saved) {
                     writtenViaKate = true;
-                    qDebug() << "[ACPSession] Kate document saved successfully";
+                    qDebug() << "[ACPSession] Kate document saved successfully (surgical edit)";
                 } else {
                     qWarning() << "[ACPSession] Failed to save Kate document, falling back to direct write";
                 }
             } else {
-                qWarning() << "[ACPSession] Failed to set Kate document text, falling back to direct write";
+                qWarning() << "[ACPSession] Surgical edit failed, falling back to direct write";
             }
         }
     }
