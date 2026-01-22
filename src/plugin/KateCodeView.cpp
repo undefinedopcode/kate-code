@@ -142,6 +142,9 @@ void KateCodeView::createToolView()
 
     // Inject settings store for summary generation
     m_chatWidget->setSettingsStore(m_plugin->settings());
+
+    // Connect edit navigation
+    connect(m_chatWidget, &ChatWidget::jumpToEditRequested, this, &KateCodeView::jumpToEdit);
 }
 
 QString KateCodeView::getCurrentFilePath() const
@@ -402,4 +405,72 @@ void KateCodeView::prepareForShutdown()
     if (m_chatWidget) {
         m_chatWidget->prepareForShutdown();
     }
+}
+
+void KateCodeView::jumpToEdit(const QString &filePath, int startLine, int endLine)
+{
+    qDebug() << "[KateCodeView] jumpToEdit:" << filePath << "lines" << startLine << "-" << endLine;
+
+    if (filePath.isEmpty()) {
+        qWarning() << "[KateCodeView] Cannot jump to edit: empty file path";
+        return;
+    }
+
+    // Open the file if not already open
+    QUrl fileUrl = QUrl::fromLocalFile(filePath);
+    m_mainWindow->openUrl(fileUrl);
+
+    // Get the view for this document
+    KTextEditor::View *view = m_mainWindow->activeView();
+    if (!view) {
+        qWarning() << "[KateCodeView] No active view after opening file";
+        return;
+    }
+
+    // Verify we have the right document
+    if (view->document()->url().toLocalFile() != filePath) {
+        // Try to find the right view
+        KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+        const QList<KTextEditor::Document *> docs = app->documents();
+        for (KTextEditor::Document *doc : docs) {
+            if (doc->url().toLocalFile() == filePath) {
+                view = m_mainWindow->activateView(doc);
+                break;
+            }
+        }
+    }
+
+    if (!view) {
+        qWarning() << "[KateCodeView] Could not get view for file:" << filePath;
+        return;
+    }
+
+    // Calculate the selection range
+    // startLine and endLine are 0-based
+    int docLines = view->document()->lines();
+
+    // Clamp to valid range
+    int selStart = qBound(0, startLine, docLines - 1);
+    int selEnd = qBound(selStart, endLine, docLines);
+
+    // Create selection from start of startLine to start of endLine (or end of last line)
+    KTextEditor::Cursor startCursor(selStart, 0);
+    KTextEditor::Cursor endCursor;
+
+    if (selEnd >= docLines) {
+        // Select to end of document
+        int lastLine = docLines - 1;
+        endCursor = KTextEditor::Cursor(lastLine, view->document()->lineLength(lastLine));
+    } else {
+        // Select to start of endLine
+        endCursor = KTextEditor::Cursor(selEnd, 0);
+    }
+
+    KTextEditor::Range range(startCursor, endCursor);
+
+    // Set the selection and cursor position
+    view->setSelection(range);
+    view->setCursorPosition(startCursor);
+
+    qDebug() << "[KateCodeView] Selected range:" << selStart + 1 << "-" << selEnd + 1;
 }

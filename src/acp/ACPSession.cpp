@@ -1,6 +1,7 @@
 #include "ACPSession.h"
 #include "ACPService.h"
 #include "TerminalManager.h"
+#include "../util/EditTracker.h"
 #include "../util/TranscriptWriter.h"
 
 #include <KTextEditor/Cursor>
@@ -30,6 +31,7 @@ ACPSession::ACPSession(QObject *parent)
     , m_sessionLoadRequestId(-1)
     , m_promptRequestId(-1)
     , m_messageCounter(0)
+    , m_editTracker(new EditTracker(this))
 {
     connect(m_service, &ACPService::connected, this, &ACPSession::onConnected);
     connect(m_service, &ACPService::disconnected, this, &ACPSession::onDisconnected);
@@ -533,6 +535,9 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         toolCall.id = update[QStringLiteral("toolCallId")].toString();
         toolCall.status = update[QStringLiteral("status")].toString();
         toolCall.input = update[QStringLiteral("rawInput")].toObject();
+
+        // Track current tool call ID for edit tracking
+        m_currentToolCallId = toolCall.id;
 
         // Get tool name from _meta.claudeCode.toolName or fall back to title
         QJsonObject meta = update[QStringLiteral("_meta")].toObject();
@@ -1100,13 +1105,14 @@ static QList<LineChange> computeLineChanges(const QStringList &oldLines, const Q
 }
 
 // Apply surgical edits to a Kate document, preserving cursor position where possible
-static bool applySurgicalEdits(KTextEditor::Document *doc, const QString &newContent)
+// Returns the list of line changes applied (empty on failure or no changes)
+static QList<LineChange> applySurgicalEdits(KTextEditor::Document *doc, const QString &newContent)
 {
     QString oldContent = doc->text();
 
     // If content is identical, no changes needed
     if (oldContent == newContent) {
-        return true;
+        return QList<LineChange>();
     }
 
     // Split into lines for comparison
@@ -1118,7 +1124,15 @@ static bool applySurgicalEdits(KTextEditor::Document *doc, const QString &newCon
 
     if (changes.isEmpty()) {
         // Content differs only in ways not captured by line comparison (shouldn't happen)
-        return doc->setText(newContent);
+        if (doc->setText(newContent)) {
+            // Return a single change representing the whole document
+            LineChange wholeDoc;
+            wholeDoc.startLine = 0;
+            wholeDoc.oldLineCount = oldLines.size();
+            wholeDoc.newLineCount = newLines.size();
+            return QList<LineChange>() << wholeDoc;
+        }
+        return QList<LineChange>();
     }
 
     // Save cursor positions from all views
@@ -1207,7 +1221,7 @@ static bool applySurgicalEdits(KTextEditor::Document *doc, const QString &newCon
         views[v]->setCursorPosition(KTextEditor::Cursor(newLine, newCol));
     }
 
-    return true;
+    return changes;
 }
 
 void ACPSession::handleFsWriteTextFile(const QJsonObject &params, int requestId)
@@ -1227,6 +1241,9 @@ void ACPSession::handleFsWriteTextFile(const QJsonObject &params, int requestId)
 
     bool writtenViaKate = false;
 
+    // Check if this is a new file
+    bool isNewFile = !QFile::exists(path);
+
     // Try to write through Kate document if open
     if (m_documentProvider) {
         KTextEditor::Document *doc = m_documentProvider(path);
@@ -1234,17 +1251,25 @@ void ACPSession::handleFsWriteTextFile(const QJsonObject &params, int requestId)
             qDebug() << "[ACPSession] Writing through Kate document:" << path;
 
             // Use surgical edits to preserve cursor position and minimize gutter markers
-            bool textSet = applySurgicalEdits(doc, content);
-            if (textSet) {
+            QList<LineChange> changes = applySurgicalEdits(doc, content);
+            if (!changes.isEmpty()) {
                 bool saved = doc->save();
                 if (saved) {
                     writtenViaKate = true;
                     qDebug() << "[ACPSession] Kate document saved successfully (surgical edit)";
+
+                    // Record edits for tracking
+                    for (const LineChange &change : changes) {
+                        m_editTracker->recordEdit(m_currentToolCallId, path,
+                                                   change.startLine, change.oldLineCount, change.newLineCount);
+                    }
                 } else {
                     qWarning() << "[ACPSession] Failed to save Kate document, falling back to direct write";
                 }
             } else {
-                qWarning() << "[ACPSession] Surgical edit failed, falling back to direct write";
+                // Empty changes means content was identical - no edit to track
+                writtenViaKate = true;
+                qDebug() << "[ACPSession] Kate document unchanged (identical content)";
             }
         }
     }
@@ -1276,6 +1301,16 @@ void ACPSession::handleFsWriteTextFile(const QJsonObject &params, int requestId)
         QTextStream out(&file);
         out << content;
         file.close();
+
+        // Record edit for tracking (count lines in content)
+        int lineCount = content.count(QLatin1Char('\n')) + (content.isEmpty() ? 0 : 1);
+        if (isNewFile) {
+            m_editTracker->recordNewFile(m_currentToolCallId, path, lineCount);
+        } else {
+            // For direct writes to existing files, we don't know the exact changes
+            // Record as a full-file replacement
+            m_editTracker->recordEdit(m_currentToolCallId, path, 0, -1, lineCount);
+        }
     }
 
     QJsonObject result;

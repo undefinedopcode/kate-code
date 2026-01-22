@@ -5,6 +5,7 @@
 #include "SessionSelectionDialog.h"
 #include "../acp/ACPSession.h"
 #include "../config/SettingsStore.h"
+#include "../util/EditTracker.h"
 #include "../util/SessionStore.h"
 #include "../util/SummaryGenerator.h"
 #include "../util/SummaryStore.h"
@@ -128,6 +129,13 @@ ChatWidget::ChatWidget(QWidget *parent)
         outcomeObj[QStringLiteral("optionId")] = optionId;
         m_session->sendPermissionResponse(requestId, outcomeObj);
     });
+
+    // Edit tracking: connect EditTracker to ChatWebView
+    connect(m_session->editTracker(), &EditTracker::editRecorded, m_chatWebView, &ChatWebView::addTrackedEdit);
+    connect(m_session->editTracker(), &EditTracker::editsCleared, m_chatWebView, &ChatWebView::clearEditSummary);
+
+    // Forward jump to edit requests from WebView
+    connect(m_chatWebView, &ChatWebView::jumpToEditRequested, this, &ChatWidget::jumpToEditRequested);
 }
 
 ChatWidget::~ChatWidget()

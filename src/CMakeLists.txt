@@ -25,6 +25,7 @@ set(katecode_SRCS
     util/KDEColorScheme.cpp
     util/KateThemeConverter.cpp
     util/DiffHighlightManager.cpp
+    util/EditTracker.cpp
     util/SessionStore.cpp
     util/TranscriptWriter.cpp
     util/SummaryStore.cpp

@@ -24,6 +24,11 @@ struct EditDiff {
     QString oldText;  // Original text
     QString newText;  // New text
     QString filePath; // Optional file path for this specific edit
+
+    // Position tracking (populated during file write)
+    int startLine = -1;      // 0-based line where edit starts (-1 = unknown)
+    int oldLineCount = 0;    // Lines removed
+    int newLineCount = 0;    // Lines added
 };
 
 struct ToolCall {
@@ -88,4 +93,14 @@ struct ContextChunk {
     int endLine;
     QString content;
     QString id;  // Unique identifier for removal
+};
+
+struct TrackedEdit {
+    QString toolCallId;
+    QString filePath;
+    int startLine;        // 0-based line where edit starts
+    int oldLineCount;     // Lines removed
+    int newLineCount;     // Lines added
+    bool isNewFile;       // True if this was a file creation
+    QDateTime timestamp;
 };

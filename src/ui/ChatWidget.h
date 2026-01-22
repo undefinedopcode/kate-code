@@ -63,6 +63,9 @@ Q_SIGNALS:
     void toolCallHighlightRequested(const QString &toolCallId, const ToolCall &toolCall);
     void toolCallClearRequested(const QString &toolCallId);
 
+    // Edit navigation signal
+    void jumpToEditRequested(const QString &filePath, int startLine, int endLine);
+
 private Q_SLOTS:
     void onConnectClicked();
     void onNewSessionClicked();
