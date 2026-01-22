@@ -172,6 +172,7 @@ body {
 #messages {
     flex: 1;
     padding: 16px;
+    padding-top: 60px; /* Space for fixed edit summary panel at top */
     display: flex;
     flex-direction: column;
     gap: 16px;
@@ -1047,3 +1048,141 @@ pre.terminal-output.terminal-running .terminal-indicator {
 .ansi-bg-bright-magenta { background-color: #ff92df; }
 .ansi-bg-bright-cyan { background-color: #a4ffff; }
 .ansi-bg-bright-white { background-color: #ffffff; }
+
+/* Edit Summary Panel - floats at top of viewport */
+.edit-summary-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    background-color: var(--bg-secondary);
+    border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 0 0 4px 4px;
+    overflow: hidden;
+    z-index: 100;
+    max-height: 40vh;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.edit-summary-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    cursor: pointer;
+    user-select: none;
+    background-color: rgba(128, 128, 128, 0.1);
+}
+
+.edit-summary-header:hover {
+    background-color: rgba(128, 128, 128, 0.2);
+}
+
+.edit-summary-toggle {
+    margin-right: 4px;
+    transition: transform 0.2s ease;
+}
+
+.edit-summary-panel.collapsed .edit-summary-toggle {
+    transform: rotate(90deg);
+}
+
+.edit-summary-title {
+    flex: 1;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--fg-secondary);
+}
+
+.edit-summary-clear {
+    background: none;
+    border: none;
+    color: var(--fg-secondary);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+}
+
+.edit-summary-clear:hover {
+    background-color: rgba(128, 128, 128, 0.3);
+    color: var(--fg-primary);
+}
+
+.edit-summary-content {
+    padding: 4px 8px 8px 8px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.edit-summary-panel.collapsed .edit-summary-content {
+    display: none;
+}
+
+.edit-file-group {
+    margin-bottom: 4px;
+}
+
+.edit-file-group:last-child {
+    margin-bottom: 0;
+}
+
+.edit-file-name {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--fg-primary);
+    padding: 2px 4px;
+    background-color: rgba(128, 128, 128, 0.15);
+    border-radius: 2px;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.edit-entry {
+    display: flex;
+    align-items: center;
+    padding: 3px 8px;
+    margin-left: 8px;
+    cursor: pointer;
+    border-radius: 2px;
+    font-size: 11px;
+    font-family: monospace;
+}
+
+.edit-entry:hover {
+    background-color: rgba(128, 128, 128, 0.2);
+}
+
+.edit-line {
+    color: var(--fg-secondary);
+    min-width: 40px;
+}
+
+.edit-changes {
+    color: var(--fg-secondary);
+}
+
+.edit-added {
+    color: var(--positive);
+}
+
+.edit-removed {
+    color: var(--negative);
+}
+
+.edit-new-file {
+    color: var(--positive);
+    font-style: italic;
+}
+
+.edit-replaced {
+    color: var(--accent);
+    font-style: italic;
+}
+
+.edit-unchanged {
+    color: var(--fg-secondary);
+    font-style: italic;
+}

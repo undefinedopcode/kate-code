@@ -327,7 +327,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup Qt WebChannel if available
     if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined') {
         new QWebChannel(qt.webChannelTransport, (channel) => {
-            window.bridge = channel.objects.bridge;
+            bridge = channel.objects.bridge;
+            window.bridge = bridge;
             logToQt('Qt WebChannel bridge connected');
 
             // Now that bridge is ready, configure marked
@@ -1351,6 +1352,151 @@ function ansiToHtmlSimple(text) {
     return result;
 }
 
+// Edit summary state
+let trackedEdits = [];
+
+// Update the edit summary panel with tracked edits
+function updateEditSummary(editsJson) {
+    try {
+        trackedEdits = JSON.parse(editsJson);
+    } catch (e) {
+        logToQt('Failed to parse edits JSON: ' + e);
+        return;
+    }
+
+    renderEditSummary();
+}
+
+// Add a single edit to the summary
+function addTrackedEdit(editJson) {
+    try {
+        const edit = JSON.parse(editJson);
+        trackedEdits.push(edit);
+        renderEditSummary();
+    } catch (e) {
+        logToQt('Failed to parse edit JSON: ' + e);
+    }
+}
+
+// Clear all tracked edits
+function clearEditSummary() {
+    trackedEdits = [];
+    renderEditSummary();
+}
+
+// Render the edit summary panel
+function renderEditSummary() {
+    let panel = document.getElementById('edit-summary-panel');
+
+    // Create panel if it doesn't exist
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'edit-summary-panel';
+        panel.className = 'edit-summary-panel';
+
+        // Append to body (fixed position at bottom)
+        document.body.appendChild(panel);
+    }
+
+    // Hide panel if no edits
+    if (trackedEdits.length === 0) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    panel.style.display = 'block';
+
+    // Build panel HTML
+    let html = `
+        <div class="edit-summary-header" onclick="toggleEditSummary()">
+            <span class="edit-summary-toggle">${materialIcon('expand_more')}</span>
+            <span class="edit-summary-title">Edit Summary (${trackedEdits.length} change${trackedEdits.length !== 1 ? 's' : ''})</span>
+            <button class="edit-summary-clear" onclick="event.stopPropagation(); clearEditSummary();" title="Clear edit history">
+                ${materialIcon('clear_all')}
+            </button>
+        </div>
+        <div class="edit-summary-content" id="edit-summary-content">
+    `;
+
+    // Group edits by file
+    const editsByFile = {};
+    for (const edit of trackedEdits) {
+        if (!editsByFile[edit.filePath]) {
+            editsByFile[edit.filePath] = [];
+        }
+        editsByFile[edit.filePath].push(edit);
+    }
+
+    // Render each file's edits
+    for (const filePath in editsByFile) {
+        const fileEdits = editsByFile[filePath];
+        const fileName = filePath.split('/').pop();
+        const dirPath = filePath.substring(0, filePath.length - fileName.length);
+
+        html += `<div class="edit-file-group">`;
+        html += `<div class="edit-file-name" title="${escapeHtml(filePath)}">${escapeHtml(fileName)}</div>`;
+
+        for (const edit of fileEdits) {
+            const lineNum = edit.startLine + 1; // Convert to 1-based
+            const endLine = edit.startLine + Math.max(edit.oldLineCount, edit.newLineCount);
+
+            let changeText = '';
+            if (edit.isNewFile) {
+                changeText = `<span class="edit-new-file">created</span> +${edit.newLineCount}`;
+            } else if (edit.oldLineCount === -1) {
+                // Full file replacement (unknown old line count)
+                changeText = `<span class="edit-replaced">replaced</span> ${edit.newLineCount} lines`;
+            } else {
+                const added = edit.newLineCount;
+                const removed = edit.oldLineCount;
+                if (added > 0 && removed > 0) {
+                    changeText = `<span class="edit-added">+${added}</span>/<span class="edit-removed">-${removed}</span>`;
+                } else if (added > 0) {
+                    changeText = `<span class="edit-added">+${added}</span>`;
+                } else if (removed > 0) {
+                    changeText = `<span class="edit-removed">-${removed}</span>`;
+                } else {
+                    changeText = '<span class="edit-unchanged">unchanged</span>';
+                }
+            }
+
+            // Escape filePath for use in JavaScript string literal within HTML attribute
+            const escapedPath = filePath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            html += `
+                <div class="edit-entry" onclick="jumpToEdit('${escapedPath}', ${edit.startLine}, ${endLine})">
+                    <span class="edit-line">L${lineNum}</span>
+                    <span class="edit-changes">${changeText}</span>
+                </div>
+            `;
+        }
+
+        html += `</div>`;
+    }
+
+    html += `</div>`;
+    panel.innerHTML = html;
+}
+
+// Toggle edit summary panel collapsed state
+function toggleEditSummary() {
+    const content = document.getElementById('edit-summary-content');
+    const panel = document.getElementById('edit-summary-panel');
+    if (content && panel) {
+        panel.classList.toggle('collapsed');
+    }
+}
+
+// Jump to an edit location - calls back to Qt
+function jumpToEdit(filePath, startLine, endLine) {
+    logToQt('jumpToEdit called: ' + filePath + ' lines ' + startLine + '-' + endLine);
+    if (bridge) {
+        logToQt('Calling bridge.jumpToEdit...');
+        bridge.jumpToEdit(filePath, startLine, endLine);
+    } else {
+        logToQt('Bridge not available for jumpToEdit');
+    }
+}
+
 // Make functions available globally for Qt calls
 window.addMessage = addMessage;
 window.updateMessage = updateMessage;
@@ -1364,3 +1510,8 @@ window.toggleToolCall = toggleToolCall;
 window.showPermissionRequest = showPermissionRequest;
 window.copyCode = copyCode;
 window.updateTerminal = updateTerminal;
+window.updateEditSummary = updateEditSummary;
+window.addTrackedEdit = addTrackedEdit;
+window.clearEditSummary = clearEditSummary;
+window.toggleEditSummary = toggleEditSummary;
+window.jumpToEdit = jumpToEdit;

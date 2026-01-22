@@ -29,6 +29,7 @@ ChatWebView::ChatWebView(QWidget *parent)
 
     connect(this, &QWebEngineView::loadFinished, this, &ChatWebView::onLoadFinished);
     connect(m_bridge, &WebBridge::permissionResponse, this, &ChatWebView::permissionResponseReady);
+    connect(m_bridge, &WebBridge::jumpToEditRequested, this, &ChatWebView::jumpToEditRequested);
 }
 
 ChatWebView::~ChatWebView()
@@ -382,6 +383,35 @@ QString ChatWebView::escapeJsString(const QString &str)
     return escaped;
 }
 
+void ChatWebView::addTrackedEdit(const TrackedEdit &edit)
+{
+    if (!m_isLoaded) {
+        return;
+    }
+
+    // Serialize the edit to JSON
+    QJsonObject editObj;
+    editObj[QStringLiteral("toolCallId")] = edit.toolCallId;
+    editObj[QStringLiteral("filePath")] = edit.filePath;
+    editObj[QStringLiteral("startLine")] = edit.startLine;
+    editObj[QStringLiteral("oldLineCount")] = edit.oldLineCount;
+    editObj[QStringLiteral("newLineCount")] = edit.newLineCount;
+    editObj[QStringLiteral("isNewFile")] = edit.isNewFile;
+
+    QString editJson = QString::fromUtf8(QJsonDocument(editObj).toJson(QJsonDocument::Compact));
+    QString script = QStringLiteral("addTrackedEdit('%1');").arg(escapeJsString(editJson));
+    runJavaScript(script);
+}
+
+void ChatWebView::clearEditSummary()
+{
+    if (!m_isLoaded) {
+        return;
+    }
+
+    runJavaScript(QStringLiteral("clearEditSummary();"));
+}
+
 // WebBridge implementation
 void WebBridge::respondToPermission(int requestId, const QString &optionId)
 {
@@ -391,4 +421,10 @@ void WebBridge::respondToPermission(int requestId, const QString &optionId)
 void WebBridge::logFromJS(const QString &message)
 {
     qDebug() << "[JS]" << message;
+}
+
+void WebBridge::jumpToEdit(const QString &filePath, int startLine, int endLine)
+{
+    qDebug() << "[WebBridge] jumpToEdit requested:" << filePath << "lines" << startLine << "-" << endLine;
+    Q_EMIT jumpToEditRequested(filePath, startLine, endLine);
 }

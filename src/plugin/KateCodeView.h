@@ -37,6 +37,9 @@ private Q_SLOTS:
     void suggestImprovements();
     void addTests();
 
+    // Edit navigation
+    void jumpToEdit(const QString &filePath, int startLine, int endLine);
+
 private:
     void sendQuickAction(const QString &prompt);
     void createToolView();

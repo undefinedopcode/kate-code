@@ -11,6 +11,7 @@ class Document;
 }
 
 class ACPService;
+class EditTracker;
 class TerminalManager;
 class TranscriptWriter;
 
@@ -49,6 +50,9 @@ public:
     // Document provider for Kate integration (reads/writes use Kate documents when open)
     using DocumentProvider = std::function<KTextEditor::Document*(const QString &path)>;
     void setDocumentProvider(DocumentProvider provider);
+
+    // Edit tracker for tracking file modifications
+    EditTracker *editTracker() const { return m_editTracker; }
 
 Q_SIGNALS:
     void statusChanged(ConnectionStatus status);
@@ -124,4 +128,10 @@ private:
 
     // Kate document provider
     DocumentProvider m_documentProvider;
+
+    // Edit tracker
+    EditTracker *m_editTracker;
+
+    // Current tool call ID for edit tracking
+    QString m_currentToolCallId;
 };
