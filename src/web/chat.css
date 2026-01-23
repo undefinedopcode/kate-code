@@ -686,7 +686,7 @@ body {
 }
 
 .bash-output {
-    background-color: #1a1a1a;
+    background-color: var(--code-bg, #1a1a1a);
     border-radius: 4px;
     padding: 8px;
     margin-top: 4px;
@@ -707,7 +707,7 @@ body {
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
-    color: #e0e0e0;
+    color: var(--terminal-fg, #e0e0e0);
 }
 
 /* Unified diff display */
@@ -1013,6 +1013,8 @@ pre.terminal-output {
     overflow-x: auto;
     white-space: pre-wrap;
     word-break: break-word;
+    background-color: var(--code-bg, #282c34);
+    color: var(--terminal-fg, #e0e0e0);
 }
 
 pre.terminal-output.terminal-running {

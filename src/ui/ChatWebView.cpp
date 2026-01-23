@@ -44,6 +44,9 @@ void ChatWebView::onLoadFinished(bool ok)
 
         // Inject KDE color scheme
         injectColorScheme();
+
+        // Signal that we're ready for additional setup (like diff colors)
+        Q_EMIT webViewReady();
     } else {
         qWarning() << "[ChatWebView] Failed to load page";
     }
@@ -99,6 +102,9 @@ void ChatWebView::injectColorScheme()
         QString taskPurpleBg = isLight ? QStringLiteral("rgba(156, 39, 176, 0.08)")
                                        : QStringLiteral("rgba(206, 147, 216, 0.15)");
 
+        // Terminal text color: dark text on light backgrounds, light text on dark backgrounds
+        QString terminalFg = isLight ? QStringLiteral("#1e1e1e") : QStringLiteral("#e0e0e0");
+
         // Escape the CSS for JavaScript string literal
         QString escapedCSS = kateThemeCSS;
         escapedCSS.replace(QLatin1Char('\\'), QStringLiteral("\\\\"));
@@ -108,10 +114,10 @@ void ChatWebView::injectColorScheme()
 
         // Add code background and font variables to CSS vars
         // Don't quote font family here - quotes will be added in CSS usage
-        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px; --task-purple: %5; --task-purple-bg: %6")
+        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px; --task-purple: %5; --task-purple-bg: %6; --terminal-fg: %7")
                                             .arg(codeBg, inlineCodeBg, fontFamily)
                                             .arg(fontSize)
-                                            .arg(taskPurple, taskPurpleBg);
+                                            .arg(taskPurple, taskPurpleBg, terminalFg);
 
         QString script = QStringLiteral(
             "applyColorScheme('%1'); "
@@ -134,10 +140,13 @@ void ChatWebView::injectColorScheme()
         QString taskPurpleBg = isLight ? QStringLiteral("rgba(156, 39, 176, 0.08)")
                                        : QStringLiteral("rgba(206, 147, 216, 0.15)");
 
-        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px; --task-purple: %5; --task-purple-bg: %6")
+        // Terminal text color: dark text on light backgrounds, light text on dark backgrounds
+        QString terminalFg = isLight ? QStringLiteral("#1e1e1e") : QStringLiteral("#e0e0e0");
+
+        QString fullCssVars = cssVars + QStringLiteral("; --code-bg: %1; --inline-code-bg: %2; --code-font-family: %3; --code-font-size: %4px; --task-purple: %5; --task-purple-bg: %6; --terminal-fg: %7")
                                             .arg(codeBg, inlineCodeBg, fontFamily)
                                             .arg(fontSize)
-                                            .arg(taskPurple, taskPurpleBg);
+                                            .arg(taskPurple, taskPurpleBg, terminalFg);
 
         QString script = QStringLiteral(
             "applyColorScheme('%1'); "

@@ -7,10 +7,13 @@
 #include "../config/SettingsStore.h"
 #include "../util/EditTracker.h"
 #include "../util/SessionStore.h"
+#include "../util/KateThemeConverter.h"
+#include "../util/KDEColorScheme.h"
 #include "../util/SummaryGenerator.h"
 #include "../util/SummaryStore.h"
 
 #include <QDir>
+#include <QJsonObject>
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -136,6 +139,9 @@ ChatWidget::ChatWidget(QWidget *parent)
 
     // Forward jump to edit requests from WebView
     connect(m_chatWebView, &ChatWebView::jumpToEditRequested, this, &ChatWidget::jumpToEditRequested);
+
+    // Apply diff colors when WebView is ready (after page load)
+    connect(m_chatWebView, &ChatWebView::webViewReady, this, &ChatWidget::applyDiffColors);
 }
 
 ChatWidget::~ChatWidget()
@@ -876,7 +882,52 @@ void ChatWidget::applyDiffColors()
         return;
     }
 
-    DiffColors colors = m_settingsStore->diffColors();
+    // Determine if code background is light or dark
+    // This affects which diff color palette we use for contrast
+    bool isLightCodeBackground = false;
+    bool foundBackgroundColor = false;
+
+    // Try to get background color from Kate theme
+    QString themeName = KateThemeConverter::getCurrentKateTheme();
+    qDebug() << "[ChatWidget] applyDiffColors - Kate theme:" << themeName;
+
+    QJsonObject themeJson = KateThemeConverter::loadKateTheme(themeName);
+    qDebug() << "[ChatWidget] applyDiffColors - Theme JSON empty:" << themeJson.isEmpty();
+
+    if (!themeJson.isEmpty()) {
+        QJsonObject editorColors = themeJson[QStringLiteral("editor-colors")].toObject();
+        QString kateCodeBg = editorColors[QStringLiteral("BackgroundColor")].toString();
+        qDebug() << "[ChatWidget] applyDiffColors - BackgroundColor from theme:" << kateCodeBg;
+
+        if (!kateCodeBg.isEmpty()) {
+            // Parse the color and check luminance
+            QColor bgColor(kateCodeBg);
+            if (bgColor.isValid()) {
+                // Use relative luminance formula: 0.299*R + 0.587*G + 0.114*B
+                // Values > 128 are considered "light"
+                int luminance = (bgColor.red() * 299 + bgColor.green() * 587 + bgColor.blue() * 114) / 1000;
+                isLightCodeBackground = (luminance > 128);
+                foundBackgroundColor = true;
+                qDebug() << "[ChatWidget] applyDiffColors - Luminance:" << luminance << "isLight:" << isLightCodeBackground;
+            }
+        }
+    }
+
+    // If no Kate theme or couldn't get background color, fall back to KDE color scheme detection
+    if (!foundBackgroundColor) {
+        qDebug() << "[ChatWidget] applyDiffColors - Falling back to KDE color scheme";
+        KDEColorScheme colorScheme;
+        isLightCodeBackground = colorScheme.isLightTheme();
+        qDebug() << "[ChatWidget] applyDiffColors - KDE isLightTheme:" << isLightCodeBackground;
+    }
+
+    // Get colors appropriate for the background brightness
+    DiffColorScheme scheme = m_settingsStore->diffColorScheme();
+    qDebug() << "[ChatWidget] applyDiffColors - Color scheme from settings:" << static_cast<int>(scheme);
+    DiffColors colors = SettingsStore::colorsForScheme(scheme, isLightCodeBackground);
+    qDebug() << "[ChatWidget] applyDiffColors - Deletion bg:" << colors.deletionBackground.name()
+             << "Addition bg:" << colors.additionBackground.name()
+             << "isLightCodeBackground:" << isLightCodeBackground;
 
     // Convert QColor to CSS rgba string for transparency support
     auto colorToRgba = [](const QColor &color) {
