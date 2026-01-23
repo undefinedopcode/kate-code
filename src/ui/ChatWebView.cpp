@@ -412,6 +412,21 @@ void ChatWebView::clearEditSummary()
     runJavaScript(QStringLiteral("clearEditSummary();"));
 }
 
+void ChatWebView::updateDiffColors(const QString &removeBackground, const QString &addBackground)
+{
+    if (!m_isLoaded) {
+        return;
+    }
+
+    QString script = QStringLiteral(
+        "document.documentElement.style.setProperty('--diff-remove-bg', '%1');"
+        "document.documentElement.style.setProperty('--diff-add-bg', '%2');"
+    ).arg(removeBackground, addBackground);
+
+    runJavaScript(script);
+    qDebug() << "[ChatWebView] Updated diff colors: remove=" << removeBackground << "add=" << addBackground;
+}
+
 // WebBridge implementation
 void WebBridge::respondToPermission(int requestId, const QString &optionId)
 {

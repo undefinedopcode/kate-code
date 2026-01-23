@@ -96,9 +96,11 @@ private Q_SLOTS:
     void onSummaryReady(const QString &sessionId, const QString &projectRoot, const QString &summary);
     void onSummaryError(const QString &sessionId, const QString &error);
     void onApiKeyLoadedForSummary(bool success);
+    void onSettingsChanged();
 
 private:
     void triggerSummaryGeneration();
+    void applyDiffColors();
     void updateTerminalSize();
     // Pending session action for after initialize completes
     enum class PendingAction {

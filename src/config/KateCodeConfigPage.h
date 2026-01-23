@@ -8,6 +8,7 @@ class QCheckBox;
 class QComboBox;
 class QPushButton;
 class QLabel;
+class QTabWidget;
 
 class KateCodeConfigPage : public KTextEditor::ConfigPage
 {
@@ -36,20 +37,28 @@ private Q_SLOTS:
 
 private:
     void setupUi();
+    void setupGeneralTab(QWidget *tab);
+    void setupSummariesTab(QWidget *tab);
     void updateApiKeyStatus();
 
     SettingsStore *m_settings;
 
-    // API Key section
+    // Tab widget
+    QTabWidget *m_tabWidget;
+
+    // General tab - Diff colors section
+    QComboBox *m_diffColorSchemeCombo;
+
+    // Summaries tab - API Key section
     QLineEdit *m_apiKeyEdit;
     QPushButton *m_showApiKeyButton;
     QLabel *m_apiKeyStatus;
 
-    // Summary section
+    // Summaries tab - Summary options
     QCheckBox *m_enableSummariesCheck;
     QComboBox *m_summaryModelCombo;
 
-    // Session section
+    // Summaries tab - Session resume
     QCheckBox *m_autoResumeCheck;
 
     bool m_hasChanges;

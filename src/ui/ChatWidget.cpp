@@ -199,6 +199,13 @@ void ChatWidget::setSettingsStore(SettingsStore *settings)
         connect(m_settingsStore, &SettingsStore::apiKeyLoaded,
                 this, &ChatWidget::onApiKeyLoadedForSummary);
 
+        // Connect settings changes for diff colors
+        connect(m_settingsStore, &SettingsStore::settingsChanged,
+                this, &ChatWidget::onSettingsChanged);
+
+        // Apply initial diff colors
+        applyDiffColors();
+
         // Try to load API key from KWallet (async)
         m_settingsStore->loadApiKey();
     }
@@ -856,6 +863,34 @@ void ChatWidget::onApiKeyLoadedForSummary(bool success)
 
     // Now that we have the API key, retry summary generation
     triggerSummaryGeneration();
+}
+
+void ChatWidget::onSettingsChanged()
+{
+    applyDiffColors();
+}
+
+void ChatWidget::applyDiffColors()
+{
+    if (!m_settingsStore || !m_chatWebView) {
+        return;
+    }
+
+    DiffColors colors = m_settingsStore->diffColors();
+
+    // Convert QColor to CSS rgba string for transparency support
+    auto colorToRgba = [](const QColor &color) {
+        return QStringLiteral("rgba(%1, %2, %3, %4)")
+            .arg(color.red())
+            .arg(color.green())
+            .arg(color.blue())
+            .arg(color.alphaF(), 0, 'f', 2);
+    };
+
+    QString removeBackground = colorToRgba(colors.deletionBackground);
+    QString addBackground = colorToRgba(colors.additionBackground);
+
+    m_chatWebView->updateDiffColors(removeBackground, addBackground);
 }
 
 void ChatWidget::resizeEvent(QResizeEvent *event)

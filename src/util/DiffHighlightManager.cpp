@@ -1,4 +1,5 @@
 #include "DiffHighlightManager.h"
+#include "../config/SettingsStore.h"
 
 #include <KTextEditor/Application>
 #include <KTextEditor/Document>
@@ -9,11 +10,19 @@
 #include <QDir>
 #include <QUrl>
 
-DiffHighlightManager::DiffHighlightManager(KTextEditor::MainWindow *mainWindow, QObject *parent)
+DiffHighlightManager::DiffHighlightManager(KTextEditor::MainWindow *mainWindow, SettingsStore *settings, QObject *parent)
     : QObject(parent)
     , m_mainWindow(mainWindow)
+    , m_settings(settings)
 {
     createDeletionAttribute();
+
+    // Connect to settings changes to update colors dynamically
+    if (m_settings) {
+        connect(m_settings, &SettingsStore::settingsChanged,
+                this, &DiffHighlightManager::onSettingsChanged);
+    }
+
     qDebug() << "[DiffHighlightManager] Initialized";
 }
 
@@ -26,14 +35,39 @@ void DiffHighlightManager::createDeletionAttribute()
 {
     m_deletionAttr = KTextEditor::Attribute::Ptr(new KTextEditor::Attribute());
 
-    // Red semi-transparent background for deletions
-    m_deletionAttr->setBackground(QColor(255, 200, 200, 128));
+    // Get colors from settings, or use default red/green scheme
+    DiffColors colors;
+    if (m_settings) {
+        colors = m_settings->diffColors();
+    } else {
+        colors = SettingsStore::colorsForScheme(DiffColorScheme::RedGreen);
+    }
+
+    // Apply deletion colors
+    m_deletionAttr->setBackground(colors.deletionBackground);
+    m_deletionAttr->setForeground(colors.deletionForeground);
 
     // Strikethrough effect
     m_deletionAttr->setFontStrikeOut(true);
 
-    // Red foreground for emphasis
-    m_deletionAttr->setForeground(QColor(180, 60, 60));
+    qDebug() << "[DiffHighlightManager] Created deletion attribute with colors:"
+             << "bg=" << colors.deletionBackground.name()
+             << "fg=" << colors.deletionForeground.name();
+}
+
+void DiffHighlightManager::onSettingsChanged()
+{
+    // Recreate the attribute with new colors
+    createDeletionAttribute();
+
+    // Update existing highlights to use the new attribute
+    for (auto it = m_highlights.begin(); it != m_highlights.end(); ++it) {
+        for (KTextEditor::MovingRange *range : it.value()) {
+            range->setAttribute(m_deletionAttr);
+        }
+    }
+
+    qDebug() << "[DiffHighlightManager] Updated colors from settings";
 }
 
 void DiffHighlightManager::highlightToolCall(const QString &toolCallId, const ToolCall &toolCall)

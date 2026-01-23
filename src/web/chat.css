@@ -698,12 +698,12 @@ pre.diff .diff-context {
 }
 
 pre.diff .diff-remove {
-    background-color: rgba(244, 135, 113, 0.25);
+    background-color: var(--diff-remove-bg, #7a4347);
     /* Don't set color - let syntax highlighting show through */
 }
 
 pre.diff .diff-add {
-    background-color: rgba(78, 201, 176, 0.25);
+    background-color: var(--diff-add-bg, #275850);
     /* Don't set color - let syntax highlighting show through */
 }
 

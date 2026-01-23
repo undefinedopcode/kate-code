@@ -8,6 +8,8 @@
 #include <QHash>
 #include <QObject>
 
+class SettingsStore;
+
 namespace KTextEditor {
 class Document;
 class Range;
@@ -18,7 +20,7 @@ class DiffHighlightManager : public QObject
     Q_OBJECT
 
 public:
-    explicit DiffHighlightManager(KTextEditor::MainWindow *mainWindow, QObject *parent = nullptr);
+    explicit DiffHighlightManager(KTextEditor::MainWindow *mainWindow, SettingsStore *settings = nullptr, QObject *parent = nullptr);
     ~DiffHighlightManager() override;
 
     // Highlight a tool call's edits in the editor
@@ -30,6 +32,9 @@ public:
     // Clear all highlights
     void clearAllHighlights();
 
+private Q_SLOTS:
+    void onSettingsChanged();
+
 private:
     // Find an open document by file path
     KTextEditor::Document *findDocument(const QString &filePath);
@@ -40,10 +45,11 @@ private:
     // Apply highlight to a single edit
     bool highlightEdit(const QString &toolCallId, const EditDiff &edit, const QString &fallbackFilePath);
 
-    // Create the deletion highlight attribute (red background + strikethrough)
+    // Create the deletion highlight attribute based on current settings
     void createDeletionAttribute();
 
     KTextEditor::MainWindow *m_mainWindow;
+    SettingsStore *m_settings;
     QHash<QString, QList<KTextEditor::MovingRange *>> m_highlights;
     KTextEditor::Attribute::Ptr m_deletionAttr;
 };

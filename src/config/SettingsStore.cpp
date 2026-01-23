@@ -181,3 +181,71 @@ void SettingsStore::setAutoResumeSessions(bool enable)
     m_settings.sync();
     Q_EMIT settingsChanged();
 }
+
+DiffColorScheme SettingsStore::diffColorScheme() const
+{
+    int scheme = m_settings.value(QStringLiteral("Diffs/colorScheme"), 0).toInt();
+    return static_cast<DiffColorScheme>(scheme);
+}
+
+void SettingsStore::setDiffColorScheme(DiffColorScheme scheme)
+{
+    m_settings.setValue(QStringLiteral("Diffs/colorScheme"), static_cast<int>(scheme));
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+DiffColors SettingsStore::diffColors() const
+{
+    return colorsForScheme(diffColorScheme());
+}
+
+DiffColors SettingsStore::colorsForScheme(DiffColorScheme scheme)
+{
+    DiffColors colors;
+
+    // All background colors are opaque at ~50% brightness to avoid
+    // mixing with variable code backgrounds
+
+    switch (scheme) {
+    case DiffColorScheme::BlueOrange:
+        // Colorblind-friendly: blue for deletions, orange for additions
+        colors.deletionBackground = QColor(50, 53, 77);          // Dark muted blue
+        colors.deletionForeground = QColor(50, 80, 180);         // Dark blue
+        colors.additionBackground = QColor(77, 58, 40);          // Dark muted orange
+        colors.additionForeground = QColor(180, 100, 40);        // Dark orange
+        break;
+
+    case DiffColorScheme::PurpleGreen:
+        // Alternative colorblind-friendly: purple for deletions
+        colors.deletionBackground = QColor(58, 40, 77);          // Dark muted purple
+        colors.deletionForeground = QColor(120, 60, 160);        // Dark purple
+        colors.additionBackground = QColor(40, 77, 40);          // Dark muted green
+        colors.additionForeground = QColor(40, 140, 40);         // Dark green
+        break;
+
+    case DiffColorScheme::RedGreen:
+    default:
+        // Traditional: red for deletions, green for additions
+        colors.deletionBackground = QColor(122, 67, 71);         // Dark muted red (#7a4347)
+        colors.deletionForeground = QColor(180, 60, 60);         // Dark red
+        colors.additionBackground = QColor(39, 88, 80);          // Dark muted teal (#275850)
+        colors.additionForeground = QColor(60, 140, 60);         // Dark green
+        break;
+    }
+
+    return colors;
+}
+
+QString SettingsStore::schemeDisplayName(DiffColorScheme scheme)
+{
+    switch (scheme) {
+    case DiffColorScheme::BlueOrange:
+        return QStringLiteral("Blue / Orange (colorblind-friendly)");
+    case DiffColorScheme::PurpleGreen:
+        return QStringLiteral("Purple / Green (colorblind-friendly)");
+    case DiffColorScheme::RedGreen:
+    default:
+        return QStringLiteral("Red / Green (default)");
+    }
+}
