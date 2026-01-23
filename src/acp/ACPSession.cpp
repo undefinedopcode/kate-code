@@ -63,6 +63,7 @@ void ACPSession::start(const QString &workingDir, const QString &permissionMode)
 
     m_workingDir = workingDir;
     m_status = ConnectionStatus::Connecting;
+    m_editTracker->clear();
     Q_EMIT statusChanged(m_status);
 
     if (!m_service->start(workingDir)) {
