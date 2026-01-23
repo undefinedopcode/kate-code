@@ -35,6 +35,7 @@ public:
 Q_SIGNALS:
     void permissionResponseReady(int requestId, const QString &optionId);
     void jumpToEditRequested(const QString &filePath, int startLine, int endLine);
+    void webViewReady();
 
 private Q_SLOTS:
     void onLoadFinished(bool ok);
