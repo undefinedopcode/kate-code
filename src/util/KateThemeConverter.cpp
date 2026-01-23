@@ -460,3 +460,32 @@ QString KateThemeConverter::getCurrentThemeCSS()
 
     return convertToHighlightJsCSS(themeJson);
 }
+
+bool KateThemeConverter::isLightBackground()
+{
+    // Try to get background color from Kate theme
+    QString themeName = getCurrentKateTheme();
+    QJsonObject themeJson = loadKateTheme(themeName);
+
+    if (!themeJson.isEmpty()) {
+        QJsonObject editorColors = themeJson[QStringLiteral("editor-colors")].toObject();
+        QString kateCodeBg = editorColors[QStringLiteral("BackgroundColor")].toString();
+
+        if (!kateCodeBg.isEmpty()) {
+            QColor bgColor(kateCodeBg);
+            if (bgColor.isValid()) {
+                // Use relative luminance formula: 0.299*R + 0.587*G + 0.114*B
+                // Values > 128 are considered "light"
+                int luminance = (bgColor.red() * 299 + bgColor.green() * 587 + bgColor.blue() * 114) / 1000;
+                bool isLight = (luminance > 128);
+                qDebug() << "[KateThemeConverter] isLightBackground - Theme:" << themeName
+                         << "bg:" << kateCodeBg << "luminance:" << luminance << "isLight:" << isLight;
+                return isLight;
+            }
+        }
+    }
+
+    // Fallback: assume dark background (safer default for code editors)
+    qDebug() << "[KateThemeConverter] isLightBackground - Could not determine from Kate theme, defaulting to dark";
+    return false;
+}

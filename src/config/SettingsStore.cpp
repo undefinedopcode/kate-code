@@ -14,6 +14,7 @@ SettingsStore::SettingsStore(QObject *parent)
     , m_walletAvailable(false)
     , m_pendingOperation(WalletOperation::None)
 {
+    qDebug() << "[SettingsStore] Initialized, config file:" << m_settings.fileName();
 }
 
 SettingsStore::~SettingsStore()
@@ -185,6 +186,7 @@ void SettingsStore::setAutoResumeSessions(bool enable)
 DiffColorScheme SettingsStore::diffColorScheme() const
 {
     int scheme = m_settings.value(QStringLiteral("Diffs/colorScheme"), 0).toInt();
+    qDebug() << "[SettingsStore] diffColorScheme() returning:" << scheme;
     return static_cast<DiffColorScheme>(scheme);
 }
 
@@ -200,38 +202,70 @@ DiffColors SettingsStore::diffColors() const
     return colorsForScheme(diffColorScheme());
 }
 
-DiffColors SettingsStore::colorsForScheme(DiffColorScheme scheme)
+DiffColors SettingsStore::colorsForScheme(DiffColorScheme scheme, bool forLightBackground)
 {
     DiffColors colors;
 
-    // All background colors are opaque at ~50% brightness to avoid
-    // mixing with variable code backgrounds
+    // Colors are optimized for contrast against their target background:
+    // - Dark backgrounds: muted, darker colors that don't overwhelm
+    // - Light backgrounds: brighter, more saturated colors for visibility
 
-    switch (scheme) {
-    case DiffColorScheme::BlueOrange:
-        // Colorblind-friendly: blue for deletions, orange for additions
-        colors.deletionBackground = QColor(50, 53, 77);          // Dark muted blue
-        colors.deletionForeground = QColor(50, 80, 180);         // Dark blue
-        colors.additionBackground = QColor(77, 58, 40);          // Dark muted orange
-        colors.additionForeground = QColor(180, 100, 40);        // Dark orange
-        break;
+    if (forLightBackground) {
+        // Light background colors - brighter and more saturated for contrast
+        switch (scheme) {
+        case DiffColorScheme::BlueOrange:
+            // Colorblind-friendly: blue for deletions, orange for additions
+            colors.deletionBackground = QColor(200, 210, 240);   // Light blue
+            colors.deletionForeground = QColor(30, 60, 150);     // Dark blue text
+            colors.additionBackground = QColor(255, 230, 200);   // Light orange
+            colors.additionForeground = QColor(150, 70, 0);      // Dark orange text
+            break;
 
-    case DiffColorScheme::PurpleGreen:
-        // Alternative colorblind-friendly: purple for deletions
-        colors.deletionBackground = QColor(58, 40, 77);          // Dark muted purple
-        colors.deletionForeground = QColor(120, 60, 160);        // Dark purple
-        colors.additionBackground = QColor(40, 77, 40);          // Dark muted green
-        colors.additionForeground = QColor(40, 140, 40);         // Dark green
-        break;
+        case DiffColorScheme::PurpleGreen:
+            // Alternative colorblind-friendly: purple for deletions
+            colors.deletionBackground = QColor(230, 210, 245);   // Light purple
+            colors.deletionForeground = QColor(100, 40, 140);    // Dark purple text
+            colors.additionBackground = QColor(210, 245, 210);   // Light green
+            colors.additionForeground = QColor(30, 100, 30);     // Dark green text
+            break;
 
-    case DiffColorScheme::RedGreen:
-    default:
-        // Traditional: red for deletions, green for additions
-        colors.deletionBackground = QColor(122, 67, 71);         // Dark muted red (#7a4347)
-        colors.deletionForeground = QColor(180, 60, 60);         // Dark red
-        colors.additionBackground = QColor(39, 88, 80);          // Dark muted teal (#275850)
-        colors.additionForeground = QColor(60, 140, 60);         // Dark green
-        break;
+        case DiffColorScheme::RedGreen:
+        default:
+            // Traditional: red for deletions, green for additions
+            colors.deletionBackground = QColor(255, 220, 220);   // Light red/pink
+            colors.deletionForeground = QColor(150, 30, 30);     // Dark red text
+            colors.additionBackground = QColor(210, 255, 220);   // Light green
+            colors.additionForeground = QColor(30, 100, 30);     // Dark green text
+            break;
+        }
+    } else {
+        // Dark background colors - muted and darker
+        switch (scheme) {
+        case DiffColorScheme::BlueOrange:
+            // Colorblind-friendly: blue for deletions, orange for additions
+            colors.deletionBackground = QColor(50, 53, 77);      // Dark muted blue
+            colors.deletionForeground = QColor(50, 80, 180);     // Dark blue
+            colors.additionBackground = QColor(77, 58, 40);      // Dark muted orange
+            colors.additionForeground = QColor(180, 100, 40);    // Dark orange
+            break;
+
+        case DiffColorScheme::PurpleGreen:
+            // Alternative colorblind-friendly: purple for deletions
+            colors.deletionBackground = QColor(58, 40, 77);      // Dark muted purple
+            colors.deletionForeground = QColor(120, 60, 160);    // Dark purple
+            colors.additionBackground = QColor(40, 77, 40);      // Dark muted green
+            colors.additionForeground = QColor(40, 140, 40);     // Dark green
+            break;
+
+        case DiffColorScheme::RedGreen:
+        default:
+            // Traditional: red for deletions, green for additions
+            colors.deletionBackground = QColor(122, 67, 71);     // Dark muted red (#7a4347)
+            colors.deletionForeground = QColor(180, 60, 60);     // Dark red
+            colors.additionBackground = QColor(39, 88, 80);      // Dark muted teal (#275850)
+            colors.additionForeground = QColor(60, 140, 60);     // Dark green
+            break;
+        }
     }
 
     return colors;

@@ -1,4 +1,5 @@
 #include "DiffHighlightManager.h"
+#include "KateThemeConverter.h"
 #include "../config/SettingsStore.h"
 
 #include <KTextEditor/Application>
@@ -35,13 +36,12 @@ void DiffHighlightManager::createDeletionAttribute()
 {
     m_deletionAttr = KTextEditor::Attribute::Ptr(new KTextEditor::Attribute());
 
-    // Get colors from settings, or use default red/green scheme
-    DiffColors colors;
-    if (m_settings) {
-        colors = m_settings->diffColors();
-    } else {
-        colors = SettingsStore::colorsForScheme(DiffColorScheme::RedGreen);
-    }
+    // Detect if Kate theme has a light background
+    bool isLightBackground = KateThemeConverter::isLightBackground();
+
+    // Get colors from settings appropriate for the background brightness
+    DiffColorScheme scheme = m_settings ? m_settings->diffColorScheme() : DiffColorScheme::RedGreen;
+    DiffColors colors = SettingsStore::colorsForScheme(scheme, isLightBackground);
 
     // Apply deletion colors
     m_deletionAttr->setBackground(colors.deletionBackground);
@@ -52,7 +52,8 @@ void DiffHighlightManager::createDeletionAttribute()
 
     qDebug() << "[DiffHighlightManager] Created deletion attribute with colors:"
              << "bg=" << colors.deletionBackground.name()
-             << "fg=" << colors.deletionForeground.name();
+             << "fg=" << colors.deletionForeground.name()
+             << "isLightBackground:" << isLightBackground;
 }
 
 void DiffHighlightManager::onSettingsChanged()
