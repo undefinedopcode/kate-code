@@ -29,6 +29,9 @@ public:
     void addTrackedEdit(const TrackedEdit &edit);
     void clearEditSummary();
 
+    // Diff color scheme support
+    void updateDiffColors(const QString &removeBackground, const QString &addBackground);
+
 Q_SIGNALS:
     void permissionResponseReady(int requestId, const QString &optionId);
     void jumpToEditRequested(const QString &filePath, int startLine, int endLine);

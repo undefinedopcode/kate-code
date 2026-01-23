@@ -12,6 +12,7 @@
 #include <QLineEdit>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 KateCodeConfigPage::KateCodeConfigPage(SettingsStore *settings, QWidget *parent)
@@ -58,18 +59,73 @@ void KateCodeConfigPage::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
 
+    // Create tab widget
+    m_tabWidget = new QTabWidget(this);
+
+    // Create General tab
+    auto *generalTab = new QWidget();
+    setupGeneralTab(generalTab);
+    m_tabWidget->addTab(generalTab, i18n("General"));
+
+    // Create Summaries tab
+    auto *summariesTab = new QWidget();
+    setupSummariesTab(summariesTab);
+    m_tabWidget->addTab(summariesTab, i18n("Summaries"));
+
+    mainLayout->addWidget(m_tabWidget);
+
+    updateApiKeyStatus();
+}
+
+void KateCodeConfigPage::setupGeneralTab(QWidget *tab)
+{
+    auto *tabLayout = new QVBoxLayout(tab);
+
+    // Diff Colors Group
+    auto *diffGroup = new QGroupBox(i18n("Diff Highlighting"), tab);
+    auto *diffLayout = new QFormLayout(diffGroup);
+
+    m_diffColorSchemeCombo = new QComboBox(tab);
+    m_diffColorSchemeCombo->addItem(
+        SettingsStore::schemeDisplayName(DiffColorScheme::RedGreen),
+        static_cast<int>(DiffColorScheme::RedGreen));
+    m_diffColorSchemeCombo->addItem(
+        SettingsStore::schemeDisplayName(DiffColorScheme::BlueOrange),
+        static_cast<int>(DiffColorScheme::BlueOrange));
+    m_diffColorSchemeCombo->addItem(
+        SettingsStore::schemeDisplayName(DiffColorScheme::PurpleGreen),
+        static_cast<int>(DiffColorScheme::PurpleGreen));
+    connect(m_diffColorSchemeCombo, &QComboBox::currentIndexChanged,
+            this, &KateCodeConfigPage::onSettingChanged);
+    diffLayout->addRow(i18n("Color scheme:"), m_diffColorSchemeCombo);
+
+    auto *diffNote = new QLabel(i18n("Choose a colorblind-friendly scheme if you have difficulty distinguishing red and green."), tab);
+    diffNote->setWordWrap(true);
+    diffNote->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
+    diffLayout->addRow(diffNote);
+
+    tabLayout->addWidget(diffGroup);
+
+    // Stretch to push everything to top
+    tabLayout->addStretch();
+}
+
+void KateCodeConfigPage::setupSummariesTab(QWidget *tab)
+{
+    auto *tabLayout = new QVBoxLayout(tab);
+
     // API Key Group
-    auto *apiGroup = new QGroupBox(i18n("Anthropic API Key"), this);
+    auto *apiGroup = new QGroupBox(i18n("Anthropic API Key"), tab);
     auto *apiLayout = new QVBoxLayout(apiGroup);
 
     auto *apiKeyLayout = new QHBoxLayout();
-    m_apiKeyEdit = new QLineEdit(this);
+    m_apiKeyEdit = new QLineEdit(tab);
     m_apiKeyEdit->setEchoMode(QLineEdit::Password);
     m_apiKeyEdit->setPlaceholderText(i18n("Enter your Anthropic API key"));
     connect(m_apiKeyEdit, &QLineEdit::textChanged,
             this, &KateCodeConfigPage::onSettingChanged);
 
-    m_showApiKeyButton = new QPushButton(i18n("Show"), this);
+    m_showApiKeyButton = new QPushButton(i18n("Show"), tab);
     m_showApiKeyButton->setCheckable(true);
     connect(m_showApiKeyButton, &QPushButton::clicked,
             this, &KateCodeConfigPage::onShowApiKeyToggled);
@@ -78,27 +134,27 @@ void KateCodeConfigPage::setupUi()
     apiKeyLayout->addWidget(m_showApiKeyButton);
     apiLayout->addLayout(apiKeyLayout);
 
-    m_apiKeyStatus = new QLabel(this);
+    m_apiKeyStatus = new QLabel(tab);
     m_apiKeyStatus->setWordWrap(true);
     apiLayout->addWidget(m_apiKeyStatus);
 
-    auto *apiNote = new QLabel(i18n("The API key is stored securely in KWallet and used for generating session summaries."), this);
+    auto *apiNote = new QLabel(i18n("The API key is stored securely in KWallet and used for generating session summaries."), tab);
     apiNote->setWordWrap(true);
     apiNote->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
     apiLayout->addWidget(apiNote);
 
-    mainLayout->addWidget(apiGroup);
+    tabLayout->addWidget(apiGroup);
 
     // Session Summaries Group
-    auto *summaryGroup = new QGroupBox(i18n("Session Summaries"), this);
+    auto *summaryGroup = new QGroupBox(i18n("Session Summaries"), tab);
     auto *summaryLayout = new QFormLayout(summaryGroup);
 
-    m_enableSummariesCheck = new QCheckBox(i18n("Generate summaries when sessions end"), this);
+    m_enableSummariesCheck = new QCheckBox(i18n("Generate summaries when sessions end"), tab);
     connect(m_enableSummariesCheck, &QCheckBox::toggled,
             this, &KateCodeConfigPage::onSettingChanged);
     summaryLayout->addRow(m_enableSummariesCheck);
 
-    m_summaryModelCombo = new QComboBox(this);
+    m_summaryModelCombo = new QComboBox(tab);
     m_summaryModelCombo->addItem(QStringLiteral("claude-3-5-haiku-20241022"), QStringLiteral("claude-3-5-haiku-20241022"));
     m_summaryModelCombo->addItem(QStringLiteral("claude-3-5-sonnet-20241022"), QStringLiteral("claude-3-5-sonnet-20241022"));
     m_summaryModelCombo->addItem(QStringLiteral("claude-3-haiku-20240307"), QStringLiteral("claude-3-haiku-20240307"));
@@ -106,28 +162,26 @@ void KateCodeConfigPage::setupUi()
             this, &KateCodeConfigPage::onSettingChanged);
     summaryLayout->addRow(i18n("Summary model:"), m_summaryModelCombo);
 
-    auto *summaryNote = new QLabel(i18n("Summaries are stored in ~/.kate-code/summaries/ and can be used as context when resuming sessions."), this);
+    auto *summaryNote = new QLabel(i18n("Summaries are stored in ~/.kate-code/summaries/ and can be used as context when resuming sessions."), tab);
     summaryNote->setWordWrap(true);
     summaryNote->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
     summaryLayout->addRow(summaryNote);
 
-    mainLayout->addWidget(summaryGroup);
+    tabLayout->addWidget(summaryGroup);
 
-    // Session Management Group
-    auto *sessionGroup = new QGroupBox(i18n("Session Management"), this);
+    // Session Resume Group
+    auto *sessionGroup = new QGroupBox(i18n("Session Resume"), tab);
     auto *sessionLayout = new QVBoxLayout(sessionGroup);
 
-    m_autoResumeCheck = new QCheckBox(i18n("Prompt to resume previous session when connecting"), this);
+    m_autoResumeCheck = new QCheckBox(i18n("Prompt to resume previous session when connecting"), tab);
     connect(m_autoResumeCheck, &QCheckBox::toggled,
             this, &KateCodeConfigPage::onSettingChanged);
     sessionLayout->addWidget(m_autoResumeCheck);
 
-    mainLayout->addWidget(sessionGroup);
+    tabLayout->addWidget(sessionGroup);
 
     // Stretch to push everything to top
-    mainLayout->addStretch();
-
-    updateApiKeyStatus();
+    tabLayout->addStretch();
 }
 
 void KateCodeConfigPage::apply()
@@ -149,6 +203,7 @@ void KateCodeConfigPage::apply()
     m_settings->setSummariesEnabled(m_enableSummariesCheck->isChecked());
     m_settings->setSummaryModel(m_summaryModelCombo->currentData().toString());
     m_settings->setAutoResumeSessions(m_autoResumeCheck->isChecked());
+    m_settings->setDiffColorScheme(static_cast<DiffColorScheme>(m_diffColorSchemeCombo->currentData().toInt()));
 
     m_hasChanges = false;
 }
@@ -159,6 +214,7 @@ void KateCodeConfigPage::defaults()
     m_enableSummariesCheck->setChecked(false);
     m_summaryModelCombo->setCurrentIndex(0);
     m_autoResumeCheck->setChecked(true);
+    m_diffColorSchemeCombo->setCurrentIndex(0); // RedGreen (default)
     m_hasChanges = true;
     Q_EMIT changed();
 }
@@ -175,6 +231,12 @@ void KateCodeConfigPage::reset()
     }
 
     m_autoResumeCheck->setChecked(m_settings->autoResumeSessions());
+
+    // Load diff color scheme
+    int schemeIndex = m_diffColorSchemeCombo->findData(static_cast<int>(m_settings->diffColorScheme()));
+    if (schemeIndex >= 0) {
+        m_diffColorSchemeCombo->setCurrentIndex(schemeIndex);
+    }
 
     // API key is loaded asynchronously
     m_hasChanges = false;

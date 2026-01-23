@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QObject>
 #include <QSettings>
 #include <QString>
@@ -7,6 +8,21 @@
 namespace KWallet {
 class Wallet;
 }
+
+// Color schemes for diff highlighting (colorblind-friendly options)
+enum class DiffColorScheme {
+    RedGreen,    // Traditional: red for deletions (default)
+    BlueOrange,  // Colorblind-friendly: blue for deletions, orange for additions
+    PurpleGreen, // Alternative colorblind-friendly
+};
+
+// Color pair for diff highlighting
+struct DiffColors {
+    QColor deletionBackground;
+    QColor deletionForeground;
+    QColor additionBackground;
+    QColor additionForeground;
+};
 
 class SettingsStore : public QObject
 {
@@ -33,6 +49,15 @@ public:
     // Session settings
     bool autoResumeSessions() const;
     void setAutoResumeSessions(bool enable);
+
+    // Diff color scheme settings
+    DiffColorScheme diffColorScheme() const;
+    void setDiffColorScheme(DiffColorScheme scheme);
+    DiffColors diffColors() const;
+
+    // Static helper to get colors for a scheme
+    static DiffColors colorsForScheme(DiffColorScheme scheme);
+    static QString schemeDisplayName(DiffColorScheme scheme);
 
 Q_SIGNALS:
     void apiKeyLoaded(bool success);

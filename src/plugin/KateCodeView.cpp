@@ -31,7 +31,7 @@ KateCodeView::KateCodeView(KateCodePlugin *plugin, KTextEditor::MainWindow *main
     createToolView();
 
     // Create diff highlight manager for showing pending edits in editor
-    m_diffHighlightManager = new DiffHighlightManager(m_mainWindow, this);
+    m_diffHighlightManager = new DiffHighlightManager(m_mainWindow, m_plugin->settings(), this);
 
     // Editor diff highlighting disabled - diffs are shown inline in tool call UI instead
     // If re-enabling, connect ChatWidget::toolCallHighlightRequested/toolCallClearRequested
