@@ -33,6 +33,11 @@ public:
     // Get CSS for the current Kate theme
     static QString getCurrentThemeCSS();
 
+    // Check if the current Kate theme has a light background
+    // Returns true for light themes, false for dark themes
+    // Falls back to KDE color scheme detection if Kate theme cannot be determined
+    static bool isLightBackground();
+
 private:
     // Map Kate text-style names to highlight.js CSS classes
     static QStringList mapKateStyleToHljs(const QString &kateStyle);

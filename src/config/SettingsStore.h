@@ -56,7 +56,8 @@ public:
     DiffColors diffColors() const;
 
     // Static helper to get colors for a scheme
-    static DiffColors colorsForScheme(DiffColorScheme scheme);
+    // forLightBackground: true if the code block background is light (needs brighter diff colors)
+    static DiffColors colorsForScheme(DiffColorScheme scheme, bool forLightBackground = false);
     static QString schemeDisplayName(DiffColorScheme scheme);
 
 Q_SIGNALS:
