@@ -76,6 +76,25 @@ function isBashTool(toolName) {
            name.includes('terminal');
 }
 
+// Parse Bash tool result to extract exit code and output
+// Input format: "Exited with code X.Final output:\n\n<output>"
+// Returns: { exitCode: number|null, output: string }
+function parseBashResult(result) {
+    if (!result) return { exitCode: null, output: '' };
+
+    // Match "Exited with code X.Final output:" or "Exited with code X.Final output:"
+    const match = result.match(/^Exited with code (\d+)\.Final output:\n?\n?([\s\S]*)$/);
+    if (match) {
+        return {
+            exitCode: parseInt(match[1], 10),
+            output: match[2] || ''
+        };
+    }
+
+    // No match - return raw result
+    return { exitCode: null, output: result };
+}
+
 // Check if a tool is a Read tool (standard or MCP variant)
 function isReadTool(toolName) {
     return toolName === 'Read' || toolName === 'mcp__acp__Read';
@@ -768,12 +787,27 @@ function renderToolCall(toolCall) {
                     </div>
                 </div>`;
             } else if (isBashTool(toolCall.name)) {
-                // Bash/terminal tools get ANSI color processing with dedicated styling
-                const ansiRendered = ansiToHtml(toolCall.result);
-                html += `<div class="tool-call-result-section">
-                    <strong>Output:</strong>
-                    <div class="bash-output"><pre>${ansiRendered}</pre></div>
-                </div>`;
+                // Bash/terminal tools - parse exit code and render with structured layout
+                const parsed = parseBashResult(toolCall.result);
+                const exitCodeClass = parsed.exitCode === 0 ? 'exit-success' : (parsed.exitCode !== null ? 'exit-error' : '');
+
+                html += `<div class="tool-call-result-section bash-result-section ${exitCodeClass}">`;
+
+                // Show exit code if available
+                if (parsed.exitCode !== null) {
+                    html += `<div class="bash-exit-code ${exitCodeClass}"><strong>Exit code:</strong> <span class="exit-code-value">${parsed.exitCode}</span></div>`;
+                }
+
+                // Show output if available
+                if (parsed.output) {
+                    const ansiRendered = ansiToHtml(parsed.output);
+                    html += `<strong>Output:</strong>
+                    <div class="bash-output"><pre>${ansiRendered}</pre></div>`;
+                } else if (parsed.exitCode !== null) {
+                    html += `<div class="bash-no-output"><em>No output</em></div>`;
+                }
+
+                html += `</div>`;
             } else {
                 html += `<div class="tool-call-result-section"><strong>Result:</strong><pre class="tool-call-result">${escapeHtml(toolCall.result)}</pre></div>`;
             }
