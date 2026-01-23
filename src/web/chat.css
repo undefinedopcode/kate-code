@@ -646,15 +646,58 @@ body {
 }
 
 /* Bash/Terminal output - dedicated styling separate from code blocks */
+.bash-result-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.bash-exit-code {
+    font-size: 11px;
+    color: var(--fg-secondary);
+}
+
+.bash-exit-code strong {
+    display: inline;
+    margin-right: 4px;
+}
+
+.bash-exit-code .exit-code-value {
+    font-family: var(--code-font-family, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace);
+    padding: 1px 6px;
+    border-radius: 3px;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+.bash-exit-code.exit-success .exit-code-value {
+    color: var(--positive);
+    background-color: rgba(78, 201, 176, 0.15);
+}
+
+.bash-exit-code.exit-error .exit-code-value {
+    color: var(--negative);
+    background-color: rgba(244, 135, 113, 0.15);
+}
+
+.bash-no-output {
+    font-size: 11px;
+    color: var(--fg-secondary);
+    font-style: italic;
+}
+
 .bash-output {
     background-color: #1a1a1a;
     border-radius: 4px;
     padding: 8px;
-    margin-top: 8px;
+    margin-top: 4px;
     max-height: 400px;
     overflow-y: auto;
     overflow-x: auto;
     border-left: 3px solid var(--positive);
+}
+
+.bash-result-section.exit-error .bash-output {
+    border-left-color: var(--negative);
 }
 
 .bash-output pre {
@@ -965,7 +1008,7 @@ pre.terminal-output {
     font-family: var(--code-font-family, 'JetBrains Mono', 'Fira Code', monospace);
     font-size: var(--code-font-size, 12px);
     line-height: 1.4;
-    max-height: 400px;
+    max-height: 530px;
     overflow-y: auto;
     overflow-x: auto;
     white-space: pre-wrap;
