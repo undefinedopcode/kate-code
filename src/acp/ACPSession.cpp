@@ -1017,13 +1017,9 @@ void ACPSession::handleFsReadTextFile(const QJsonObject &params, int requestId)
         file.close();
     }
 
-    // Apply line offset and limit, formatting with line numbers
+    // Apply line offset and limit
     QStringList lines = content.split(QLatin1Char('\n'));
     QStringList resultLines;
-
-    // Calculate width needed for line numbers (based on last line we'll output)
-    int lastLineNum = (limit > 0) ? qMin(line + limit - 1, lines.size()) : lines.size();
-    int lineNumWidth = QString::number(lastLineNum).length();
 
     for (int i = 0; i < lines.size(); ++i) {
         int currentLine = i + 1;  // 1-based line numbers
@@ -1033,9 +1029,7 @@ void ACPSession::handleFsReadTextFile(const QJsonObject &params, int requestId)
             continue;
         }
 
-        // Format: "    N→content" with right-aligned line number
-        QString lineNum = QString::number(currentLine).rightJustified(lineNumWidth, QLatin1Char(' '));
-        resultLines.append(QStringLiteral("%1→%2").arg(lineNum, lines[i]));
+        resultLines.append(lines[i]);
 
         // Check limit
         if (limit > 0 && resultLines.size() >= limit) {
