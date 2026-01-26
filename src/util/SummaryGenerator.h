@@ -33,7 +33,7 @@ private Q_SLOTS:
     void onNetworkReply(QNetworkReply *reply);
 
 private:
-    QString buildPrompt(const QString &transcriptContent);
+    QString buildPrompt(const QString &projectRoot, const QString &transcriptContent);
     QString truncateTranscript(const QString &transcript, int maxChars = 50000);
 
     SettingsStore *m_settings;
