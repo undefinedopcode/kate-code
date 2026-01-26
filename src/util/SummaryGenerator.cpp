@@ -89,7 +89,7 @@ void SummaryGenerator::generateSummary(const QString &sessionId,
     QJsonArray messages;
     QJsonObject userMsg;
     userMsg[QStringLiteral("role")] = QStringLiteral("user");
-    userMsg[QStringLiteral("content")] = buildPrompt(transcriptContent);
+    userMsg[QStringLiteral("content")] = buildPrompt(projectRoot, transcriptContent);
     messages.append(userMsg);
     body[QStringLiteral("messages")] = messages;
 
@@ -161,21 +161,58 @@ void SummaryGenerator::onNetworkReply(QNetworkReply *reply)
     Q_EMIT summaryReady(pending.sessionId, pending.projectRoot, summary);
 }
 
-QString SummaryGenerator::buildPrompt(const QString &transcriptContent)
+QString SummaryGenerator::buildPrompt(const QString &projectRoot, const QString &transcriptContent)
 {
     QString truncated = truncateTranscript(transcriptContent);
 
+    // Extract project name from path
+    QString projectName = projectRoot;
+    int lastSlash = projectRoot.lastIndexOf(QLatin1Char('/'));
+    if (lastSlash >= 0) {
+        projectName = projectRoot.mid(lastSlash + 1);
+    }
+
     return QStringLiteral(
-        "Summarize this coding session transcript concisely. Create a markdown summary with:\n\n"
-        "1. **Overview**: A brief 1-2 sentence description of the session\n"
-        "2. **Tasks Completed**: Bullet list of what was accomplished\n"
-        "3. **Files Modified**: List files that were created or modified\n"
-        "4. **Key Decisions**: Any important architectural or design decisions made\n"
-        "5. **Next Steps**: Unfinished work or suggested follow-up tasks\n\n"
-        "Keep the summary concise but informative - it will be used as context when resuming this session later.\n\n"
+        "Summarize this coding session transcript for the project \"%1\" (at %2).\n\n"
+        "Create a markdown summary with this EXACT structure:\n\n"
+        "# [Descriptive Thematic Title]\n\n"
+        "The title MUST be a specific, descriptive phrase that captures the main accomplishment or focus "
+        "of the session (e.g., \"Implementing OAuth2 Authentication\", \"Debugging Memory Leak in Parser\", "
+        "\"Refactoring Database Layer\"). NEVER use generic titles like \"Summary\", \"Session Summary\", "
+        "or \"Coding Session\".\n\n"
+        "## Overview\n"
+        "A brief 1-2 sentence description categorizing the session type (feature implementation, "
+        "bug fix, refactoring, debugging, configuration, etc.) and summarizing what was accomplished.\n\n"
+        "## Tasks Completed\n"
+        "- Bullet list of what was accomplished\n"
+        "- Focus on outcomes, not process\n\n"
+        "## Files Modified\n"
+        "- List files that were created, modified, or deleted\n"
+        "- Group by directory if many files\n\n"
+        "## Key Decisions\n"
+        "- Important architectural or design decisions made\n"
+        "- Trade-offs considered\n"
+        "- Omit this section if no significant decisions were made\n\n"
+        "## Problems & Blockers\n"
+        "- Errors encountered and how they were resolved\n"
+        "- Unresolved issues or blockers\n"
+        "- Failed approaches that were abandoned\n"
+        "- Omit this section if none\n\n"
+        "## Commands & Tools\n"
+        "- Key build/test/deploy commands used\n"
+        "- External tools or services involved\n"
+        "- Omit this section if only standard editing occurred\n\n"
+        "## Next Steps\n"
+        "- Unfinished work or suggested follow-up tasks\n"
+        "- Known issues to address\n\n"
+        "Guidelines:\n"
+        "- Keep the summary concise but informative - it will be used as context when resuming later\n"
+        "- If the transcript was truncated, focus on the final state and outcomes over intermediate attempts\n"
+        "- Prioritize information that would help someone continue this work\n"
+        "- Omit sections that have no relevant content rather than writing \"None\"\n\n"
         "---\n\n"
-        "Transcript:\n%1"
-    ).arg(truncated);
+        "Transcript:\n%3"
+    ).arg(projectName, projectRoot, truncated);
 }
 
 QString SummaryGenerator::truncateTranscript(const QString &transcript, int maxChars)
