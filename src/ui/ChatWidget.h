@@ -68,6 +68,7 @@ Q_SIGNALS:
 
 private Q_SLOTS:
     void onConnectClicked();
+    void onResumeSessionClicked();
     void onNewSessionClicked();
     void onStopClicked();
     void onMessageSubmitted(const QString &message);
@@ -130,6 +131,7 @@ private:
     ChatWebView *m_chatWebView;
     ChatInputWidget *m_inputWidget;
     QToolButton *m_connectButton;
+    QToolButton *m_resumeSessionButton;
     QToolButton *m_newSessionButton;
     QLabel *m_titleLabel;
     QLabel *m_statusIndicator;

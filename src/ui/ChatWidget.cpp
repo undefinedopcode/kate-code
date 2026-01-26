@@ -51,6 +51,14 @@ ChatWidget::ChatWidget(QWidget *parent)
     headerLayout->addWidget(m_titleLabel);
     headerLayout->addStretch();
 
+    // Resume Session button (icon only)
+    m_resumeSessionButton = new QToolButton(this);
+    m_resumeSessionButton->setIcon(QIcon::fromTheme(QStringLiteral("view-history")));
+    m_resumeSessionButton->setToolTip(QStringLiteral("Resume Session"));
+    m_resumeSessionButton->setAutoRaise(true);
+    m_resumeSessionButton->setEnabled(false);
+    headerLayout->addWidget(m_resumeSessionButton);
+
     // New Session button (icon only)
     m_newSessionButton = new QToolButton(this);
     m_newSessionButton->setIcon(QIcon::fromTheme(QStringLiteral("document-new")));
@@ -97,6 +105,7 @@ ChatWidget::ChatWidget(QWidget *parent)
 
     // Connect signals
     connect(m_connectButton, &QPushButton::clicked, this, &ChatWidget::onConnectClicked);
+    connect(m_resumeSessionButton, &QPushButton::clicked, this, &ChatWidget::onResumeSessionClicked);
     connect(m_newSessionButton, &QPushButton::clicked, this, &ChatWidget::onNewSessionClicked);
     connect(m_inputWidget, &ChatInputWidget::messageSubmitted, this, &ChatWidget::onMessageSubmitted);
     connect(m_inputWidget, &ChatInputWidget::imageAttached, this, &ChatWidget::onImageAttached);
@@ -233,24 +242,6 @@ void ChatWidget::onConnectClicked()
     // Clear any pending summary from previous attempt
     m_pendingSummaryContext.clear();
 
-    // Check if any sessions with summaries exist
-    QStringList sessionIds = m_summaryStore->listSessionSummaries(projectRoot);
-    if (!sessionIds.isEmpty()) {
-        // Show dialog to let user select a session to resume
-        SessionSelectionDialog dialog(projectRoot, m_summaryStore, this);
-        if (dialog.exec() == QDialog::Accepted) {
-            if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
-                // Store summary of selected session to send after session connects
-                QString selectedId = dialog.selectedSessionId();
-                m_pendingSummaryContext = m_summaryStore->loadSummary(projectRoot, selectedId);
-            }
-            // NewSession: just proceed without summary context
-        } else {
-            // Cancelled - don't connect
-            return;
-        }
-    }
-
     m_pendingAction = PendingAction::CreateSession;
 
     // Add system message
@@ -258,14 +249,66 @@ void ChatWidget::onConnectClicked()
     sysMsg.id = QStringLiteral("sys_connect");
     sysMsg.role = QStringLiteral("system");
     sysMsg.timestamp = QDateTime::currentDateTime();
-    if (m_pendingSummaryContext.isEmpty()) {
-        sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
-    } else {
-        sysMsg.content = QStringLiteral("Resuming session with prior context in: %1").arg(projectRoot);
-    }
+    sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
     m_chatWebView->addMessage(sysMsg);
 
     m_session->start(projectRoot);
+}
+
+void ChatWidget::onResumeSessionClicked()
+{
+    // Get current project root
+    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+
+    // Check if any sessions with summaries exist
+    QStringList sessionIds = m_summaryStore->listSessionSummaries(projectRoot);
+    if (sessionIds.isEmpty()) {
+        // No sessions to resume - show message
+        Message sysMsg;
+        sysMsg.id = QStringLiteral("sys_no_sessions");
+        sysMsg.role = QStringLiteral("system");
+        sysMsg.content = QStringLiteral("No previous sessions found for: %1").arg(projectRoot);
+        sysMsg.timestamp = QDateTime::currentDateTime();
+        m_chatWebView->addMessage(sysMsg);
+        return;
+    }
+
+    // Show dialog to let user select a session to resume
+    SessionSelectionDialog dialog(projectRoot, m_summaryStore, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
+            // Store summary of selected session to send after session connects
+            QString selectedId = dialog.selectedSessionId();
+            m_pendingSummaryContext = m_summaryStore->loadSummary(projectRoot, selectedId);
+
+            // If already connected, stop current session first (like onNewSessionClicked)
+            if (m_session->isConnected()) {
+                // Trigger summary generation for current session before stopping
+                triggerSummaryGeneration();
+
+                // Stop current session and clear chat
+                m_session->stop();
+                m_chatWebView->clearMessages();
+            }
+
+            // Reset user message tracking for new session
+            m_userSentMessage = false;
+
+            m_pendingAction = PendingAction::CreateSession;
+
+            // Add system message
+            Message sysMsg;
+            sysMsg.id = QStringLiteral("sys_connect");
+            sysMsg.role = QStringLiteral("system");
+            sysMsg.timestamp = QDateTime::currentDateTime();
+            sysMsg.content = QStringLiteral("Resuming session with prior context in: %1").arg(projectRoot);
+            m_chatWebView->addMessage(sysMsg);
+
+            m_session->start(projectRoot);
+        }
+        // If NewSession was selected in the dialog, do nothing (user can click Connect)
+    }
+    // Cancelled - do nothing
 }
 
 void ChatWidget::onNewSessionClicked()
@@ -350,6 +393,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
         m_connectButton->setToolTip(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
+        m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(false);
         m_inputWidget->setEnabled(false);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #888888; font-size: 14px; }"));
@@ -364,6 +408,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         break;
     case ConnectionStatus::Connecting:
         m_connectButton->setEnabled(false);
+        m_resumeSessionButton->setEnabled(false);
         m_newSessionButton->setEnabled(false);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #f0ad4e; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Connecting..."));
@@ -375,6 +420,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
         m_connectButton->setToolTip(QStringLiteral("Disconnect"));
         m_connectButton->setEnabled(true);
+        m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(true);
         m_inputWidget->setEnabled(true);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #5cb85c; font-size: 14px; }"));
@@ -410,6 +456,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
         m_connectButton->setToolTip(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
+        m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(false);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #d9534f; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Error"));
