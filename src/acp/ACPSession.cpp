@@ -53,6 +53,11 @@ ACPSession::~ACPSession()
     stop();
 }
 
+void ACPSession::setExecutable(const QString &executable, const QStringList &args)
+{
+    m_service->setExecutable(executable, args);
+}
+
 void ACPSession::start(const QString &workingDir, const QString &permissionMode)
 {
     Q_UNUSED(permissionMode);  // Modes are now discovered from agent

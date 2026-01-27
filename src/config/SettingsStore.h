@@ -9,6 +9,13 @@ namespace KWallet {
 class Wallet;
 }
 
+// ACP backend types
+enum class ACPBackend {
+    ClaudeCodeACP,  // claude-code-acp (default)
+    VibeACP,        // vibe (mistral-vibe)
+    Custom,         // User-specified executable
+};
+
 // Color schemes for diff highlighting (colorblind-friendly options)
 enum class DiffColorScheme {
     RedGreen,    // Traditional: red for deletions (default)
@@ -49,6 +56,18 @@ public:
     // Session settings
     bool autoResumeSessions() const;
     void setAutoResumeSessions(bool enable);
+
+    // ACP backend settings
+    ACPBackend acpBackend() const;
+    void setACPBackend(ACPBackend backend);
+    QString acpCustomExecutable() const;
+    void setACPCustomExecutable(const QString &executable);
+
+    // Returns the executable name and arguments for the current backend
+    QString acpExecutableName() const;
+    QStringList acpExecutableArgs() const;
+
+    static QString backendDisplayName(ACPBackend backend);
 
     // Diff color scheme settings
     DiffColorScheme diffColorScheme() const;

@@ -7,7 +7,14 @@ ACPService::ACPService(QObject *parent)
     : QObject(parent)
     , m_process(nullptr)
     , m_messageId(0)
+    , m_executable(QStringLiteral("claude-code-acp"))
 {
+}
+
+void ACPService::setExecutable(const QString &executable, const QStringList &args)
+{
+    m_executable = executable;
+    m_executableArgs = args;
 }
 
 ACPService::~ACPService()
@@ -21,7 +28,7 @@ ACPService::~ACPService()
 
 bool ACPService::start(const QString &workingDir)
 {
-    qDebug() << "[ACPService] Starting claude-code-acp in:" << workingDir;
+    qDebug() << "[ACPService] Starting" << m_executable << "in:" << workingDir;
 
     if (m_process) {
         qDebug() << "[ACPService] Stopping existing process";
@@ -36,13 +43,13 @@ bool ACPService::start(const QString &workingDir)
     connect(m_process, &QProcess::finished, this, &ACPService::onFinished);
     connect(m_process, &QProcess::errorOccurred, this, &ACPService::onError);
 
-    qDebug() << "[ACPService] Starting process: claude-code-acp";
-    m_process->start(QStringLiteral("claude-code-acp"), QStringList());
+    qDebug() << "[ACPService] Starting process:" << m_executable << m_executableArgs;
+    m_process->start(m_executable, m_executableArgs);
 
     qDebug() << "[ACPService] Waiting for process to start...";
     if (!m_process->waitForStarted(5000)) {
         qDebug() << "[ACPService] Process failed to start";
-        Q_EMIT errorOccurred(QStringLiteral("Failed to start claude-code-acp"));
+        Q_EMIT errorOccurred(QStringLiteral("Failed to start %1").arg(m_executable));
         return false;
     }
 
@@ -196,7 +203,8 @@ void ACPService::handleMessage(const QJsonObject &msg)
         QJsonObject result = msg[QStringLiteral("result")].toObject();
         QJsonObject error = msg[QStringLiteral("error")].toObject();
 
-        qDebug() << "[ACPService] << response for request id:" << id;
+        qDebug() << "[ACPService] << response for request id:" << id
+                 << "raw:" << QJsonDocument(msg).toJson(QJsonDocument::Compact);
         Q_EMIT responseReceived(id, result, error);
     }
 }

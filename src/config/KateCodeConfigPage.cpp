@@ -81,6 +81,48 @@ void KateCodeConfigPage::setupGeneralTab(QWidget *tab)
 {
     auto *tabLayout = new QVBoxLayout(tab);
 
+    // ACP Backend Group
+    auto *backendGroup = new QGroupBox(i18n("ACP Backend"), tab);
+    auto *backendLayout = new QFormLayout(backendGroup);
+
+    m_acpBackendCombo = new QComboBox(tab);
+    m_acpBackendCombo->addItem(
+        SettingsStore::backendDisplayName(ACPBackend::ClaudeCodeACP),
+        static_cast<int>(ACPBackend::ClaudeCodeACP));
+    m_acpBackendCombo->addItem(
+        SettingsStore::backendDisplayName(ACPBackend::VibeACP),
+        static_cast<int>(ACPBackend::VibeACP));
+    m_acpBackendCombo->addItem(
+        SettingsStore::backendDisplayName(ACPBackend::Custom),
+        static_cast<int>(ACPBackend::Custom));
+    connect(m_acpBackendCombo, &QComboBox::currentIndexChanged,
+            this, &KateCodeConfigPage::onSettingChanged);
+    connect(m_acpBackendCombo, &QComboBox::currentIndexChanged,
+            this, [this]() {
+                bool isCustom = m_acpBackendCombo->currentData().toInt() == static_cast<int>(ACPBackend::Custom);
+                m_customExecutableEdit->setVisible(isCustom);
+                m_customExecutableLabel->setVisible(isCustom);
+            });
+    backendLayout->addRow(i18n("Backend:"), m_acpBackendCombo);
+
+    m_customExecutableLabel = new QLabel(i18n("Executable:"), tab);
+    m_customExecutableEdit = new QLineEdit(tab);
+    m_customExecutableEdit->setPlaceholderText(i18n("e.g. /usr/bin/my-acp-agent"));
+    connect(m_customExecutableEdit, &QLineEdit::textChanged,
+            this, &KateCodeConfigPage::onSettingChanged);
+    backendLayout->addRow(m_customExecutableLabel, m_customExecutableEdit);
+
+    // Initially hidden unless Custom is selected
+    m_customExecutableEdit->setVisible(false);
+    m_customExecutableLabel->setVisible(false);
+
+    auto *backendNote = new QLabel(i18n("Select which ACP-compatible agent to use. Requires reconnecting to take effect."), tab);
+    backendNote->setWordWrap(true);
+    backendNote->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
+    backendLayout->addRow(backendNote);
+
+    tabLayout->addWidget(backendGroup);
+
     // Diff Colors Group
     auto *diffGroup = new QGroupBox(i18n("Diff Highlighting"), tab);
     auto *diffLayout = new QFormLayout(diffGroup);
@@ -199,6 +241,10 @@ void KateCodeConfigPage::apply()
         // Note: If key is now empty but was set before, user needs to clear it manually in KWallet
     }
 
+    // Save ACP backend settings
+    m_settings->setACPBackend(static_cast<ACPBackend>(m_acpBackendCombo->currentData().toInt()));
+    m_settings->setACPCustomExecutable(m_customExecutableEdit->text());
+
     // Save other settings
     m_settings->setSummariesEnabled(m_enableSummariesCheck->isChecked());
     m_settings->setSummaryModel(m_summaryModelCombo->currentData().toString());
@@ -210,6 +256,8 @@ void KateCodeConfigPage::apply()
 
 void KateCodeConfigPage::defaults()
 {
+    m_acpBackendCombo->setCurrentIndex(0); // ClaudeCodeACP (default)
+    m_customExecutableEdit->clear();
     m_apiKeyEdit->clear();
     m_enableSummariesCheck->setChecked(false);
     m_summaryModelCombo->setCurrentIndex(0);
@@ -221,6 +269,16 @@ void KateCodeConfigPage::defaults()
 
 void KateCodeConfigPage::reset()
 {
+    // Load ACP backend settings
+    int backendIndex = m_acpBackendCombo->findData(static_cast<int>(m_settings->acpBackend()));
+    if (backendIndex >= 0) {
+        m_acpBackendCombo->setCurrentIndex(backendIndex);
+    }
+    m_customExecutableEdit->setText(m_settings->acpCustomExecutable());
+    bool isCustom = m_settings->acpBackend() == ACPBackend::Custom;
+    m_customExecutableEdit->setVisible(isCustom);
+    m_customExecutableLabel->setVisible(isCustom);
+
     // Load current settings
     m_enableSummariesCheck->setChecked(m_settings->summariesEnabled());
 
