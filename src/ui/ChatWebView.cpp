@@ -257,7 +257,7 @@ void ChatWebView::addToolCall(const QString &messageId, const ToolCall &toolCall
     runJavaScript(script);
 }
 
-void ChatWebView::updateToolCall(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result)
+void ChatWebView::updateToolCall(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath)
 {
     if (!m_isLoaded) return;
 
@@ -265,11 +265,12 @@ void ChatWebView::updateToolCall(const QString &messageId, const QString &toolCa
     QByteArray resultBytes = result.toUtf8();
     QString base64Result = QString::fromLatin1(resultBytes.toBase64());
 
-    QString script = QStringLiteral("updateToolCall('%1', '%2', '%3', '%4');")
+    QString script = QStringLiteral("updateToolCall('%1', '%2', '%3', '%4', '%5');")
                          .arg(escapeJsString(messageId),
                               escapeJsString(toolCallId),
                               escapeJsString(status),
-                              base64Result);
+                              base64Result,
+                              escapeJsString(filePath));
 
     runJavaScript(script);
 }

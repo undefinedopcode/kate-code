@@ -20,6 +20,27 @@
 #include <QUrl>
 #include <QUuid>
 
+// Helper functions to check tool types (mirrors logic in chat.js)
+static bool isReadTool(const QString &name)
+{
+    return name == QStringLiteral("Read") || name == QStringLiteral("mcp__acp__Read");
+}
+
+static bool isWriteTool(const QString &name)
+{
+    return name == QStringLiteral("Write") || name == QStringLiteral("mcp__acp__Write");
+}
+
+static bool isEditTool(const QString &name)
+{
+    return name == QStringLiteral("Edit") || name == QStringLiteral("mcp__acp__Edit");
+}
+
+static bool isBashTool(const QString &name)
+{
+    return name == QStringLiteral("Bash") || name == QStringLiteral("mcp__acp__Bash");
+}
+
 ACPSession::ACPSession(QObject *parent)
     : QObject(parent)
     , m_service(new ACPService(this))
@@ -565,6 +586,56 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             toolCall.filePath = toolCall.input[QStringLiteral("file_path")].toString();
         }
 
+        // Infer tool type from vibe-acp title if toolName is not a known tool
+        // vibe-acp uses titles like "Reading src/file.cpp", "Editing src/file.cpp", etc.
+        if (!isReadTool(toolCall.name) && !isWriteTool(toolCall.name) &&
+            !isEditTool(toolCall.name) && !isBashTool(toolCall.name)) {
+            QString title = update[QStringLiteral("title")].toString();
+            if (title.startsWith(QStringLiteral("Reading "))) {
+                toolCall.name = QStringLiteral("Read");
+                if (toolCall.filePath.isEmpty()) {
+                    // Extract path from title - it may be relative
+                    QString titlePath = title.mid(8);  // len("Reading ")
+                    if (!titlePath.isEmpty()) {
+                        toolCall.filePath = QDir(m_workingDir).absoluteFilePath(titlePath);
+                    }
+                }
+            } else if (title.startsWith(QStringLiteral("Editing "))) {
+                toolCall.name = QStringLiteral("Edit");
+                if (toolCall.filePath.isEmpty()) {
+                    QString titlePath = title.mid(8);
+                    if (!titlePath.isEmpty()) {
+                        toolCall.filePath = QDir(m_workingDir).absoluteFilePath(titlePath);
+                    }
+                }
+            } else if (title.startsWith(QStringLiteral("Writing "))) {
+                toolCall.name = QStringLiteral("Write");
+                if (toolCall.filePath.isEmpty()) {
+                    QString titlePath = title.mid(8);
+                    if (!titlePath.isEmpty()) {
+                        toolCall.filePath = QDir(m_workingDir).absoluteFilePath(titlePath);
+                    }
+                }
+            } else if (title.startsWith(QStringLiteral("Patching "))) {
+                // vibe-acp Edit uses "Patching file.txt (N blocks)" format
+                toolCall.name = QStringLiteral("Edit");
+                if (toolCall.filePath.isEmpty()) {
+                    QString titlePath = title.mid(9);  // len("Patching ")
+                    // Remove trailing " (N blocks)" if present
+                    int parenIdx = titlePath.lastIndexOf(QStringLiteral(" ("));
+                    if (parenIdx > 0) {
+                        titlePath = titlePath.left(parenIdx);
+                    }
+                    if (!titlePath.isEmpty()) {
+                        toolCall.filePath = QDir(m_workingDir).absoluteFilePath(titlePath);
+                    }
+                }
+            } else if (title.contains(QStringLiteral("bash")) || title.contains(QStringLiteral("Bash")) ||
+                       title.startsWith(QStringLiteral("Running "))) {
+                toolCall.name = QStringLiteral("Bash");
+            }
+        }
+
         // Extract Edit/Write specific fields from content array
         QJsonArray contentArray = update[QStringLiteral("content")].toArray();
         for (int i = 0; i < contentArray.size(); ++i) {
@@ -626,6 +697,7 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         QString result;
         QString operationType;
         QString newText;
+        QString updateFilePath;  // File path extracted from this update
 
         QJsonArray contentArray = update[QStringLiteral("content")].toArray();
         if (!contentArray.isEmpty()) {
@@ -676,6 +748,59 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             }
         }
 
+        // If result is still empty or just a summary, check rawOutput (vibe-acp format)
+        // vibe-acp tools like Read return actual content in rawOutput as a JSON string
+        if (result.isEmpty() || (!update[QStringLiteral("rawOutput")].isUndefined() && result.length() < 200)) {
+            QString rawOutput = update[QStringLiteral("rawOutput")].toString();
+            if (!rawOutput.isEmpty()) {
+                // rawOutput may be a JSON string (e.g., Read tool returns {"path":...,"content":...})
+                QJsonDocument rawDoc = QJsonDocument::fromJson(rawOutput.toUtf8());
+                if (!rawDoc.isNull() && rawDoc.isObject()) {
+                    QJsonObject rawObj = rawDoc.object();
+
+                    // Check if this is an Edit/Patch result (has blocks_applied field)
+                    if (rawObj.contains(QStringLiteral("blocks_applied"))) {
+                        int blocksApplied = rawObj[QStringLiteral("blocks_applied")].toInt();
+                        int linesChanged = rawObj[QStringLiteral("lines_changed")].toInt();
+                        QString file = rawObj[QStringLiteral("file")].toString();
+                        if (!file.isEmpty()) {
+                            updateFilePath = file;
+                        }
+                        // The "content" field contains SEARCH/REPLACE diff text - use it as result
+                        QString diffContent = rawObj[QStringLiteral("content")].toString();
+                        if (!diffContent.isEmpty()) {
+                            result = diffContent;
+                        } else {
+                            result = QStringLiteral("%1 block(s) applied, %2 line(s) changed")
+                                .arg(blocksApplied).arg(linesChanged);
+                        }
+                        qDebug() << "[ACPSession] Edit rawOutput - file:" << file
+                                 << "blocks:" << blocksApplied << "lines:" << linesChanged;
+                    } else {
+                        QString fileContent = rawObj[QStringLiteral("content")].toString();
+                        if (!fileContent.isEmpty()) {
+                            result = fileContent;
+                            qDebug() << "[ACPSession] Extracted content from rawOutput - length:" << result.length();
+                        }
+                    }
+                    // Extract file path from rawOutput (e.g., Read tool returns {"path":"/abs/path"})
+                    // Also check "file" field (Edit tool uses this)
+                    QString rawPath = rawObj[QStringLiteral("path")].toString();
+                    if (rawPath.isEmpty()) {
+                        rawPath = rawObj[QStringLiteral("file")].toString();
+                    }
+                    if (!rawPath.isEmpty() && updateFilePath.isEmpty()) {
+                        updateFilePath = rawPath;
+                        qDebug() << "[ACPSession] Extracted file path from rawOutput:" << updateFilePath;
+                    }
+                } else {
+                    // rawOutput is plain text
+                    result = rawOutput;
+                    qDebug() << "[ACPSession] Using rawOutput as plain text - length:" << result.length();
+                }
+            }
+        }
+
         qDebug() << "[ACPSession] Tool call update - id:" << toolCallId
                  << "status:" << status << "operation:" << operationType
                  << "result length:" << result.length();
@@ -684,7 +809,7 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             // Only emit update if we have a result OR status changed
             // (Don't overwrite good results with empty ones from status-only updates)
             if (!result.isEmpty() || !status.isEmpty()) {
-                Q_EMIT toolCallUpdated(m_currentMessageId, toolCallId, status, result);
+                Q_EMIT toolCallUpdated(m_currentMessageId, toolCallId, status, result, updateFilePath);
                 m_transcript->recordToolUpdate(toolCallId, status, result);
             }
         }

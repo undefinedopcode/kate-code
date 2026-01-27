@@ -455,7 +455,7 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, o
 }
 
 // Update tool call status - result is Base64 encoded to handle ANSI escape codes
-function updateToolCall(messageId, toolCallId, status, base64Result) {
+function updateToolCall(messageId, toolCallId, status, base64Result, filePath) {
     if (!messages[messageId]) return;
 
     // Decode base64 result
@@ -478,7 +478,7 @@ function updateToolCall(messageId, toolCallId, status, base64Result) {
             id: toolCallId,
             name: 'Write',  // Will be updated if we get more info
             status: status || 'completed',
-            filePath: '',
+            filePath: filePath || '',
             input: {},
             result: result || '',
             position: messages[messageId].content.length,
@@ -494,6 +494,10 @@ function updateToolCall(messageId, toolCallId, status, base64Result) {
         // Only update result if we have a non-empty one (don't overwrite with empty)
         if (result) {
             toolCall.result = result;
+        }
+        // Update filePath if provided (vibe-acp provides this in tool_call_update)
+        if (filePath) {
+            toolCall.filePath = filePath;
         }
     }
 
