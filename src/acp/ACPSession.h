@@ -23,6 +23,7 @@ public:
     explicit ACPSession(QObject *parent = nullptr);
     ~ACPSession() override;
 
+    void setExecutable(const QString &executable, const QStringList &args = QStringList());
     void start(const QString &workingDir, const QString &permissionMode = QStringLiteral("default"));
     void stop();
 

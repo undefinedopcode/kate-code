@@ -183,6 +183,63 @@ void SettingsStore::setAutoResumeSessions(bool enable)
     Q_EMIT settingsChanged();
 }
 
+ACPBackend SettingsStore::acpBackend() const
+{
+    int backend = m_settings.value(QStringLiteral("ACP/backend"), 0).toInt();
+    return static_cast<ACPBackend>(backend);
+}
+
+void SettingsStore::setACPBackend(ACPBackend backend)
+{
+    m_settings.setValue(QStringLiteral("ACP/backend"), static_cast<int>(backend));
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+QString SettingsStore::acpCustomExecutable() const
+{
+    return m_settings.value(QStringLiteral("ACP/customExecutable")).toString();
+}
+
+void SettingsStore::setACPCustomExecutable(const QString &executable)
+{
+    m_settings.setValue(QStringLiteral("ACP/customExecutable"), executable);
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+QString SettingsStore::acpExecutableName() const
+{
+    switch (acpBackend()) {
+    case ACPBackend::VibeACP:
+        return QStringLiteral("vibe-acp");
+    case ACPBackend::Custom:
+        return acpCustomExecutable();
+    case ACPBackend::ClaudeCodeACP:
+    default:
+        return QStringLiteral("claude-code-acp");
+    }
+}
+
+QStringList SettingsStore::acpExecutableArgs() const
+{
+    // No extra arguments needed for any backend currently
+    return QStringList();
+}
+
+QString SettingsStore::backendDisplayName(ACPBackend backend)
+{
+    switch (backend) {
+    case ACPBackend::VibeACP:
+        return QStringLiteral("Vibe (Mistral)");
+    case ACPBackend::Custom:
+        return QStringLiteral("Custom");
+    case ACPBackend::ClaudeCodeACP:
+    default:
+        return QStringLiteral("Claude Code ACP (default)");
+    }
+}
+
 DiffColorScheme SettingsStore::diffColorScheme() const
 {
     int scheme = m_settings.value(QStringLiteral("Diffs/colorScheme"), 0).toInt();

@@ -46,6 +46,11 @@ private:
     // Tab widget
     QTabWidget *m_tabWidget;
 
+    // General tab - ACP Backend section
+    QComboBox *m_acpBackendCombo;
+    QLineEdit *m_customExecutableEdit;
+    QLabel *m_customExecutableLabel;
+
     // General tab - Diff colors section
     QComboBox *m_diffColorSchemeCombo;
 

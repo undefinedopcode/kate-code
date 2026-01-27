@@ -218,8 +218,9 @@ void ChatWidget::setSettingsStore(SettingsStore *settings)
         connect(m_settingsStore, &SettingsStore::settingsChanged,
                 this, &ChatWidget::onSettingsChanged);
 
-        // Apply initial diff colors
+        // Apply initial settings
         applyDiffColors();
+        applyACPBackend();
 
         // Try to load API key from KWallet (async)
         m_settingsStore->loadApiKey();
@@ -921,6 +922,7 @@ void ChatWidget::onApiKeyLoadedForSummary(bool success)
 void ChatWidget::onSettingsChanged()
 {
     applyDiffColors();
+    applyACPBackend();
 }
 
 void ChatWidget::applyDiffColors()
@@ -989,6 +991,18 @@ void ChatWidget::applyDiffColors()
     QString addBackground = colorToRgba(colors.additionBackground);
 
     m_chatWebView->updateDiffColors(removeBackground, addBackground);
+}
+
+void ChatWidget::applyACPBackend()
+{
+    if (!m_settingsStore || !m_session) {
+        return;
+    }
+
+    QString executable = m_settingsStore->acpExecutableName();
+    QStringList args = m_settingsStore->acpExecutableArgs();
+    m_session->setExecutable(executable, args);
+    qDebug() << "[ChatWidget] ACP backend configured:" << executable << args;
 }
 
 void ChatWidget::resizeEvent(QResizeEvent *event)

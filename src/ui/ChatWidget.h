@@ -102,6 +102,7 @@ private Q_SLOTS:
 private:
     void triggerSummaryGeneration();
     void applyDiffColors();
+    void applyACPBackend();
     void updateTerminalSize();
     // Pending session action for after initialize completes
     enum class PendingAction {

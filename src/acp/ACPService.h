@@ -13,6 +13,7 @@ public:
     explicit ACPService(QObject *parent = nullptr);
     ~ACPService() override;
 
+    void setExecutable(const QString &executable, const QStringList &args = QStringList());
     bool start(const QString &workingDir);
     void stop();
 
@@ -41,4 +42,6 @@ private:
     QProcess *m_process;
     int m_messageId;
     QString m_buffer;
+    QString m_executable;
+    QStringList m_executableArgs;
 };
