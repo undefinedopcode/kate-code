@@ -561,7 +561,16 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         ToolCall toolCall;
         toolCall.id = update[QStringLiteral("toolCallId")].toString();
         toolCall.status = update[QStringLiteral("status")].toString();
-        toolCall.input = update[QStringLiteral("rawInput")].toObject();
+        // rawInput may be a JSON object or a JSON string that needs parsing
+        QJsonValue rawInputVal = update[QStringLiteral("rawInput")];
+        if (rawInputVal.isObject()) {
+            toolCall.input = rawInputVal.toObject();
+        } else if (rawInputVal.isString()) {
+            QJsonDocument rawDoc = QJsonDocument::fromJson(rawInputVal.toString().toUtf8());
+            if (rawDoc.isObject()) {
+                toolCall.input = rawDoc.object();
+            }
+        }
 
         // Track current tool call ID for edit tracking
         m_currentToolCallId = toolCall.id;
@@ -573,6 +582,9 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         if (toolCall.name.isEmpty()) {
             toolCall.name = update[QStringLiteral("title")].toString();
         }
+
+        // vibe-acp uses "kind" field to indicate tool type (e.g., "execute" for Bash)
+        QString kind = update[QStringLiteral("kind")].toString();
 
         // Extract file path if present
         // Try locations array first
@@ -586,8 +598,20 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             toolCall.filePath = toolCall.input[QStringLiteral("file_path")].toString();
         }
 
-        // Infer tool type from vibe-acp title if toolName is not a known tool
-        // vibe-acp uses titles like "Reading src/file.cpp", "Editing src/file.cpp", etc.
+        // Infer tool type from vibe-acp kind or title if toolName is not a known tool
+        // vibe-acp uses "kind" field: "execute" for Bash, or titles like "Reading ...", "Editing ..."
+        if (!isReadTool(toolCall.name) && !isWriteTool(toolCall.name) &&
+            !isEditTool(toolCall.name) && !isBashTool(toolCall.name)) {
+            // Check kind field first - more reliable than title matching
+            if (kind == QStringLiteral("execute")) {
+                toolCall.name = QStringLiteral("Bash");
+                // Extract command from rawInput for display
+                QString command = toolCall.input[QStringLiteral("command")].toString();
+                if (!command.isEmpty()) {
+                    toolCall.operationType = QStringLiteral("bash");
+                }
+            }
+        }
         if (!isReadTool(toolCall.name) && !isWriteTool(toolCall.name) &&
             !isEditTool(toolCall.name) && !isBashTool(toolCall.name)) {
             QString title = update[QStringLiteral("title")].toString();
@@ -699,11 +723,27 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         QString newText;
         QString updateFilePath;  // File path extracted from this update
 
+        QString terminalId;  // Terminal ID extracted from content (vibe-acp sends this in tool_call_update)
+
         QJsonArray contentArray = update[QStringLiteral("content")].toArray();
-        if (!contentArray.isEmpty()) {
-            QJsonObject contentItem = contentArray[0].toObject();
-            QJsonObject content = contentItem[QStringLiteral("content")].toObject();
-            result = content[QStringLiteral("text")].toString();
+        for (int i = 0; i < contentArray.size(); ++i) {
+            QJsonObject contentItem = contentArray[i].toObject();
+            QString contentType = contentItem[QStringLiteral("type")].toString();
+
+            if (contentType == QStringLiteral("terminal")) {
+                // vibe-acp sends terminal info in tool_call_update (not in initial tool_call)
+                terminalId = contentItem[QStringLiteral("terminalId")].toString();
+                if (terminalId.isEmpty()) {
+                    terminalId = contentItem[QStringLiteral("terminal_id")].toString();
+                }
+                qDebug() << "[ACPSession] tool_call_update has terminal content - id:" << terminalId;
+            } else if (contentType == QStringLiteral("content")) {
+                QJsonObject content = contentItem[QStringLiteral("content")].toObject();
+                QString text = content[QStringLiteral("text")].toString();
+                if (!text.isEmpty()) {
+                    result = text;
+                }
+            }
         }
 
         // Check for tool response in _meta.claudeCode.toolResponse
@@ -806,6 +846,11 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
                  << "result length:" << result.length();
 
         if (!m_currentMessageId.isEmpty()) {
+            // Link terminal to tool call if we found one (vibe-acp sends terminal in tool_call_update)
+            if (!terminalId.isEmpty()) {
+                Q_EMIT toolCallTerminalIdSet(m_currentMessageId, toolCallId, terminalId);
+            }
+
             // Only emit update if we have a result OR status changed
             // (Don't overwrite good results with empty ones from status-only updates)
             if (!result.isEmpty() || !status.isEmpty()) {

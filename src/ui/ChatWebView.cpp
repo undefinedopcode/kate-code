@@ -360,6 +360,18 @@ void ChatWebView::updateTerminalOutput(const QString &terminalId, const QString 
     runJavaScript(script);
 }
 
+void ChatWebView::setToolCallTerminalId(const QString &messageId, const QString &toolCallId, const QString &terminalId)
+{
+    if (!m_isLoaded) return;
+
+    QString script = QStringLiteral("setToolCallTerminalId('%1', '%2', '%3');")
+        .arg(escapeJsString(messageId),
+             escapeJsString(toolCallId),
+             escapeJsString(terminalId));
+
+    runJavaScript(script);
+}
+
 void ChatWebView::setupBridge()
 {
     QWebChannel *channel = new QWebChannel(this);

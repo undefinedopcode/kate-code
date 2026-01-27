@@ -24,6 +24,7 @@ public:
 
     // Terminal support
     void updateTerminalOutput(const QString &terminalId, const QString &output, bool finished);
+    void setToolCallTerminalId(const QString &messageId, const QString &toolCallId, const QString &terminalId);
 
     // Edit tracking support
     void addTrackedEdit(const TrackedEdit &edit);
