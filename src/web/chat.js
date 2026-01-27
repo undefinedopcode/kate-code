@@ -1235,6 +1235,21 @@ function respondToPermission(requestId, optionId) {
     }
 }
 
+// Set terminalId on a tool call (for vibe-acp where terminal info arrives in tool_call_update)
+function setToolCallTerminalId(messageId, toolCallId, terminalId) {
+    if (!messages[messageId]) return;
+    const tc = messages[messageId].toolCalls.find(t => t.id === toolCallId);
+    if (tc) {
+        tc.terminalId = terminalId;
+        logToQt('setToolCallTerminalId: ' + toolCallId + ' -> ' + terminalId);
+        // Re-render if terminal data already exists
+        if (terminals[terminalId]) {
+            updateMessageDOM(messageId);
+            scrollToBottom();
+        }
+    }
+}
+
 // Terminal support - update terminal output (called from C++ via base64)
 function updateTerminal(terminalId, base64Output, finished) {
     // Decode base64 output
@@ -1547,6 +1562,7 @@ window.applyColorScheme = applyColorScheme;
 window.toggleToolCall = toggleToolCall;
 window.showPermissionRequest = showPermissionRequest;
 window.copyCode = copyCode;
+window.setToolCallTerminalId = setToolCallTerminalId;
 window.updateTerminal = updateTerminal;
 window.updateEditSummary = updateEditSummary;
 window.addTrackedEdit = addTrackedEdit;

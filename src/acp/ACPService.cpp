@@ -1,7 +1,10 @@
 #include "ACPService.h"
 
 #include <QDebug>
+#include <QDir>
+#include <QFileInfo>
 #include <QJsonDocument>
+#include <QStandardPaths>
 
 ACPService::ACPService(QObject *parent)
     : QObject(parent)
@@ -43,8 +46,35 @@ bool ACPService::start(const QString &workingDir)
     connect(m_process, &QProcess::finished, this, &ACPService::onFinished);
     connect(m_process, &QProcess::errorOccurred, this, &ACPService::onError);
 
-    qDebug() << "[ACPService] Starting process:" << m_executable << m_executableArgs;
-    m_process->start(m_executable, m_executableArgs);
+    // Resolve executable path - when launched from desktop environments,
+    // user-local paths like ~/.local/bin may not be on PATH
+    QString resolvedExecutable = m_executable;
+    if (!QFileInfo(resolvedExecutable).isAbsolute()) {
+        QString found = QStandardPaths::findExecutable(resolvedExecutable);
+        if (found.isEmpty()) {
+            // Fallback: check common user-local directories where curl|bash
+            // installers and package managers typically place binaries
+            const QString home = QDir::homePath();
+            const QStringList fallbackDirs = {
+                home + QStringLiteral("/.local/bin"),
+                home + QStringLiteral("/bin"),
+                home + QStringLiteral("/.cargo/bin"),
+            };
+            for (const QString &dir : fallbackDirs) {
+                QString candidate = dir + QLatin1Char('/') + resolvedExecutable;
+                if (QFileInfo::exists(candidate)) {
+                    found = candidate;
+                    break;
+                }
+            }
+        }
+        if (!found.isEmpty()) {
+            resolvedExecutable = found;
+        }
+    }
+
+    qDebug() << "[ACPService] Starting process:" << resolvedExecutable << m_executableArgs;
+    m_process->start(resolvedExecutable, m_executableArgs);
 
     qDebug() << "[ACPService] Waiting for process to start...";
     if (!m_process->waitForStarted(5000)) {

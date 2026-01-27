@@ -78,6 +78,7 @@ Q_SIGNALS:
 
     // Terminal signals for UI updates
     void terminalOutputUpdated(const QString &terminalId, const QString &output, bool finished);
+    void toolCallTerminalIdSet(const QString &messageId, const QString &toolCallId, const QString &terminalId);
 
 private Q_SLOTS:
     void onConnected();
