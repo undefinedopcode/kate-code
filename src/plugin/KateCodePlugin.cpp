@@ -2,6 +2,7 @@
 #include "KateCodeView.h"
 #include "../config/KateCodeConfigPage.h"
 #include "../config/SettingsStore.h"
+#include "../mcp/EditorDBusService.h"
 
 #include <KPluginFactory>
 #include <KTextEditor/MainWindow>
@@ -12,7 +13,10 @@ K_PLUGIN_FACTORY_WITH_JSON(KateCodePluginFactory, "katecode.json", registerPlugi
 KateCodePlugin::KateCodePlugin(QObject *parent, const QVariantList &)
     : KTextEditor::Plugin(parent)
     , m_settings(new SettingsStore(this))
+    , m_dbusService(new EditorDBusService(this))
 {
+    m_dbusService->registerOnBus();
+
     // Connect to application shutdown to trigger summary generation
     connect(qApp, &QApplication::aboutToQuit, this, &KateCodePlugin::onAboutToQuit);
 }

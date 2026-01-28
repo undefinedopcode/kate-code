@@ -17,6 +17,7 @@
 #include <QJsonDocument>
 #include <QProcessEnvironment>
 #include <QTextStream>
+#include <QStandardPaths>
 #include <QUrl>
 #include <QUuid>
 
@@ -210,7 +211,36 @@ void ACPSession::createNewSession()
 
     QJsonObject params;
     params[QStringLiteral("cwd")] = m_workingDir;
-    params[QStringLiteral("mcpServers")] = QJsonArray();
+    // Build mcpServers array with the built-in Kate MCP server
+    QJsonArray mcpServers;
+
+    QString mcpServerPath;
+#ifdef KATE_MCP_SERVER_PATH
+    mcpServerPath = QStringLiteral(KATE_MCP_SERVER_PATH);
+#endif
+
+    // Fallback: search PATH
+    if (mcpServerPath.isEmpty() || !QFileInfo::exists(mcpServerPath)) {
+        const QString found = QStandardPaths::findExecutable(QStringLiteral("kate-mcp-server"));
+        if (!found.isEmpty()) {
+            mcpServerPath = found;
+        }
+    }
+
+    if (!mcpServerPath.isEmpty() && QFileInfo::exists(mcpServerPath)) {
+        QJsonObject kateMcp;
+        kateMcp[QStringLiteral("type")] = QStringLiteral("stdio");
+        kateMcp[QStringLiteral("name")] = QStringLiteral("kate");
+        kateMcp[QStringLiteral("command")] = mcpServerPath;
+        kateMcp[QStringLiteral("args")] = QJsonArray();
+        kateMcp[QStringLiteral("env")] = QJsonArray();
+        mcpServers.append(kateMcp);
+        qDebug() << "[ACPSession] Added Kate MCP server:" << mcpServerPath;
+    } else {
+        qWarning() << "[ACPSession] Kate MCP server not found";
+    }
+
+    params[QStringLiteral("mcpServers")] = mcpServers;
 
     m_sessionNewRequestId = m_service->sendRequest(QStringLiteral("session/new"), params);
     qDebug() << "[ACPSession] Sent session/new request, id:" << m_sessionNewRequestId;
@@ -353,7 +383,19 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
     // Add user's actual message
     QJsonObject textBlock;
     textBlock[QStringLiteral("type")] = QStringLiteral("text");
-    textBlock[QStringLiteral("text")] = content;
+
+    // On first message, add system reminder to prefer Kate MCP tools
+    QString messageText = content;
+    if (m_messageCounter == 0) {
+        messageText += QStringLiteral("\n\n<system-reminder>"
+            "In sessions with mcp__kate__katecode_read always use it instead of Read as it contains the most up-to-date contents.\n\n"
+            "In sessions with mcp__kate__katecode_write always use it instead of Write as it will\n"
+            "allow the user to conveniently review changes.\n\n"
+            "In sessions with mcp__kate__katecode_edit always use it instead of Edit as it will\n"
+            "allow the user to conveniently review changes."
+            "</system-reminder>");
+    }
+    textBlock[QStringLiteral("text")] = messageText;
     promptBlocks.append(textBlock);
 
     QJsonObject params;

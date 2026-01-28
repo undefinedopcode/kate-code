@@ -23,6 +23,7 @@ Settings > Configure Kate > Plugins > Enable "Kate Code"
 ### Layer Structure
 - **Plugin**: KateCodePlugin, KateCodeView - Kate integration
 - **ACP**: ACPService, ACPSession - JSON-RPC 2.0 over stdin/stdout to claude-code-acp
+- **MCP**: MCPServer - Built-in MCP server executable for Kate editor tools
 - **UI**: ChatWidget, ChatWebView, ChatInputWidget, PermissionDialog
 - **Util**: KDEColorScheme - reads ~/.config/kdeglobals
 
@@ -32,6 +33,8 @@ Settings > Configure Kate > Plugins > Enable "Kate Code"
 - `src/acp/ACPService.{h,cpp}` - QProcess-based claude-code-acp subprocess management
 - `src/acp/ACPSession.{h,cpp}` - Protocol flow and session state management
 - `src/acp/ACPModels.h` - Data structures (Message, ToolCall, TodoItem, etc.)
+- `src/mcp/MCPServer.{h,cpp}` - MCP protocol handler (initialize, tools/list, tools/call)
+- `src/mcp/main.cpp` - MCP server entry point (stdio JSON-RPC loop)
 - `src/ui/ChatWidget.{h,cpp}` - Main chat interface with ACP integration
 - `src/ui/ChatWebView.{h,cpp}` - QWebEngineView for HTML/CSS/JS rendering
 - `src/ui/ChatInputWidget.{h,cpp}` - Multiline text input with send button
