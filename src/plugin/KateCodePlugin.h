@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QVariant>
 
+class EditorDBusService;
 class KateCodeView;
 class SettingsStore;
 
@@ -30,4 +31,5 @@ private Q_SLOTS:
 private:
     QList<KateCodeView *> m_views;
     SettingsStore *m_settings;
+    EditorDBusService *m_dbusService;
 };
