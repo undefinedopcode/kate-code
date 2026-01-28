@@ -24,17 +24,20 @@
 // Helper functions to check tool types (mirrors logic in chat.js)
 static bool isReadTool(const QString &name)
 {
-    return name == QStringLiteral("Read") || name == QStringLiteral("mcp__acp__Read");
+    return name == QStringLiteral("Read") || name == QStringLiteral("mcp__acp__Read") ||
+           name == QStringLiteral("mcp__kate__katecode_read");
 }
 
 static bool isWriteTool(const QString &name)
 {
-    return name == QStringLiteral("Write") || name == QStringLiteral("mcp__acp__Write");
+    return name == QStringLiteral("Write") || name == QStringLiteral("mcp__acp__Write") ||
+           name == QStringLiteral("mcp__kate__katecode_write");
 }
 
 static bool isEditTool(const QString &name)
 {
-    return name == QStringLiteral("Edit") || name == QStringLiteral("mcp__acp__Edit");
+    return name == QStringLiteral("Edit") || name == QStringLiteral("mcp__acp__Edit") ||
+           name == QStringLiteral("mcp__kate__katecode_edit");
 }
 
 static bool isBashTool(const QString &name)
@@ -779,6 +782,35 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
 
         if (!toolCall.edits.isEmpty()) {
             qDebug() << "[ACPSession] Total edits in tool call:" << toolCall.edits.size();
+        }
+
+        // Fallback: Extract edit data from rawInput for MCP tools (e.g., mcp__kate__katecode_edit)
+        // MCP tools use old_string/new_string in rawInput, not diff objects in content array
+        if (toolCall.edits.isEmpty() && isEditTool(toolCall.name)) {
+            QString oldStr = toolCall.input[QStringLiteral("old_string")].toString();
+            QString newStr = toolCall.input[QStringLiteral("new_string")].toString();
+
+            if (!oldStr.isEmpty() || !newStr.isEmpty()) {
+                EditDiff edit;
+                edit.oldText = oldStr;
+                edit.newText = newStr;
+                edit.filePath = toolCall.filePath;
+                toolCall.edits.append(edit);
+                toolCall.oldText = oldStr;
+                toolCall.newText = newStr;
+
+                qDebug() << "[ACPSession] Edit from rawInput - old:" << oldStr.length()
+                         << "chars, new:" << newStr.length() << "chars";
+            }
+        }
+
+        // Fallback: Extract write content from rawInput for MCP tools (e.g., mcp__kate__katecode_write)
+        if (isWriteTool(toolCall.name) && toolCall.newText.isEmpty()) {
+            QString content = toolCall.input[QStringLiteral("content")].toString();
+            if (!content.isEmpty()) {
+                toolCall.newText = content;
+                qDebug() << "[ACPSession] Write content from rawInput:" << content.length() << "chars";
+            }
         }
 
         qDebug() << "[ACPSession] Tool call - id:" << toolCall.id
