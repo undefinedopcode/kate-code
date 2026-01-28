@@ -41,6 +41,27 @@ static bool isBashTool(const QString &name)
     return name == QStringLiteral("Bash") || name == QStringLiteral("mcp__acp__Bash");
 }
 
+// Infer tool name from toolCallId prefix (e.g., Gemini uses "run_shell_command-<timestamp>")
+static QString inferToolNameFromId(const QString &toolCallId)
+{
+    // Extract prefix before the last dash-digits segment
+    int dashIdx = toolCallId.lastIndexOf(QLatin1Char('-'));
+    if (dashIdx <= 0) return {};
+
+    QString prefix = toolCallId.left(dashIdx);
+
+    if (prefix == QStringLiteral("run_shell_command") || prefix == QStringLiteral("bash") || prefix == QStringLiteral("execute")) {
+        return QStringLiteral("Bash");
+    } else if (prefix == QStringLiteral("read_file") || prefix == QStringLiteral("read")) {
+        return QStringLiteral("Read");
+    } else if (prefix == QStringLiteral("write_file") || prefix == QStringLiteral("write") || prefix == QStringLiteral("create_file")) {
+        return QStringLiteral("Write");
+    } else if (prefix == QStringLiteral("edit_file") || prefix == QStringLiteral("edit") || prefix == QStringLiteral("patch_file")) {
+        return QStringLiteral("Edit");
+    }
+    return {};
+}
+
 ACPSession::ACPSession(QObject *parent)
     : QObject(parent)
     , m_service(new ACPService(this))
@@ -673,6 +694,15 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             }
         }
 
+        // Final fallback: infer from toolCallId prefix (e.g., Gemini "run_shell_command-<ts>")
+        if (!isReadTool(toolCall.name) && !isWriteTool(toolCall.name) &&
+            !isEditTool(toolCall.name) && !isBashTool(toolCall.name)) {
+            QString inferred = inferToolNameFromId(toolCall.id);
+            if (!inferred.isEmpty()) {
+                toolCall.name = inferred;
+            }
+        }
+
         // Extract Edit/Write specific fields from content array
         QJsonArray contentArray = update[QStringLiteral("content")].toArray();
         for (int i = 0; i < contentArray.size(); ++i) {
@@ -854,9 +884,25 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             }
         }
 
+        // Infer tool name if not provided by _meta (needed when tool_call event was skipped)
+        if (toolName.isEmpty() || (!isReadTool(toolName) && !isWriteTool(toolName) &&
+            !isEditTool(toolName) && !isBashTool(toolName))) {
+            QString kind = update[QStringLiteral("kind")].toString();
+            if (kind == QStringLiteral("execute")) {
+                toolName = QStringLiteral("Bash");
+            }
+        }
+        if (toolName.isEmpty() || (!isReadTool(toolName) && !isWriteTool(toolName) &&
+            !isEditTool(toolName) && !isBashTool(toolName))) {
+            QString inferred = inferToolNameFromId(toolCallId);
+            if (!inferred.isEmpty()) {
+                toolName = inferred;
+            }
+        }
+
         qDebug() << "[ACPSession] Tool call update - id:" << toolCallId
                  << "status:" << status << "operation:" << operationType
-                 << "result length:" << result.length();
+                 << "toolName:" << toolName << "result length:" << result.length();
 
         if (!m_currentMessageId.isEmpty()) {
             // Link terminal to tool call if we found one (vibe-acp sends terminal in tool_call_update)
@@ -867,7 +913,7 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             // Only emit update if we have a result OR status changed
             // (Don't overwrite good results with empty ones from status-only updates)
             if (!result.isEmpty() || !status.isEmpty()) {
-                Q_EMIT toolCallUpdated(m_currentMessageId, toolCallId, status, result, updateFilePath);
+                Q_EMIT toolCallUpdated(m_currentMessageId, toolCallId, status, result, updateFilePath, toolName);
                 m_transcript->recordToolUpdate(toolCallId, status, result);
             }
         }
@@ -952,20 +998,62 @@ void ACPSession::handlePermissionRequest(const QJsonObject &params, int requestI
     request.id = toolCall[QStringLiteral("toolCallId")].toString();
     request.input = toolCall[QStringLiteral("rawInput")].toObject();
 
-    // Get tool name from title field
-    request.toolName = toolCall[QStringLiteral("title")].toString();
+    // Get tool name - try _meta.claudeCode.toolName first (most reliable)
+    QJsonObject meta = toolCall[QStringLiteral("_meta")].toObject();
+    QJsonObject claudeCode = meta[QStringLiteral("claudeCode")].toObject();
+    request.toolName = claudeCode[QStringLiteral("toolName")].toString();
 
-    // Try alternate field names if title is empty
+    // Fall back to name field
     if (request.toolName.isEmpty()) {
         request.toolName = toolCall[QStringLiteral("name")].toString();
     }
     if (request.toolName.isEmpty()) {
         request.toolName = toolCall[QStringLiteral("toolName")].toString();
     }
+
+    // Infer tool type from kind field or title if not a known tool
+    // (same logic as tool_call handler - needed for vibe-acp / Gemini)
+    QString title = toolCall[QStringLiteral("title")].toString();
+    QString kind = toolCall[QStringLiteral("kind")].toString();
+
+    if (request.toolName.isEmpty() ||
+        (!isReadTool(request.toolName) && !isWriteTool(request.toolName) &&
+         !isEditTool(request.toolName) && !isBashTool(request.toolName))) {
+        // Check kind field first - more reliable than title matching
+        if (kind == QStringLiteral("execute")) {
+            request.toolName = QStringLiteral("Bash");
+        }
+    }
+    if (request.toolName.isEmpty() ||
+        (!isReadTool(request.toolName) && !isWriteTool(request.toolName) &&
+         !isEditTool(request.toolName) && !isBashTool(request.toolName))) {
+        if (title.startsWith(QStringLiteral("Reading "))) {
+            request.toolName = QStringLiteral("Read");
+        } else if (title.startsWith(QStringLiteral("Editing "))) {
+            request.toolName = QStringLiteral("Edit");
+        } else if (title.startsWith(QStringLiteral("Writing "))) {
+            request.toolName = QStringLiteral("Write");
+        } else if (title.startsWith(QStringLiteral("Patching "))) {
+            request.toolName = QStringLiteral("Edit");
+        } else if (title.contains(QStringLiteral("bash")) || title.contains(QStringLiteral("Bash")) ||
+                   title.startsWith(QStringLiteral("Running "))) {
+            request.toolName = QStringLiteral("Bash");
+        }
+    }
+
+    // Fallback: infer from toolCallId prefix (e.g., Gemini "run_shell_command-<ts>")
+    if (request.toolName.isEmpty() ||
+        (!isReadTool(request.toolName) && !isWriteTool(request.toolName) &&
+         !isEditTool(request.toolName) && !isBashTool(request.toolName))) {
+        QString inferred = inferToolNameFromId(request.id);
+        if (!inferred.isEmpty()) {
+            request.toolName = inferred;
+        }
+    }
+
+    // If still no recognized tool name, use the title as-is
     if (request.toolName.isEmpty()) {
-        QJsonObject meta = toolCall[QStringLiteral("_meta")].toObject();
-        QJsonObject claudeCode = meta[QStringLiteral("claudeCode")].toObject();
-        request.toolName = claudeCode[QStringLiteral("toolName")].toString();
+        request.toolName = title;
     }
 
     QJsonArray optionsArray = params[QStringLiteral("options")].toArray();

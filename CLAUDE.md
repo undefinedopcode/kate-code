@@ -43,42 +43,6 @@ Settings > Configure Kate > Plugins > Enable "Kate Code"
 - `src/katecode.qrc` - Qt resource file for web assets
 - `src/katecode.json` - KPlugin metadata
 
-## Development Progress
-
-### Phase 1: Core Plugin Structure ✓
-- [x] CMake build system with KF6/Qt6 dependencies
-- [x] Directory structure
-- [x] KateCodePlugin with K_PLUGIN_CLASS_WITH_JSON registration
-- [x] KateCodeView with side panel tool view (left position)
-- [x] Basic ChatWidget placeholder
-- [x] Successful compilation
-
-### Phase 2: ACP Integration ✓
-- [x] ACPService with QProcess management
-- [x] ACPModels data structures
-- [x] ACPSession with protocol flow (initialize → session/new → session/prompt)
-- [x] ChatWidget integrated with ACP session
-- [x] Basic UI for testing (Connect button, chat display, message input)
-
-### Phase 3: Chat Functionality ✓
-- [x] ChatWebView with QWebEngineView and HTML/CSS/JS rendering
-- [x] ChatInputWidget with multiline input (Enter=send, Shift+Enter=newline)
-- [x] Message streaming display with role indicators and timestamps
-- [x] Tool call display in chat UI
-- [x] Qt resource system for bundling web assets
-- [x] JavaScript bridge for updating messages from C++
-
-### Phase 4: Full Features ✓
-- [x] KDE color scheme extraction from ~/.config/kdeglobals
-- [x] Color injection into WebView via JavaScript
-- [x] Permission dialog for tool approvals with option selection
-- [x] Error display via QMessageBox
-- [x] Permission response handling back to ACP
-
-### Phase 5: Kate Integration (TODO)
-- [ ] Context actions
-- [ ] File/selection context in prompts
-
 ## Lessons Learned
 
 ### Build System
