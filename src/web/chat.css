@@ -974,6 +974,23 @@ pre.diff .diff-add span {
     font-weight: 500;
 }
 
+.permission-content {
+    margin: 4px 0;
+}
+
+.permission-content .tool-call-input {
+    margin: 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.permission-file {
+    font-size: 11px;
+    color: var(--fg-secondary);
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
 .empty-state {
     display: flex;
     align-items: center;

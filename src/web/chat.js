@@ -95,31 +95,36 @@ function parseBashResult(result) {
     return { exitCode: null, output: result };
 }
 
-// Check if a tool is a Read tool (standard or MCP variant)
+// Check if a tool is a Read tool (standard, ACP MCP, or Kate MCP variant)
 function isReadTool(toolName) {
-    return toolName === 'Read' || toolName === 'mcp__acp__Read';
+    return toolName === 'Read' || toolName === 'mcp__acp__Read' || toolName === 'mcp__kate__katecode_read';
 }
 
-// Check if a tool is a Write tool (standard or MCP variant)
+// Check if a tool is a Write tool (standard, ACP MCP, or Kate MCP variant)
 function isWriteTool(toolName) {
-    return toolName === 'Write' || toolName === 'mcp__acp__Write';
+    return toolName === 'Write' || toolName === 'mcp__acp__Write' || toolName === 'mcp__kate__katecode_write';
 }
 
-// Check if a tool is an Edit tool (standard or MCP variant)
+// Check if a tool is an Edit tool (standard, ACP MCP, or Kate MCP variant)
 function isEditTool(toolName) {
-    return toolName === 'Edit' || toolName === 'mcp__acp__Edit';
+    return toolName === 'Edit' || toolName === 'mcp__acp__Edit' || toolName === 'mcp__kate__katecode_edit';
 }
 
-// Check if a tool is a Kate MCP tool (mcp__acp__ prefix)
+// Check if a tool is a Kate MCP tool (mcp__acp__ or mcp__kate__ prefix)
 function isKateTool(toolName) {
-    return toolName && toolName.startsWith('mcp__acp__');
+    return toolName && (toolName.startsWith('mcp__acp__') || toolName.startsWith('mcp__kate__'));
 }
 
-// Get display name for a tool (strips mcp__acp__ prefix if present)
+// Get display name for a tool (strips mcp__acp__ or mcp__kate__katecode_ prefix if present)
 function getToolDisplayName(toolName) {
     if (!toolName) return 'Tool';
     if (toolName.startsWith('mcp__acp__')) {
         return toolName.substring('mcp__acp__'.length);
+    }
+    if (toolName.startsWith('mcp__kate__katecode_')) {
+        // Convert katecode_read -> Read, katecode_edit -> Edit, etc.
+        const baseName = toolName.substring('mcp__kate__katecode_'.length);
+        return baseName.charAt(0).toUpperCase() + baseName.slice(1);
     }
     return toolName;
 }
@@ -1180,18 +1185,74 @@ function applyCustomHighlightCSS(cssText) {
 function showPermissionRequest(requestId, toolName, input, options) {
     console.log('showPermissionRequest called:', requestId, toolName);
     console.log('Options:', options);
+    console.log('Input:', input);
 
     if (!Array.isArray(options)) {
         console.error('Options is not an array:', options);
         return;
     }
 
+    // Extract file path for display
+    const filePath = input.file_path || '';
+    const fileName = filePath ? filePath.split('/').pop() : '';
+
+    // Build content section based on tool type
+    let contentHtml = '';
+
+    if (isEditTool(toolName)) {
+        // Edit tool - show diff
+        const oldText = input.old_string || '';
+        const newText = input.new_string || '';
+        if (oldText || newText) {
+            const diff = generateUnifiedDiff(oldText, newText, fileName);
+            contentHtml = `
+                <div class="permission-content">
+                    <div class="permission-file">${escapeHtml(filePath)}</div>
+                    <div class="tool-call-input">
+                        <pre class="diff">${diff}</pre>
+                    </div>
+                </div>`;
+        }
+    } else if (isWriteTool(toolName)) {
+        // Write tool - show content with syntax highlighting
+        const content = input.content || '';
+        if (content) {
+            const language = getLanguageFromPath(filePath);
+            const highlighted = highlightCode(content, language);
+            contentHtml = `
+                <div class="permission-content">
+                    <div class="permission-file">${escapeHtml(filePath)}</div>
+                    <div class="tool-call-input">
+                        <pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre>
+                    </div>
+                </div>`;
+        }
+    } else if (isBashTool(toolName)) {
+        // Bash tool - show command
+        const command = input.command || '';
+        if (command) {
+            contentHtml = `
+                <div class="permission-content">
+                    <div class="tool-call-input">
+                        <strong>Command:</strong>
+                        <pre>${escapeHtml(command)}</pre>
+                    </div>
+                </div>`;
+        }
+    }
+
+    // Get display name (strip mcp__acp__ prefix) and check if Kate tool
+    const displayName = getToolDisplayName(toolName);
+    const isKate = isKateTool(toolName);
+
     let html = `
         <div class="permission-request" id="perm-${requestId}">
             <div class="permission-header">
                 <span class="permission-icon">${materialIcon('lock', 'material-icon-sm')}</span>
-                <span class="permission-title">Permission: ${escapeHtml(toolName)}</span>
+                <span class="permission-title">Permission: ${escapeHtml(displayName)}</span>
+                ${isKate ? '<span class="tool-call-kate-badge">Kate</span>' : ''}
             </div>
+            ${contentHtml}
             <div class="permission-options">
     `;
 
