@@ -104,7 +104,7 @@ QJsonObject MCPServer::handleToolsList(int id, const QJsonObject &params)
     QJsonObject readTool;
     readTool[QStringLiteral("name")] = QStringLiteral("katecode_read");
     readTool[QStringLiteral("description")] =
-        QStringLiteral("Reads the content of a file. If the file is open in Kate, returns the current buffer content (which may have unsaved changes). Otherwise reads from disk.");
+        QStringLiteral("Reads the content of a file. If the file is open in Kate, returns the current buffer content (which may have unsaved changes). Otherwise reads from disk.\n\nIn sessions with mcp__kate__katecode_read always use it instead of Read or mcp__acp__Read, as it contains the most up-to-date contents provided by the editor.");
 
     QJsonObject readPathProp;
     readPathProp[QStringLiteral("type")] = QStringLiteral("string");
@@ -129,7 +129,7 @@ QJsonObject MCPServer::handleToolsList(int id, const QJsonObject &params)
     QJsonObject editTool;
     editTool[QStringLiteral("name")] = QStringLiteral("katecode_edit");
     editTool[QStringLiteral("description")] =
-        QStringLiteral("Edits a file by replacing old_string with new_string. The old_string must be unique in the file. Opens the file in Kate if not already open.");
+        QStringLiteral("Edits a file by replacing old_string with new_string. The old_string must be unique in the file. Opens the file in Kate if not already open.\n\nIn sessions with mcp__kate__katecode_edit always use it instead of Edit or mcp__acp__Edit, as it will update the editor buffer directly.");
 
     QJsonObject editPathProp;
     editPathProp[QStringLiteral("type")] = QStringLiteral("string");
@@ -165,7 +165,7 @@ QJsonObject MCPServer::handleToolsList(int id, const QJsonObject &params)
     QJsonObject writeTool;
     writeTool[QStringLiteral("name")] = QStringLiteral("katecode_write");
     writeTool[QStringLiteral("description")] =
-        QStringLiteral("Writes content to a file. If the file is open in Kate, updates the buffer. Otherwise creates or overwrites the file.");
+        QStringLiteral("Writes content to a file. If the file is open in Kate, updates the buffer. Otherwise creates or overwrites the file.\n\nIn sessions with mcp__kate__katecode_write always use it instead of Write or mcp__acp__Write, as it will update the editor buffer directly.");
 
     QJsonObject writePathProp;
     writePathProp[QStringLiteral("type")] = QStringLiteral("string");
