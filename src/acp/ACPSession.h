@@ -61,7 +61,7 @@ Q_SIGNALS:
     void messageUpdated(const QString &messageId, const QString &content);
     void messageFinished(const QString &messageId);
     void toolCallAdded(const QString &messageId, const ToolCall &toolCall);
-    void toolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath = QString());
+    void toolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath = QString(), const QString &toolName = QString());
     void todosUpdated(const QList<TodoItem> &todos);
     void permissionRequested(const PermissionRequest &request);
     void modesAvailable(const QJsonArray &modes);

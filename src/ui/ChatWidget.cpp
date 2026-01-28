@@ -521,10 +521,10 @@ void ChatWidget::onToolCallAdded(const QString &messageId, const ToolCall &toolC
     }
 }
 
-void ChatWidget::onToolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath)
+void ChatWidget::onToolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath, const QString &toolName)
 {
     Q_UNUSED(messageId);
-    m_chatWebView->updateToolCall(messageId, toolCallId, status, result, filePath);
+    m_chatWebView->updateToolCall(messageId, toolCallId, status, result, filePath, toolName);
 
     // Clear highlights when tool call completes or fails
     if (status == QStringLiteral("completed") || status == QStringLiteral("failed")) {

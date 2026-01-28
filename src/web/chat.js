@@ -455,7 +455,7 @@ function addToolCall(messageId, toolCallId, name, status, filePath, inputJson, o
 }
 
 // Update tool call status - result is Base64 encoded to handle ANSI escape codes
-function updateToolCall(messageId, toolCallId, status, base64Result, filePath) {
+function updateToolCall(messageId, toolCallId, status, base64Result, filePath, toolName) {
     if (!messages[messageId]) return;
 
     // Decode base64 result
@@ -472,11 +472,11 @@ function updateToolCall(messageId, toolCallId, status, base64Result, filePath) {
     let toolCall = messages[messageId].toolCalls.find(tc => tc.id === toolCallId);
 
     if (!toolCall) {
-        // Tool call doesn't exist yet (happens with Write tool that only sends update)
-        // Create it now with the result
+        // Tool call doesn't exist yet (happens when tool_call event was skipped, e.g. Gemini)
+        // Create it now with the result - use provided toolName or fall back to 'Unknown'
         toolCall = {
             id: toolCallId,
-            name: 'Write',  // Will be updated if we get more info
+            name: toolName || 'Unknown',
             status: status || 'completed',
             filePath: filePath || '',
             input: {},

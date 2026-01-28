@@ -82,7 +82,7 @@ private Q_SLOTS:
     void onMessageUpdated(const QString &messageId, const QString &content);
     void onMessageFinished(const QString &messageId);
     void onToolCallAdded(const QString &messageId, const ToolCall &toolCall);
-    void onToolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath = QString());
+    void onToolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath = QString(), const QString &toolName = QString());
     void onTodosUpdated(const QList<TodoItem> &todos);
     void onPermissionRequested(const PermissionRequest &request);
     void onModesAvailable(const QJsonArray &modes);
