@@ -12,6 +12,7 @@
 #include "../util/SummaryGenerator.h"
 #include "../util/SummaryStore.h"
 
+#include <QComboBox>
 #include <QDir>
 #include <QJsonObject>
 #include <QFile>
@@ -21,8 +22,10 @@
 #include <QImage>
 #include <QLabel>
 #include <QPixmap>
+#include <QProcess>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QStandardItemModel>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -50,6 +53,13 @@ ChatWidget::ChatWidget(QWidget *parent)
     m_titleLabel->setStyleSheet(QStringLiteral("QLabel { font-weight: bold; }"));
     headerLayout->addWidget(m_titleLabel);
     headerLayout->addStretch();
+
+    // ACP Provider selector
+    m_providerCombo = new QComboBox(this);
+    m_providerCombo->setToolTip(QStringLiteral("Select ACP Provider"));
+    m_providerCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    headerLayout->addWidget(m_providerCombo);
+    connect(m_providerCombo, &QComboBox::currentIndexChanged, this, &ChatWidget::onProviderComboChanged);
 
     // Resume Session button (icon only)
     m_resumeSessionButton = new QToolButton(this);
@@ -126,6 +136,13 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::commandsAvailable, m_inputWidget, &ChatInputWidget::setAvailableCommands);
     connect(m_session, &ACPSession::errorOccurred, this, &ChatWidget::onError);
     connect(m_session, &ACPSession::promptCancelled, this, &ChatWidget::onPromptCancelled);
+
+    // Debug JSON logging (only emits when debug logging is enabled in settings)
+    connect(m_session, &ACPSession::jsonPayload, this, [this](const QString &direction, const QString &json) {
+        if (m_settingsStore && m_settingsStore->debugLogging()) {
+            Q_EMIT debugLogMessage(QStringLiteral("[ACP %1] %2").arg(direction, json));
+        }
+    });
 
     // Session persistence signals
     connect(m_session, &ACPSession::initializeComplete, this, &ChatWidget::onInitializeComplete);
@@ -221,6 +238,7 @@ void ChatWidget::setSettingsStore(SettingsStore *settings)
 
         // Apply initial settings
         applyDiffColors();
+        populateProviderCombo();
         applyACPBackend();
 
         // Try to load API key from KWallet (async)
@@ -397,12 +415,13 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setEnabled(true);
         m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(false);
+        m_providerCombo->setEnabled(true);
         m_inputWidget->setEnabled(false);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #888888; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Disconnected"));
         m_titleLabel->setText(QStringLiteral("Kate Code - Session"));
         sysMsg.id = QStringLiteral("sys_disconnected");
-        sysMsg.content = QStringLiteral("Disconnected from claude-code-acp");
+        sysMsg.content = QStringLiteral("Disconnected from %1").arg(m_settingsStore->activeProvider().description);
         m_chatWebView->addMessage(sysMsg);
 
         // Trigger summary generation for the ended session
@@ -412,6 +431,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setEnabled(false);
         m_resumeSessionButton->setEnabled(false);
         m_newSessionButton->setEnabled(false);
+        m_providerCombo->setEnabled(false);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #f0ad4e; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Connecting..."));
         sysMsg.id = QStringLiteral("sys_connecting");
@@ -424,6 +444,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setEnabled(true);
         m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(true);
+        m_providerCombo->setEnabled(false);
         m_inputWidget->setEnabled(true);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #5cb85c; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Connected"));
@@ -460,6 +481,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setEnabled(true);
         m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(false);
+        m_providerCombo->setEnabled(true);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #d9534f; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Error"));
         break;
@@ -923,6 +945,7 @@ void ChatWidget::onApiKeyLoadedForSummary(bool success)
 void ChatWidget::onSettingsChanged()
 {
     applyDiffColors();
+    populateProviderCombo();
     applyACPBackend();
 }
 
@@ -1000,10 +1023,67 @@ void ChatWidget::applyACPBackend()
         return;
     }
 
-    QString executable = m_settingsStore->acpExecutableName();
-    QStringList args = m_settingsStore->acpExecutableArgs();
-    m_session->setExecutable(executable, args);
-    qDebug() << "[ChatWidget] ACP backend configured:" << executable << args;
+    ACPProvider provider = m_settingsStore->activeProvider();
+    QStringList args;
+    if (!provider.options.isEmpty()) {
+        args = QProcess::splitCommand(provider.options);
+    }
+    m_session->setExecutable(provider.executable, args);
+    qDebug() << "[ChatWidget] ACP backend configured:" << provider.executable << args;
+}
+
+void ChatWidget::populateProviderCombo()
+{
+    if (!m_settingsStore || !m_providerCombo) {
+        return;
+    }
+
+    // Block signals to avoid triggering onProviderComboChanged during population
+    m_providerCombo->blockSignals(true);
+    m_providerCombo->clear();
+
+    const auto providerList = m_settingsStore->providers();
+    QString activeId = m_settingsStore->activeProviderId();
+    int activeIndex = 0;
+
+    for (int i = 0; i < providerList.size(); ++i) {
+        const auto &p = providerList[i];
+        bool available = SettingsStore::isExecutableAvailable(p.executable);
+
+        QString displayText = p.description;
+        if (!available) {
+            displayText += QStringLiteral(" (not found)");
+        }
+
+        m_providerCombo->addItem(displayText, p.id);
+
+        // Gray out unavailable providers
+        if (!available) {
+            auto *model = qobject_cast<QStandardItemModel *>(m_providerCombo->model());
+            if (model) {
+                QStandardItem *item = model->item(i);
+                item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+            }
+        }
+
+        if (p.id == activeId) {
+            activeIndex = i;
+        }
+    }
+
+    m_providerCombo->setCurrentIndex(activeIndex);
+    m_providerCombo->blockSignals(false);
+}
+
+void ChatWidget::onProviderComboChanged(int index)
+{
+    if (!m_settingsStore || index < 0) {
+        return;
+    }
+
+    QString providerId = m_providerCombo->itemData(index).toString();
+    m_settingsStore->setActiveProviderId(providerId);
+    applyACPBackend();
 }
 
 void ChatWidget::resizeEvent(QResizeEvent *event)

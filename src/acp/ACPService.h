@@ -29,6 +29,7 @@ Q_SIGNALS:
     void connected();
     void disconnected(int exitCode);
     void errorOccurred(const QString &message);
+    void jsonPayload(const QString &direction, const QString &json);
 
 private Q_SLOTS:
     void onStdout();

@@ -1,19 +1,23 @@
 #pragma once
 
 #include <QColor>
+#include <QList>
 #include <QObject>
 #include <QSettings>
 #include <QString>
+#include <QStringList>
 
 namespace KWallet {
 class Wallet;
 }
 
-// ACP backend types
-enum class ACPBackend {
-    ClaudeCodeACP,  // claude-code-acp (default)
-    VibeACP,        // vibe (mistral-vibe)
-    Custom,         // User-specified executable
+// ACP provider definition
+struct ACPProvider {
+    QString id;           // Stable identifier (e.g. "claude-code", "vibe-mistral", "custom-1")
+    QString description;  // Display name
+    QString executable;   // Binary name or path
+    QString options;      // Command-line arguments string
+    bool builtin = false; // true for built-in providers (can't be deleted)
 };
 
 // Color schemes for diff highlighting (colorblind-friendly options)
@@ -57,17 +61,22 @@ public:
     bool autoResumeSessions() const;
     void setAutoResumeSessions(bool enable);
 
-    // ACP backend settings
-    ACPBackend acpBackend() const;
-    void setACPBackend(ACPBackend backend);
-    QString acpCustomExecutable() const;
-    void setACPCustomExecutable(const QString &executable);
+    // ACP provider management
+    QList<ACPProvider> providers() const;
+    ACPProvider activeProvider() const;
+    QString activeProviderId() const;
+    void setActiveProviderId(const QString &id);
 
-    // Returns the executable name and arguments for the current backend
-    QString acpExecutableName() const;
-    QStringList acpExecutableArgs() const;
+    void addCustomProvider(const ACPProvider &provider);
+    void updateCustomProvider(const QString &id, const ACPProvider &provider);
+    void removeCustomProvider(const QString &id);
 
-    static QString backendDisplayName(ACPBackend backend);
+    // Check if an executable can be found on PATH or common directories
+    static bool isExecutableAvailable(const QString &executable);
+
+    // Debug settings
+    bool debugLogging() const;
+    void setDebugLogging(bool enable);
 
     // Diff color scheme settings
     DiffColorScheme diffColorScheme() const;
@@ -91,8 +100,11 @@ private Q_SLOTS:
 private:
     void openWallet();
     void closeWallet();
+    void migrateOldBackendSettings();
+    QList<ACPProvider> builtinProviders() const;
+    QList<ACPProvider> customProviders() const;
 
-    QSettings m_settings;
+    mutable QSettings m_settings;
     KWallet::Wallet *m_wallet;
     QString m_apiKey;
     bool m_walletAvailable;

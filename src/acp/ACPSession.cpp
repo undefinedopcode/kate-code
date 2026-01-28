@@ -58,6 +58,7 @@ ACPSession::ACPSession(QObject *parent)
     connect(m_service, &ACPService::disconnected, this, &ACPSession::onDisconnected);
     connect(m_service, &ACPService::notificationReceived, this, &ACPSession::onNotification);
     connect(m_service, &ACPService::responseReceived, this, &ACPSession::onResponse);
+    connect(m_service, &ACPService::jsonPayload, this, &ACPSession::jsonPayload);
     connect(m_service, &ACPService::errorOccurred, this, &ACPSession::onError);
 
     // Forward terminal output to UI
@@ -103,10 +104,17 @@ void ACPSession::stop()
 {
     m_transcript->finishSession();
     m_terminalManager->releaseAll();
-    m_service->stop();
+
+    // Set status BEFORE stopping the service, because m_service->stop()
+    // may synchronously trigger onDisconnected() via QProcess signals.
+    // If we set Disconnected first, onDisconnected() sees the state is
+    // already Disconnected and skips emitting a duplicate statusChanged.
     m_status = ConnectionStatus::Disconnected;
     m_sessionId.clear();
     m_promptRequestId = -1;
+
+    m_service->stop();
+
     Q_EMIT statusChanged(m_status);
 }
 
@@ -338,8 +346,10 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
 void ACPSession::onConnected()
 {
     qDebug() << "[ACPSession] ACP process started, sending initialize";
-    m_status = ConnectionStatus::Connecting;
-    Q_EMIT statusChanged(m_status);
+    if (m_status != ConnectionStatus::Connecting) {
+        m_status = ConnectionStatus::Connecting;
+        Q_EMIT statusChanged(m_status);
+    }
 
     // Send initialize request
     QJsonObject params;
@@ -364,9 +374,12 @@ void ACPSession::onConnected()
 void ACPSession::onDisconnected(int exitCode)
 {
     qDebug() << "[ACPSession] Disconnected with exit code:" << exitCode;
+    bool wasAlreadyDisconnected = (m_status == ConnectionStatus::Disconnected);
     m_status = ConnectionStatus::Disconnected;
     m_sessionId.clear();
-    Q_EMIT statusChanged(m_status);
+    if (!wasAlreadyDisconnected) {
+        Q_EMIT statusChanged(m_status);
+    }
 }
 
 void ACPSession::onNotification(const QString &method, const QJsonObject &params, int requestId)

@@ -126,6 +126,7 @@ int ACPService::sendRequest(const QString &method, const QJsonObject &params)
     QByteArray data = QJsonDocument(msg).toJson(QJsonDocument::Compact) + "\n";
     qDebug() << "[ACPService] >>" << method << "id:" << m_messageId;
 
+    Q_EMIT jsonPayload(QStringLiteral(">>"), QString::fromUtf8(data).trimmed());
     m_process->write(data);
     return m_messageId;
 }
@@ -148,6 +149,7 @@ void ACPService::sendNotification(const QString &method, const QJsonObject &para
     QByteArray data = QJsonDocument(msg).toJson(QJsonDocument::Compact) + "\n";
     qDebug() << "[ACPService] >> notification:" << method;
 
+    Q_EMIT jsonPayload(QStringLiteral(">>"), QString::fromUtf8(data).trimmed());
     m_process->write(data);
 }
 
@@ -170,6 +172,7 @@ void ACPService::sendResponse(int requestId, const QJsonObject &result, const QJ
     QByteArray data = QJsonDocument(msg).toJson(QJsonDocument::Compact) + "\n";
     qDebug() << "[ACPService] >> response for request id:" << requestId;
 
+    Q_EMIT jsonPayload(QStringLiteral(">>"), QString::fromUtf8(data).trimmed());
     m_process->write(data);
 }
 
@@ -211,6 +214,8 @@ void ACPService::onStdout()
 
 void ACPService::handleMessage(const QJsonObject &msg)
 {
+    Q_EMIT jsonPayload(QStringLiteral("<<"), QString::fromUtf8(QJsonDocument(msg).toJson(QJsonDocument::Compact)));
+
     if (msg.contains(QStringLiteral("method"))) {
         // Notification or request from ACP
         QString method = msg[QStringLiteral("method")].toString();
