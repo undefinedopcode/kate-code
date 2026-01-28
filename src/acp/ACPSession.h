@@ -70,6 +70,9 @@ Q_SIGNALS:
     void errorOccurred(const QString &message);
     void promptCancelled();
 
+    // Debug: raw JSON-RPC payloads (direction is ">>" for sent, "<<" for received)
+    void jsonPayload(const QString &direction, const QString &json);
+
     // Emitted after initialize completes, before session creation
     void initializeComplete();
 

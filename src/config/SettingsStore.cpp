@@ -3,6 +3,10 @@
 #include <KLocalizedString>
 #include <kwallet.h>
 
+#include <QDir>
+#include <QFileInfo>
+#include <QStandardPaths>
+
 const QString SettingsStore::WALLET_FOLDER = QStringLiteral("KateCode");
 const QString SettingsStore::API_KEY_ENTRY = QStringLiteral("AnthropicApiKey");
 const QString SettingsStore::DEFAULT_SUMMARY_MODEL = QStringLiteral("claude-3-5-haiku-20241022");
@@ -15,6 +19,7 @@ SettingsStore::SettingsStore(QObject *parent)
     , m_pendingOperation(WalletOperation::None)
 {
     qDebug() << "[SettingsStore] Initialized, config file:" << m_settings.fileName();
+    migrateOldBackendSettings();
 }
 
 SettingsStore::~SettingsStore()
@@ -183,61 +188,216 @@ void SettingsStore::setAutoResumeSessions(bool enable)
     Q_EMIT settingsChanged();
 }
 
-ACPBackend SettingsStore::acpBackend() const
+// --- ACP Provider Management ---
+
+QList<ACPProvider> SettingsStore::builtinProviders() const
 {
-    int backend = m_settings.value(QStringLiteral("ACP/backend"), 0).toInt();
-    return static_cast<ACPBackend>(backend);
+    return {
+        {QStringLiteral("claude-code"), QStringLiteral("Claude Code"), QStringLiteral("claude-code-acp"), QString(), true},
+        {QStringLiteral("vibe-mistral"), QStringLiteral("Vibe (Mistral)"), QStringLiteral("vibe-acp"), QString(), true},
+    };
 }
 
-void SettingsStore::setACPBackend(ACPBackend backend)
+QList<ACPProvider> SettingsStore::customProviders() const
 {
-    m_settings.setValue(QStringLiteral("ACP/backend"), static_cast<int>(backend));
+    QList<ACPProvider> list;
+    int size = m_settings.beginReadArray(QStringLiteral("ACP/customProviders"));
+    for (int i = 0; i < size; ++i) {
+        m_settings.setArrayIndex(i);
+        ACPProvider p;
+        p.id = m_settings.value(QStringLiteral("id")).toString();
+        p.description = m_settings.value(QStringLiteral("description")).toString();
+        p.executable = m_settings.value(QStringLiteral("executable")).toString();
+        p.options = m_settings.value(QStringLiteral("options")).toString();
+        p.builtin = false;
+        if (!p.id.isEmpty() && !p.executable.isEmpty()) {
+            list.append(p);
+        }
+    }
+    m_settings.endArray();
+    return list;
+}
+
+QList<ACPProvider> SettingsStore::providers() const
+{
+    QList<ACPProvider> all = builtinProviders();
+    all.append(customProviders());
+    return all;
+}
+
+ACPProvider SettingsStore::activeProvider() const
+{
+    QString id = activeProviderId();
+    const auto all = providers();
+    for (const auto &p : all) {
+        if (p.id == id) {
+            return p;
+        }
+    }
+    // Fallback to first builtin
+    if (!all.isEmpty()) {
+        return all.first();
+    }
+    return {};
+}
+
+QString SettingsStore::activeProviderId() const
+{
+    return m_settings.value(QStringLiteral("ACP/activeProvider"), QStringLiteral("claude-code")).toString();
+}
+
+void SettingsStore::setActiveProviderId(const QString &id)
+{
+    m_settings.setValue(QStringLiteral("ACP/activeProvider"), id);
     m_settings.sync();
     Q_EMIT settingsChanged();
 }
 
-QString SettingsStore::acpCustomExecutable() const
+void SettingsStore::addCustomProvider(const ACPProvider &provider)
 {
-    return m_settings.value(QStringLiteral("ACP/customExecutable")).toString();
-}
+    auto list = customProviders();
+    list.append(provider);
 
-void SettingsStore::setACPCustomExecutable(const QString &executable)
-{
-    m_settings.setValue(QStringLiteral("ACP/customExecutable"), executable);
+    m_settings.beginWriteArray(QStringLiteral("ACP/customProviders"), list.size());
+    for (int i = 0; i < list.size(); ++i) {
+        m_settings.setArrayIndex(i);
+        m_settings.setValue(QStringLiteral("id"), list[i].id);
+        m_settings.setValue(QStringLiteral("description"), list[i].description);
+        m_settings.setValue(QStringLiteral("executable"), list[i].executable);
+        m_settings.setValue(QStringLiteral("options"), list[i].options);
+    }
+    m_settings.endArray();
     m_settings.sync();
     Q_EMIT settingsChanged();
 }
 
-QString SettingsStore::acpExecutableName() const
+void SettingsStore::updateCustomProvider(const QString &id, const ACPProvider &provider)
 {
-    switch (acpBackend()) {
-    case ACPBackend::VibeACP:
-        return QStringLiteral("vibe-acp");
-    case ACPBackend::Custom:
-        return acpCustomExecutable();
-    case ACPBackend::ClaudeCodeACP:
-    default:
-        return QStringLiteral("claude-code-acp");
+    auto list = customProviders();
+    for (int i = 0; i < list.size(); ++i) {
+        if (list[i].id == id) {
+            list[i] = provider;
+            break;
+        }
     }
+
+    m_settings.beginWriteArray(QStringLiteral("ACP/customProviders"), list.size());
+    for (int i = 0; i < list.size(); ++i) {
+        m_settings.setArrayIndex(i);
+        m_settings.setValue(QStringLiteral("id"), list[i].id);
+        m_settings.setValue(QStringLiteral("description"), list[i].description);
+        m_settings.setValue(QStringLiteral("executable"), list[i].executable);
+        m_settings.setValue(QStringLiteral("options"), list[i].options);
+    }
+    m_settings.endArray();
+    m_settings.sync();
+    Q_EMIT settingsChanged();
 }
 
-QStringList SettingsStore::acpExecutableArgs() const
+void SettingsStore::removeCustomProvider(const QString &id)
 {
-    // No extra arguments needed for any backend currently
-    return QStringList();
+    auto list = customProviders();
+    list.removeIf([&id](const ACPProvider &p) { return p.id == id; });
+
+    m_settings.beginWriteArray(QStringLiteral("ACP/customProviders"), list.size());
+    for (int i = 0; i < list.size(); ++i) {
+        m_settings.setArrayIndex(i);
+        m_settings.setValue(QStringLiteral("id"), list[i].id);
+        m_settings.setValue(QStringLiteral("description"), list[i].description);
+        m_settings.setValue(QStringLiteral("executable"), list[i].executable);
+        m_settings.setValue(QStringLiteral("options"), list[i].options);
+    }
+    m_settings.endArray();
+    m_settings.sync();
+    Q_EMIT settingsChanged();
 }
 
-QString SettingsStore::backendDisplayName(ACPBackend backend)
+bool SettingsStore::isExecutableAvailable(const QString &executable)
 {
-    switch (backend) {
-    case ACPBackend::VibeACP:
-        return QStringLiteral("Vibe (Mistral)");
-    case ACPBackend::Custom:
-        return QStringLiteral("Custom");
-    case ACPBackend::ClaudeCodeACP:
-    default:
-        return QStringLiteral("Claude Code ACP (default)");
+    if (executable.isEmpty()) {
+        return false;
     }
+
+    // Absolute path: just check existence
+    if (QFileInfo(executable).isAbsolute()) {
+        return QFileInfo::exists(executable);
+    }
+
+    // Search PATH
+    if (!QStandardPaths::findExecutable(executable).isEmpty()) {
+        return true;
+    }
+
+    // Fallback: common user-local directories
+    const QString home = QDir::homePath();
+    const QStringList fallbackDirs = {
+        home + QStringLiteral("/.local/bin"),
+        home + QStringLiteral("/bin"),
+        home + QStringLiteral("/.cargo/bin"),
+    };
+    for (const QString &dir : fallbackDirs) {
+        if (QFileInfo::exists(dir + QLatin1Char('/') + executable)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void SettingsStore::migrateOldBackendSettings()
+{
+    // One-time migration from old ACPBackend enum settings
+    if (!m_settings.contains(QStringLiteral("ACP/backend"))) {
+        return; // Nothing to migrate
+    }
+
+    int oldBackend = m_settings.value(QStringLiteral("ACP/backend"), 0).toInt();
+    QString oldCustomExe = m_settings.value(QStringLiteral("ACP/customExecutable")).toString();
+
+    // Map old enum to new provider id
+    QString newActiveId;
+    switch (oldBackend) {
+    case 1: // VibeACP
+        newActiveId = QStringLiteral("vibe-mistral");
+        break;
+    case 2: // Custom
+        if (!oldCustomExe.isEmpty()) {
+            // Create a custom provider entry
+            ACPProvider custom;
+            custom.id = QStringLiteral("custom-migrated");
+            custom.description = QStringLiteral("Custom (migrated)");
+            custom.executable = oldCustomExe;
+            custom.builtin = false;
+            addCustomProvider(custom);
+            newActiveId = custom.id;
+        } else {
+            newActiveId = QStringLiteral("claude-code");
+        }
+        break;
+    case 0: // ClaudeCodeACP
+    default:
+        newActiveId = QStringLiteral("claude-code");
+        break;
+    }
+
+    m_settings.setValue(QStringLiteral("ACP/activeProvider"), newActiveId);
+
+    // Remove old keys
+    m_settings.remove(QStringLiteral("ACP/backend"));
+    m_settings.remove(QStringLiteral("ACP/customExecutable"));
+    m_settings.sync();
+    qDebug() << "[SettingsStore] Migrated old ACP backend settings to provider:" << newActiveId;
+}
+
+bool SettingsStore::debugLogging() const
+{
+    return m_settings.value(QStringLiteral("Debug/logging"), false).toBool();
+}
+
+void SettingsStore::setDebugLogging(bool enable)
+{
+    m_settings.setValue(QStringLiteral("Debug/logging"), enable);
+    m_settings.sync();
+    Q_EMIT settingsChanged();
 }
 
 DiffColorScheme SettingsStore::diffColorScheme() const

@@ -9,6 +9,7 @@ class QComboBox;
 class QPushButton;
 class QLabel;
 class QTabWidget;
+class QTableWidget;
 
 class KateCodeConfigPage : public KTextEditor::ConfigPage
 {
@@ -35,21 +36,27 @@ private Q_SLOTS:
     void onWalletError(const QString &message);
     void onSettingChanged();
 
+    void onAddProvider();
+    void onEditProvider();
+    void onRemoveProvider();
+
 private:
     void setupUi();
     void setupGeneralTab(QWidget *tab);
     void setupSummariesTab(QWidget *tab);
     void updateApiKeyStatus();
+    void populateProviderTable();
 
     SettingsStore *m_settings;
 
     // Tab widget
     QTabWidget *m_tabWidget;
 
-    // General tab - ACP Backend section
-    QComboBox *m_acpBackendCombo;
-    QLineEdit *m_customExecutableEdit;
-    QLabel *m_customExecutableLabel;
+    // General tab - ACP Providers section
+    QTableWidget *m_providerTable;
+    QPushButton *m_addProviderButton;
+    QPushButton *m_editProviderButton;
+    QPushButton *m_removeProviderButton;
 
     // General tab - Diff colors section
     QComboBox *m_diffColorSchemeCombo;
@@ -65,6 +72,9 @@ private:
 
     // Summaries tab - Session resume
     QCheckBox *m_autoResumeCheck;
+
+    // General tab - Debug section
+    QCheckBox *m_debugLoggingCheck;
 
     bool m_hasChanges;
     bool m_apiKeyVisible;

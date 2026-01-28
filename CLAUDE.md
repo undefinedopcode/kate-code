@@ -36,6 +36,8 @@ Settings > Configure Kate > Plugins > Enable "Kate Code"
 - `src/ui/ChatWebView.{h,cpp}` - QWebEngineView for HTML/CSS/JS rendering
 - `src/ui/ChatInputWidget.{h,cpp}` - Multiline text input with send button
 - `src/ui/PermissionDialog.{h,cpp}` - Modal dialog for tool approval requests
+- `src/config/SettingsStore.{h,cpp}` - QSettings + KWallet storage, ACPProvider management
+- `src/config/KateCodeConfigPage.{h,cpp}` - Kate config page with provider table, diff colors, summaries
 - `src/util/KDEColorScheme.{h,cpp}` - KDE color extraction from kdeglobals
 - `src/web/chat.{html,css,js}` - Web assets for chat interface
 - `src/katecode.qrc` - Qt resource file for web assets
@@ -97,6 +99,16 @@ Settings > Configure Kate > Plugins > Enable "Kate Code"
   - `tool_call`, `tool_call_update`
   - `plan` (todos)
 - Permission requests via `session/request_permission` with requestId that requires response
+
+### ACP Provider Configuration
+- Providers are defined by `ACPProvider` struct: id, description, executable, options, builtin flag
+- Two built-in providers (Claude Code, Vibe/Mistral) are hardcoded and cannot be deleted
+- Custom providers are stored in QSettings via `beginWriteArray("ACP/customProviders")`
+- Active provider selection persisted as `ACP/activeProvider` string id
+- Provider selector is a QComboBox in the ChatWidget header (disabled while connected)
+- Unavailable executables shown grayed with "(not found)" suffix
+- Settings page shows a QTableWidget for managing custom providers (add/edit/remove)
+- Old `ACPBackend` enum settings are auto-migrated on first launch
 
 ### Web Interface
 - QWebEngineView loads HTML from Qt resources (qrc:/katecode/web/chat.html)

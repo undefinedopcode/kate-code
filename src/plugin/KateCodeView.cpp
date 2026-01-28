@@ -145,6 +145,15 @@ void KateCodeView::createToolView()
 
     // Connect edit navigation
     connect(m_chatWidget, &ChatWidget::jumpToEditRequested, this, &KateCodeView::jumpToEdit);
+
+    // Connect debug log output to Kate's Output panel
+    connect(m_chatWidget, &ChatWidget::debugLogMessage, this, [this](const QString &message) {
+        QVariantMap msg;
+        msg[QStringLiteral("text")] = message;
+        msg[QStringLiteral("type")] = QStringLiteral("Log");
+        msg[QStringLiteral("category")] = QStringLiteral("Kate Code");
+        m_mainWindow->showMessage(msg);
+    });
 }
 
 QString KateCodeView::getCurrentFilePath() const

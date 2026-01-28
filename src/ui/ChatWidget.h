@@ -16,6 +16,7 @@ class SessionStore;
 class SummaryStore;
 class SummaryGenerator;
 class SettingsStore;
+class QComboBox;
 class QPushButton;
 class QToolButton;
 class QLabel;
@@ -66,6 +67,9 @@ Q_SIGNALS:
     // Edit navigation signal
     void jumpToEditRequested(const QString &filePath, int startLine, int endLine);
 
+    // Debug logging signal (forwarded to Kate Output view by KateCodeView)
+    void debugLogMessage(const QString &message);
+
 private Q_SLOTS:
     void onConnectClicked();
     void onResumeSessionClicked();
@@ -103,6 +107,8 @@ private:
     void triggerSummaryGeneration();
     void applyDiffColors();
     void applyACPBackend();
+    void populateProviderCombo();
+    void onProviderComboChanged(int index);
     void updateTerminalSize();
     // Pending session action for after initialize completes
     enum class PendingAction {
@@ -131,6 +137,7 @@ private:
     // UI components
     ChatWebView *m_chatWebView;
     ChatInputWidget *m_inputWidget;
+    QComboBox *m_providerCombo;
     QToolButton *m_connectButton;
     QToolButton *m_resumeSessionButton;
     QToolButton *m_newSessionButton;
