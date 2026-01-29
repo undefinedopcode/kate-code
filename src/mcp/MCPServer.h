@@ -28,9 +28,11 @@ private:
     QJsonObject executeRead(const QJsonObject &arguments);
     QJsonObject executeEdit(const QJsonObject &arguments);
     QJsonObject executeWrite(const QJsonObject &arguments);
+    QJsonObject executeAskUserQuestion(const QJsonObject &arguments);
 
     QJsonObject makeResponse(int id, const QJsonObject &result);
     QJsonObject makeErrorResponse(int id, int code, const QString &message);
+    QJsonObject makeErrorResult(const QString &message);
 
     bool m_initialized = false;
 };

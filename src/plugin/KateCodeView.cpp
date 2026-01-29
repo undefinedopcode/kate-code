@@ -2,6 +2,7 @@
 #include "KateCodePlugin.h"
 #include "../acp/ACPModels.h"
 #include "../config/SettingsStore.h"
+#include "../mcp/EditorDBusService.h"
 #include "../ui/ChatWidget.h"
 #include "../util/DiffHighlightManager.h"
 
@@ -145,6 +146,17 @@ void KateCodeView::createToolView()
 
     // Connect edit navigation
     connect(m_chatWidget, &ChatWidget::jumpToEditRequested, this, &KateCodeView::jumpToEdit);
+
+    // Connect user question signals (MCP AskUserQuestion tool)
+    // EditorDBusService -> ChatWidget: show question UI
+    connect(m_plugin->dbusService(), &EditorDBusService::questionRequested,
+            m_chatWidget, &ChatWidget::showUserQuestion);
+    // EditorDBusService -> ChatWidget: remove question UI on timeout/cancel
+    connect(m_plugin->dbusService(), &EditorDBusService::questionCancelled,
+            m_chatWidget, &ChatWidget::removeUserQuestion);
+    // ChatWidget -> EditorDBusService: return user's answer
+    connect(m_chatWidget, &ChatWidget::userQuestionAnswered,
+            m_plugin->dbusService(), &EditorDBusService::provideQuestionResponse);
 
     // Connect debug log output to Kate's Output panel
     connect(m_chatWidget, &ChatWidget::debugLogMessage, this, [this](const QString &message) {

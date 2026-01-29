@@ -10,10 +10,12 @@
 #include <KTextEditor/Editor>
 #include <KTextEditor/MainWindow>
 #include <KTextEditor/View>
+#include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusError>
 #include <QDebug>
 #include <QFile>
+#include <QTimer>
 #include <QUrl>
 
 EditorDBusService::EditorDBusService(QObject *parent)
@@ -207,4 +209,75 @@ QString EditorDBusService::writeDocument(const QString &filePath, const QString 
     }
 
     return QStringLiteral("OK");
+}
+
+QString EditorDBusService::askUserQuestion(const QString &questionsJson)
+{
+    // Generate unique request ID
+    QString requestId = QStringLiteral("q_%1_%2")
+        .arg(QCoreApplication::applicationPid())
+        .arg(m_nextQuestionId++);
+
+    qDebug() << "[EditorDBusService] askUserQuestion called, requestId:" << requestId;
+
+    // Create event loop for blocking
+    QEventLoop eventLoop;
+
+    m_pendingQuestions[requestId] = PendingQuestion{
+        &eventLoop,
+        QString(),
+        false
+    };
+
+    // Emit signal to Kate plugin UI
+    Q_EMIT questionRequested(requestId, questionsJson);
+
+    // Set up timeout (5 minutes)
+    QTimer timeoutTimer;
+    timeoutTimer.setSingleShot(true);
+    connect(&timeoutTimer, &QTimer::timeout, &eventLoop, &QEventLoop::quit);
+    timeoutTimer.start(300000);
+
+    qDebug() << "[EditorDBusService] Blocking on event loop for user response...";
+
+    // Block until response or timeout
+    eventLoop.exec();
+
+    timeoutTimer.stop();
+
+    // Retrieve response
+    QString response;
+    if (m_pendingQuestions.contains(requestId)) {
+        PendingQuestion pending = m_pendingQuestions.take(requestId);
+        if (pending.completed) {
+            response = pending.response;
+            qDebug() << "[EditorDBusService] Got user response:" << response;
+        } else {
+            response = QStringLiteral("ERROR: Question timeout or cancelled");
+            qDebug() << "[EditorDBusService] Question timed out or was cancelled";
+            // Notify UI to remove the question prompt
+            Q_EMIT questionCancelled(requestId);
+        }
+    } else {
+        response = QStringLiteral("ERROR: Request not found");
+    }
+
+    return response;
+}
+
+void EditorDBusService::provideQuestionResponse(const QString &requestId, const QString &responseJson)
+{
+    qDebug() << "[EditorDBusService] provideQuestionResponse called, requestId:" << requestId;
+
+    if (m_pendingQuestions.contains(requestId)) {
+        m_pendingQuestions[requestId].response = responseJson;
+        m_pendingQuestions[requestId].completed = true;
+
+        // Wake up the waiting event loop
+        if (m_pendingQuestions[requestId].eventLoop) {
+            m_pendingQuestions[requestId].eventLoop->quit();
+        }
+    } else {
+        qWarning() << "[EditorDBusService] No pending question found for requestId:" << requestId;
+    }
 }

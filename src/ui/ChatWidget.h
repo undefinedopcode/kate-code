@@ -56,6 +56,12 @@ public:
     // Shutdown hook - generates summary and waits for completion
     void prepareForShutdown();
 
+public Q_SLOTS:
+    // Show user question UI (MCP AskUserQuestion tool)
+    void showUserQuestion(const QString &requestId, const QString &questionsJson);
+    // Remove user question UI (on timeout or cancel)
+    void removeUserQuestion(const QString &requestId);
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
 
@@ -69,6 +75,9 @@ Q_SIGNALS:
 
     // Debug logging signal (forwarded to Kate Output view by KateCodeView)
     void debugLogMessage(const QString &message);
+
+    // User question response (MCP AskUserQuestion tool)
+    void userQuestionAnswered(const QString &requestId, const QString &responseJson);
 
 private Q_SLOTS:
     void onConnectClicked();
@@ -102,6 +111,9 @@ private Q_SLOTS:
     void onSummaryError(const QString &sessionId, const QString &error);
     void onApiKeyLoadedForSummary(bool success);
     void onSettingsChanged();
+
+    // User question handling
+    void onUserQuestionAnswered(const QString &requestId, const QJsonObject &answers);
 
 private:
     void triggerSummaryGeneration();

@@ -634,6 +634,7 @@ function renderToolCall(toolCall) {
     else if (isWriteTool(toolCall.name)) toolIconName = 'edit_document';
     else if (isReadTool(toolCall.name)) toolIconName = 'description';
     else if (toolCall.name === 'Glob' || toolCall.name === 'Grep') toolIconName = 'search';
+    else if (toolCall.name === 'mcp__kate__katecode_ask_user') toolIconName = 'quiz';
     const toolIcon = materialIcon(toolIconName, 'material-icon-sm');
 
     // Determine extra CSS classes for Task/TaskOutput
@@ -1296,6 +1297,281 @@ function respondToPermission(requestId, optionId) {
     }
 }
 
+// ============================================================================
+// User Question UI (MCP AskUserQuestion tool)
+// ============================================================================
+
+// Store for tracking question selections
+let questionSelections = {};
+
+// Show user question UI for AskUserQuestion MCP tool
+function showUserQuestion(requestId, questions) {
+    console.log('showUserQuestion called:', requestId, questions);
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+        console.error('Invalid questions array:', questions);
+        return;
+    }
+
+    // Initialize selections for each question
+    questionSelections[requestId] = {};
+    questions.forEach(q => {
+        questionSelections[requestId][q.header] = {
+            selected: q.multiSelect ? [] : null,
+            otherSelected: false,
+            otherText: ''
+        };
+    });
+
+    let html = `
+        <div class="user-question-container" id="question-${escapeHtml(requestId)}">
+            <div class="user-question-header">
+                <span class="user-question-icon">${materialIcon('help_outline', 'material-icon-sm')}</span>
+                <span class="user-question-title">Claude needs your input</span>
+            </div>
+            <div class="user-question-body">
+    `;
+
+    questions.forEach((q, qIndex) => {
+        const questionId = `${requestId}_q${qIndex}`;
+        const escapedHeader = escapeHtml(q.header);
+
+        html += `
+            <div class="user-question-item" data-header="${escapedHeader}">
+                <div class="user-question-text">${escapeHtml(q.question)}</div>
+                <div class="user-question-options" data-multi="${q.multiSelect ? 'true' : 'false'}">
+        `;
+
+        // Render each option
+        q.options.forEach((opt, optIndex) => {
+            const optionId = `${questionId}_opt${optIndex}`;
+            const escapedLabel = escapeHtml(opt.label);
+            const iconName = q.multiSelect ? 'check_box_outline_blank' : 'radio_button_unchecked';
+
+            html += `
+                <div class="user-question-option" id="${optionId}" data-label="${escapedLabel}"
+                     onclick="toggleQuestionOption('${escapeHtml(requestId)}', '${escapedHeader}', '${escapedLabel}', ${q.multiSelect})">
+                    <span class="option-checkbox">${materialIcon(iconName, 'material-icon-sm')}</span>
+                    <span class="option-content">
+                        <span class="option-label">${escapedLabel}</span>
+                        ${opt.description ? `<span class="option-description">${escapeHtml(opt.description)}</span>` : ''}
+                    </span>
+                </div>
+            `;
+        });
+
+        // Add "Other" option with text input
+        const otherIconName = q.multiSelect ? 'check_box_outline_blank' : 'radio_button_unchecked';
+        html += `
+                <div class="user-question-option user-question-other" id="${questionId}_other"
+                     onclick="toggleQuestionOther('${escapeHtml(requestId)}', '${escapedHeader}', ${q.multiSelect})">
+                    <span class="option-checkbox">${materialIcon(otherIconName, 'material-icon-sm')}</span>
+                    <span class="option-content">
+                        <span class="option-label">Other</span>
+                        <input type="text" class="other-input" id="${questionId}_other_input"
+                               placeholder="Enter custom response..."
+                               onclick="event.stopPropagation()"
+                               oninput="updateOtherText('${escapeHtml(requestId)}', '${escapedHeader}', this.value)">
+                    </span>
+                </div>
+            </div>
+        </div>
+        `;
+    });
+
+    html += `
+            </div>
+            <div class="user-question-actions">
+                <button class="user-question-submit" onclick="submitQuestionAnswers('${escapeHtml(requestId)}')">
+                    Submit Answers
+                </button>
+            </div>
+        </div>
+    `;
+
+    const container = document.getElementById('messages');
+    if (!container) {
+        console.error('Messages container not found');
+        return;
+    }
+
+    const questionEl = document.createElement('div');
+    questionEl.innerHTML = html;
+    container.appendChild(questionEl.firstElementChild);
+    console.log('User question added to DOM');
+    scrollToBottom();
+}
+
+// Toggle option selection
+function toggleQuestionOption(requestId, header, label, isMulti) {
+    const sel = questionSelections[requestId];
+    if (!sel || !sel[header]) return;
+
+    if (isMulti) {
+        // Multi-select: toggle in array
+        const idx = sel[header].selected.indexOf(label);
+        if (idx >= 0) {
+            sel[header].selected.splice(idx, 1);
+        } else {
+            sel[header].selected.push(label);
+        }
+        // Deselect "Other" when selecting a regular option
+        sel[header].otherSelected = false;
+    } else {
+        // Single select: set value, deselect "Other"
+        sel[header].selected = label;
+        sel[header].otherSelected = false;
+    }
+
+    updateQuestionUI(requestId);
+}
+
+// Handle "Other" option selection
+function toggleQuestionOther(requestId, header, isMulti) {
+    const sel = questionSelections[requestId];
+    if (!sel || !sel[header]) return;
+
+    if (isMulti) {
+        // Multi-select: toggle "Other"
+        sel[header].otherSelected = !sel[header].otherSelected;
+    } else {
+        // Single select: select "Other", clear regular selection
+        sel[header].otherSelected = true;
+        sel[header].selected = null;
+    }
+
+    updateQuestionUI(requestId);
+
+    // Focus the input if "Other" is now selected
+    if (sel[header].otherSelected) {
+        const container = document.getElementById(`question-${requestId}`);
+        if (container) {
+            const input = container.querySelector(`[data-header="${header}"] .other-input`);
+            if (input) input.focus();
+        }
+    }
+}
+
+// Update "Other" text value
+function updateOtherText(requestId, header, value) {
+    const sel = questionSelections[requestId];
+    if (!sel || !sel[header]) return;
+
+    sel[header].otherText = value;
+
+    // Auto-select "Other" when user starts typing
+    if (value && !sel[header].otherSelected) {
+        const container = document.getElementById(`question-${requestId}`);
+        if (container) {
+            const optionsDiv = container.querySelector(`[data-header="${header}"] .user-question-options`);
+            const isMulti = optionsDiv && optionsDiv.dataset.multi === 'true';
+
+            if (!isMulti) {
+                // Single-select: typing in Other deselects regular options
+                sel[header].selected = null;
+            }
+            sel[header].otherSelected = true;
+            updateQuestionUI(requestId);
+        }
+    }
+}
+
+// Update UI to reflect current selections
+function updateQuestionUI(requestId) {
+    const sel = questionSelections[requestId];
+    if (!sel) return;
+
+    const container = document.getElementById(`question-${requestId}`);
+    if (!container) return;
+
+    container.querySelectorAll('.user-question-item').forEach(item => {
+        const header = item.dataset.header;
+        if (!sel[header]) return;
+
+        const isMulti = item.querySelector('.user-question-options').dataset.multi === 'true';
+        const selected = sel[header].selected;
+        const otherSelected = sel[header].otherSelected;
+
+        item.querySelectorAll('.user-question-option').forEach(opt => {
+            const label = opt.dataset.label;
+            const isOther = opt.classList.contains('user-question-other');
+
+            let isSelected = false;
+            if (isOther) {
+                isSelected = otherSelected;
+            } else if (isMulti) {
+                isSelected = selected && selected.includes(label);
+            } else {
+                isSelected = selected === label;
+            }
+
+            opt.classList.toggle('selected', isSelected);
+
+            // Update icon
+            const checkbox = opt.querySelector('.option-checkbox');
+            if (checkbox) {
+                let iconName;
+                if (isMulti) {
+                    iconName = isSelected ? 'check_box' : 'check_box_outline_blank';
+                } else {
+                    iconName = isSelected ? 'radio_button_checked' : 'radio_button_unchecked';
+                }
+                checkbox.innerHTML = materialIcon(iconName, 'material-icon-sm');
+            }
+        });
+    });
+}
+
+// Submit answers back to C++
+function submitQuestionAnswers(requestId) {
+    const sel = questionSelections[requestId];
+    if (!sel) {
+        console.error('No selections found for requestId:', requestId);
+        return;
+    }
+
+    // Build answers object
+    const answers = {};
+    for (const header in sel) {
+        const q = sel[header];
+        if (q.otherSelected && q.otherText) {
+            // "Other" with custom text
+            answers[header] = q.otherText;
+        } else if (q.otherSelected) {
+            // "Other" selected but no text - use "Other" as value
+            answers[header] = 'Other';
+        } else if (Array.isArray(q.selected)) {
+            // Multi-select
+            answers[header] = q.selected;
+        } else if (q.selected) {
+            // Single-select
+            answers[header] = q.selected;
+        } else {
+            // Nothing selected
+            answers[header] = null;
+        }
+    }
+
+    console.log('Submitting question answers:', answers);
+
+    // Remove the question UI
+    const questionEl = document.getElementById(`question-${requestId}`);
+    if (questionEl) {
+        questionEl.remove();
+    }
+
+    // Clean up state
+    delete questionSelections[requestId];
+
+    // Call back to C++
+    if (window.bridge) {
+        const answersJson = JSON.stringify(answers);
+        window.bridge.submitQuestionAnswers(requestId, answersJson);
+    } else {
+        console.error('WebChannel bridge not available');
+    }
+}
+
 // Set terminalId on a tool call (for vibe-acp where terminal info arrives in tool_call_update)
 function setToolCallTerminalId(messageId, toolCallId, terminalId) {
     if (!messages[messageId]) return;
@@ -1630,3 +1906,25 @@ window.addTrackedEdit = addTrackedEdit;
 window.clearEditSummary = clearEditSummary;
 window.toggleEditSummary = toggleEditSummary;
 window.jumpToEdit = jumpToEdit;
+// Remove user question UI (called when question times out or fails)
+function removeUserQuestion(requestId) {
+    console.log('removeUserQuestion called:', requestId);
+
+    const questionEl = document.getElementById(`question-${requestId}`);
+    if (questionEl) {
+        questionEl.remove();
+        console.log('User question removed from DOM');
+    }
+
+    // Clean up state
+    if (questionSelections[requestId]) {
+        delete questionSelections[requestId];
+    }
+}
+
+window.showUserQuestion = showUserQuestion;
+window.toggleQuestionOption = toggleQuestionOption;
+window.toggleQuestionOther = toggleQuestionOther;
+window.updateOtherText = updateOtherText;
+window.submitQuestionAnswers = submitQuestionAnswers;
+window.removeUserQuestion = removeUserQuestion;

@@ -30,6 +30,10 @@ ChatWebView::ChatWebView(QWidget *parent)
     connect(this, &QWebEngineView::loadFinished, this, &ChatWebView::onLoadFinished);
     connect(m_bridge, &WebBridge::permissionResponse, this, &ChatWebView::permissionResponseReady);
     connect(m_bridge, &WebBridge::jumpToEditRequested, this, &ChatWebView::jumpToEditRequested);
+    connect(m_bridge, &WebBridge::questionAnswersSubmitted, this, [this](const QString &requestId, const QString &answersJson) {
+        QJsonDocument doc = QJsonDocument::fromJson(answersJson.toUtf8());
+        Q_EMIT userQuestionAnswered(requestId, doc.object());
+    });
 }
 
 ChatWebView::~ChatWebView()
@@ -318,6 +322,42 @@ void ChatWebView::showPermissionRequest(const PermissionRequest &request)
     runJavaScript(script);
 }
 
+void ChatWebView::showUserQuestion(const QString &requestId, const QString &questionsJson)
+{
+    qDebug() << "[ChatWebView] showUserQuestion called - requestId:" << requestId;
+
+    if (!m_isLoaded) {
+        qWarning() << "[ChatWebView] Page not loaded yet, cannot show user question";
+        return;
+    }
+
+    // Use Base64 encoding to safely pass JSON through JavaScript
+    QString base64Questions = QString::fromLatin1(questionsJson.toUtf8().toBase64());
+
+    QString script = QStringLiteral(
+        "try { "
+        "  var questions = JSON.parse(atob('%1')); "
+        "  showUserQuestion('%2', questions); "
+        "} catch(e) { "
+        "  console.error('User question error:', e); "
+        "}"
+    ).arg(base64Questions, escapeJsString(requestId));
+
+    runJavaScript(script);
+}
+
+void ChatWebView::removeUserQuestion(const QString &requestId)
+{
+    qDebug() << "[ChatWebView] removeUserQuestion called - requestId:" << requestId;
+
+    if (!m_isLoaded) {
+        return;
+    }
+
+    QString script = QStringLiteral("removeUserQuestion('%1');").arg(escapeJsString(requestId));
+    runJavaScript(script);
+}
+
 void ChatWebView::updateTodos(const QList<TodoItem> &todos)
 {
     if (!m_isLoaded) return;
@@ -465,4 +505,10 @@ void WebBridge::jumpToEdit(const QString &filePath, int startLine, int endLine)
 {
     qDebug() << "[WebBridge] jumpToEdit requested:" << filePath << "lines" << startLine << "-" << endLine;
     Q_EMIT jumpToEditRequested(filePath, startLine, endLine);
+}
+
+void WebBridge::submitQuestionAnswers(const QString &requestId, const QString &answersJson)
+{
+    qDebug() << "[WebBridge] submitQuestionAnswers:" << requestId;
+    Q_EMIT questionAnswersSubmitted(requestId, answersJson);
 }
