@@ -26,6 +26,10 @@ public:
     void updateTerminalOutput(const QString &terminalId, const QString &output, bool finished);
     void setToolCallTerminalId(const QString &messageId, const QString &toolCallId, const QString &terminalId);
 
+    // User question support (MCP AskUserQuestion tool)
+    void showUserQuestion(const QString &requestId, const QString &questionsJson);
+    void removeUserQuestion(const QString &requestId);
+
     // Edit tracking support
     void addTrackedEdit(const TrackedEdit &edit);
     void clearEditSummary();
@@ -37,6 +41,7 @@ Q_SIGNALS:
     void permissionResponseReady(int requestId, const QString &optionId);
     void jumpToEditRequested(const QString &filePath, int startLine, int endLine);
     void webViewReady();
+    void userQuestionAnswered(const QString &requestId, const QJsonObject &answers);
 
 private Q_SLOTS:
     void onLoadFinished(bool ok);
@@ -63,8 +68,10 @@ public Q_SLOTS:
     Q_INVOKABLE void respondToPermission(int requestId, const QString &optionId);
     Q_INVOKABLE void logFromJS(const QString &message);
     Q_INVOKABLE void jumpToEdit(const QString &filePath, int startLine, int endLine);
+    Q_INVOKABLE void submitQuestionAnswers(const QString &requestId, const QString &answersJson);
 
 Q_SIGNALS:
     void permissionResponse(int requestId, const QString &optionId);
     void jumpToEditRequested(const QString &filePath, int startLine, int endLine);
+    void questionAnswersSubmitted(const QString &requestId, const QString &answersJson);
 };

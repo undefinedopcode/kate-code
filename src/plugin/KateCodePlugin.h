@@ -25,6 +25,9 @@ public:
     // Settings access for views
     SettingsStore *settings() const { return m_settings; }
 
+    // DBus service access for views (used for question routing)
+    EditorDBusService *dbusService() const { return m_dbusService; }
+
 private Q_SLOTS:
     void onAboutToQuit();
 

@@ -160,6 +160,9 @@ ChatWidget::ChatWidget(QWidget *parent)
         m_session->sendPermissionResponse(requestId, outcomeObj);
     });
 
+    // Connect web view user question responses (MCP AskUserQuestion tool)
+    connect(m_chatWebView, &ChatWebView::userQuestionAnswered, this, &ChatWidget::onUserQuestionAnswered);
+
     // Edit tracking: connect EditTracker to ChatWebView
     connect(m_session->editTracker(), &EditTracker::editRecorded, m_chatWebView, &ChatWebView::addTrackedEdit);
     connect(m_session->editTracker(), &EditTracker::editsCleared, m_chatWebView, &ChatWebView::clearEditSummary);
@@ -1116,4 +1119,23 @@ void ChatWidget::updateTerminalSize()
     int rows = 40;
 
     m_session->setTerminalSize(columns, rows);
+}
+
+void ChatWidget::showUserQuestion(const QString &requestId, const QString &questionsJson)
+{
+    qDebug() << "[ChatWidget] showUserQuestion called, requestId:" << requestId;
+    m_chatWebView->showUserQuestion(requestId, questionsJson);
+}
+
+void ChatWidget::removeUserQuestion(const QString &requestId)
+{
+    qDebug() << "[ChatWidget] removeUserQuestion called, requestId:" << requestId;
+    m_chatWebView->removeUserQuestion(requestId);
+}
+
+void ChatWidget::onUserQuestionAnswered(const QString &requestId, const QJsonObject &answers)
+{
+    qDebug() << "[ChatWidget] onUserQuestionAnswered, requestId:" << requestId;
+    QString responseJson = QString::fromUtf8(QJsonDocument(answers).toJson(QJsonDocument::Compact));
+    Q_EMIT userQuestionAnswered(requestId, responseJson);
 }

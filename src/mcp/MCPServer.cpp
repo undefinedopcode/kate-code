@@ -192,8 +192,99 @@ QJsonObject MCPServer::handleToolsList(int id, const QJsonObject &params)
     writeAnnotations[QStringLiteral("idempotentHint")] = true;  // Writing same content twice = same result
     writeTool[QStringLiteral("annotations")] = writeAnnotations;
 
+    // katecode_ask_user tool definition
+    QJsonObject askUserTool;
+    askUserTool[QStringLiteral("name")] = QStringLiteral("katecode_ask_user");
+    askUserTool[QStringLiteral("description")] =
+        QStringLiteral("Ask the user 1-4 structured questions with selectable options. "
+                       "Use this to gather clarifications, preferences, or decisions from the user. "
+                       "Each question has a header (≤12 chars, used as answer key), question text, "
+                       "multiSelect flag (checkboxes vs radio buttons), and 2-4 options. "
+                       "An 'Other' option is automatically added for custom text input. "
+                       "Returns answers as JSON object keyed by question headers.\n\n"
+                       "In sessions with mcp__kate__katecode_ask_user always use it instead of AskUserQuestion, "
+                       "as it will integrate with the editor and allow easy user feedback.");
+
+    // Option schema
+    QJsonObject optionLabelProp;
+    optionLabelProp[QStringLiteral("type")] = QStringLiteral("string");
+    optionLabelProp[QStringLiteral("description")] = QStringLiteral("Display text for the option (1-5 words)");
+
+    QJsonObject optionDescProp;
+    optionDescProp[QStringLiteral("type")] = QStringLiteral("string");
+    optionDescProp[QStringLiteral("description")] = QStringLiteral("Explanation of the choice");
+
+    QJsonObject optionProps;
+    optionProps[QStringLiteral("label")] = optionLabelProp;
+    optionProps[QStringLiteral("description")] = optionDescProp;
+
+    QJsonObject optionSchema;
+    optionSchema[QStringLiteral("type")] = QStringLiteral("object");
+    optionSchema[QStringLiteral("properties")] = optionProps;
+    optionSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("label"), QStringLiteral("description")};
+
+    // Question schema
+    QJsonObject questionHeaderProp;
+    questionHeaderProp[QStringLiteral("type")] = QStringLiteral("string");
+    questionHeaderProp[QStringLiteral("description")] = QStringLiteral("Short label (≤12 chars), used as key in response");
+    questionHeaderProp[QStringLiteral("maxLength")] = 12;
+
+    QJsonObject questionTextProp;
+    questionTextProp[QStringLiteral("type")] = QStringLiteral("string");
+    questionTextProp[QStringLiteral("description")] = QStringLiteral("The question text (should end with '?')");
+
+    QJsonObject multiSelectProp;
+    multiSelectProp[QStringLiteral("type")] = QStringLiteral("boolean");
+    multiSelectProp[QStringLiteral("description")] = QStringLiteral("Allow multiple selections (checkboxes) vs single selection (radio buttons)");
+
+    QJsonObject optionsArrayProp;
+    optionsArrayProp[QStringLiteral("type")] = QStringLiteral("array");
+    optionsArrayProp[QStringLiteral("items")] = optionSchema;
+    optionsArrayProp[QStringLiteral("minItems")] = 2;
+    optionsArrayProp[QStringLiteral("maxItems")] = 4;
+    optionsArrayProp[QStringLiteral("description")] = QStringLiteral("2-4 options for the user to choose from");
+
+    QJsonObject questionProps;
+    questionProps[QStringLiteral("header")] = questionHeaderProp;
+    questionProps[QStringLiteral("question")] = questionTextProp;
+    questionProps[QStringLiteral("multiSelect")] = multiSelectProp;
+    questionProps[QStringLiteral("options")] = optionsArrayProp;
+
+    QJsonObject questionSchema;
+    questionSchema[QStringLiteral("type")] = QStringLiteral("object");
+    questionSchema[QStringLiteral("properties")] = questionProps;
+    questionSchema[QStringLiteral("required")] = QJsonArray{
+        QStringLiteral("header"),
+        QStringLiteral("question"),
+        QStringLiteral("multiSelect"),
+        QStringLiteral("options")
+    };
+
+    // Questions array
+    QJsonObject questionsArrayProp;
+    questionsArrayProp[QStringLiteral("type")] = QStringLiteral("array");
+    questionsArrayProp[QStringLiteral("items")] = questionSchema;
+    questionsArrayProp[QStringLiteral("minItems")] = 1;
+    questionsArrayProp[QStringLiteral("maxItems")] = 4;
+    questionsArrayProp[QStringLiteral("description")] = QStringLiteral("1-4 questions to ask the user");
+
+    QJsonObject askUserProps;
+    askUserProps[QStringLiteral("questions")] = questionsArrayProp;
+
+    QJsonObject askUserSchema;
+    askUserSchema[QStringLiteral("type")] = QStringLiteral("object");
+    askUserSchema[QStringLiteral("properties")] = askUserProps;
+    askUserSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("questions")};
+    askUserTool[QStringLiteral("inputSchema")] = askUserSchema;
+
+    // Read-only annotation (doesn't modify files, just asks user)
+    QJsonObject askUserAnnotations;
+    askUserAnnotations[QStringLiteral("readOnlyHint")] = true;
+    askUserAnnotations[QStringLiteral("destructiveHint")] = false;
+    askUserTool[QStringLiteral("annotations")] = askUserAnnotations;
+
     QJsonObject result;
-    result[QStringLiteral("tools")] = QJsonArray{kateTestTool, docsTool, readTool, editTool, writeTool};
+    result[QStringLiteral("tools")] = QJsonArray{kateTestTool, docsTool, readTool, editTool, writeTool, askUserTool};
 
     return makeResponse(id, result);
 }
@@ -213,6 +304,8 @@ QJsonObject MCPServer::handleToolsCall(int id, const QJsonObject &params)
         return makeResponse(id, executeEdit(arguments));
     } else if (toolName == QStringLiteral("katecode_write")) {
         return makeResponse(id, executeWrite(arguments));
+    } else if (toolName == QStringLiteral("katecode_ask_user")) {
+        return makeResponse(id, executeAskUserQuestion(arguments));
     }
 
     return makeErrorResponse(id, -32602, QStringLiteral("Unknown tool: %1").arg(toolName));
@@ -473,5 +566,133 @@ QJsonObject MCPServer::executeWrite(const QJsonObject &arguments)
     if (isError) {
         result[QStringLiteral("isError")] = true;
     }
+    return result;
+}
+
+QJsonObject MCPServer::makeErrorResult(const QString &message)
+{
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = message;
+
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    result[QStringLiteral("isError")] = true;
+    return result;
+}
+
+QJsonObject MCPServer::executeAskUserQuestion(const QJsonObject &arguments)
+{
+    const QJsonArray questions = arguments[QStringLiteral("questions")].toArray();
+
+    // Validate: 1-4 questions
+    if (questions.isEmpty()) {
+        return makeErrorResult(QStringLiteral("Error: questions array is required and cannot be empty"));
+    }
+    if (questions.size() > 4) {
+        return makeErrorResult(QStringLiteral("Error: questions array must have at most 4 items"));
+    }
+
+    // Validate each question
+    for (int i = 0; i < questions.size(); ++i) {
+        const QJsonObject q = questions[i].toObject();
+        const QString header = q[QStringLiteral("header")].toString();
+        const QString questionText = q[QStringLiteral("question")].toString();
+        const QJsonArray options = q[QStringLiteral("options")].toArray();
+
+        if (header.isEmpty()) {
+            return makeErrorResult(QStringLiteral("Error: question %1 is missing 'header'").arg(i + 1));
+        }
+        if (header.length() > 12) {
+            return makeErrorResult(QStringLiteral("Error: question %1 header exceeds 12 characters").arg(i + 1));
+        }
+        if (questionText.isEmpty()) {
+            return makeErrorResult(QStringLiteral("Error: question %1 is missing 'question' text").arg(i + 1));
+        }
+        if (options.size() < 2) {
+            return makeErrorResult(QStringLiteral("Error: question %1 must have at least 2 options").arg(i + 1));
+        }
+        if (options.size() > 4) {
+            return makeErrorResult(QStringLiteral("Error: question %1 must have at most 4 options").arg(i + 1));
+        }
+    }
+
+    // Serialize questions to JSON string for DBus
+    const QString questionsJson = QString::fromUtf8(
+        QJsonDocument(questions).toJson(QJsonDocument::Compact));
+
+    // Call DBus method - this will block until user responds
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+
+    if (!iface.isValid()) {
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service. "
+                                              "Is Kate running with the Kate Code plugin enabled?"));
+    }
+
+    // Set timeout to 5 minutes (user interaction can take time)
+    iface.setTimeout(300000);
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("askUserQuestion"), questionsJson);
+
+    if (!reply.isValid()) {
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+    }
+
+    const QString responseJson = reply.value();
+
+    // Check for error response
+    if (responseJson.startsWith(QStringLiteral("ERROR:"))) {
+        return makeErrorResult(responseJson);
+    }
+
+    // Parse the JSON response and format it nicely
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(responseJson.toUtf8(), &parseError);
+
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        // Fallback to raw JSON if parsing fails
+        QJsonObject textContent;
+        textContent[QStringLiteral("type")] = QStringLiteral("text");
+        textContent[QStringLiteral("text")] = responseJson;
+
+        QJsonObject result;
+        result[QStringLiteral("content")] = QJsonArray{textContent};
+        return result;
+    }
+
+    // Format the response as readable text (plain text, no markdown)
+    QJsonObject answers = doc.object();
+    QString formattedText;
+
+    for (auto it = answers.begin(); it != answers.end(); ++it) {
+        const QString &header = it.key();
+        const QJsonValue &value = it.value();
+
+        formattedText += QStringLiteral("%1: ").arg(header);
+
+        if (value.isArray()) {
+            // Multi-select: list all selected options
+            QStringList selections;
+            const QJsonArray arr = value.toArray();
+            for (const QJsonValue &v : arr) {
+                selections << v.toString();
+            }
+            formattedText += selections.join(QStringLiteral(", "));
+        } else {
+            // Single-select: just the value
+            formattedText += value.toString();
+        }
+        formattedText += QStringLiteral("\n");
+    }
+
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = formattedText.trimmed();
+
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
     return result;
 }
