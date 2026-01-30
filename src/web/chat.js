@@ -96,34 +96,44 @@ function parseBashResult(result) {
 }
 
 // Check if a tool is a Read tool (standard, ACP MCP, or Kate MCP variant)
+// Uses suffix matching for katecode tools to handle different MCP host prefixes
 function isReadTool(toolName) {
-    return toolName === 'Read' || toolName === 'mcp__acp__Read' || toolName === 'mcp__kate__katecode_read';
+    return toolName === 'Read' || toolName === 'mcp__acp__Read' || (toolName && toolName.endsWith('_katecode_read'));
 }
 
 // Check if a tool is a Write tool (standard, ACP MCP, or Kate MCP variant)
+// Uses suffix matching for katecode tools to handle different MCP host prefixes
 function isWriteTool(toolName) {
-    return toolName === 'Write' || toolName === 'mcp__acp__Write' || toolName === 'mcp__kate__katecode_write';
+    return toolName === 'Write' || toolName === 'mcp__acp__Write' || (toolName && toolName.endsWith('_katecode_write'));
 }
 
 // Check if a tool is an Edit tool (standard, ACP MCP, or Kate MCP variant)
+// Uses suffix matching for katecode tools to handle different MCP host prefixes
 function isEditTool(toolName) {
-    return toolName === 'Edit' || toolName === 'mcp__acp__Edit' || toolName === 'mcp__kate__katecode_edit';
+    return toolName === 'Edit' || toolName === 'mcp__acp__Edit' || (toolName && toolName.endsWith('_katecode_edit'));
 }
 
-// Check if a tool is a Kate MCP tool (mcp__acp__ or mcp__kate__ prefix)
+// Check if a tool is a Kate MCP tool (mcp__acp__ prefix or _katecode_ suffix pattern)
 function isKateTool(toolName) {
-    return toolName && (toolName.startsWith('mcp__acp__') || toolName.startsWith('mcp__kate__'));
+    return toolName && (toolName.startsWith('mcp__acp__') || toolName.includes('_katecode_'));
 }
 
-// Get display name for a tool (strips mcp__acp__ or mcp__kate__katecode_ prefix if present)
+// Check if a tool is a katecode_ask_user tool (suffix matching)
+function isAskUserTool(toolName) {
+    return toolName && toolName.endsWith('_katecode_ask_user');
+}
+
+// Get display name for a tool (strips mcp__acp__ prefix or extracts from _katecode_ suffix)
 function getToolDisplayName(toolName) {
     if (!toolName) return 'Tool';
     if (toolName.startsWith('mcp__acp__')) {
         return toolName.substring('mcp__acp__'.length);
     }
-    if (toolName.startsWith('mcp__kate__katecode_')) {
-        // Convert katecode_read -> Read, katecode_edit -> Edit, etc.
-        const baseName = toolName.substring('mcp__kate__katecode_'.length);
+    // Match _katecode_<name> suffix pattern (e.g., mcp__kate__katecode_read, foo_katecode_edit)
+    const katecodeMatch = toolName.match(/_katecode_(\w+)$/);
+    if (katecodeMatch) {
+        // Convert read -> Read, edit -> Edit, ask_user -> Ask_user, etc.
+        const baseName = katecodeMatch[1];
         return baseName.charAt(0).toUpperCase() + baseName.slice(1);
     }
     return toolName;
@@ -634,7 +644,7 @@ function renderToolCall(toolCall) {
     else if (isWriteTool(toolCall.name)) toolIconName = 'edit_document';
     else if (isReadTool(toolCall.name)) toolIconName = 'description';
     else if (toolCall.name === 'Glob' || toolCall.name === 'Grep') toolIconName = 'search';
-    else if (toolCall.name === 'mcp__kate__katecode_ask_user') toolIconName = 'quiz';
+    else if (isAskUserTool(toolCall.name)) toolIconName = 'quiz';
     const toolIcon = materialIcon(toolIconName, 'material-icon-sm');
 
     // Determine extra CSS classes for Task/TaskOutput
