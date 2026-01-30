@@ -23,7 +23,6 @@ private:
     QJsonObject handleToolsList(int id, const QJsonObject &params);
     QJsonObject handleToolsCall(int id, const QJsonObject &params);
 
-    QJsonObject executeKateTest(const QJsonObject &arguments);
     QJsonObject executeDocuments(const QJsonObject &arguments);
     QJsonObject executeRead(const QJsonObject &arguments);
     QJsonObject executeEdit(const QJsonObject &arguments);

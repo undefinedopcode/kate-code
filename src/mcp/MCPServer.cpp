@@ -58,31 +58,6 @@ QJsonObject MCPServer::handleToolsList(int id, const QJsonObject &params)
 {
     Q_UNUSED(params);
 
-    // kate_test tool definition
-    QJsonObject messageProp;
-    messageProp[QStringLiteral("type")] = QStringLiteral("string");
-    messageProp[QStringLiteral("description")] = QStringLiteral("The message to echo back");
-
-    QJsonObject properties;
-    properties[QStringLiteral("message")] = messageProp;
-
-    QJsonObject inputSchema;
-    inputSchema[QStringLiteral("type")] = QStringLiteral("object");
-    inputSchema[QStringLiteral("properties")] = properties;
-    inputSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("message")};
-
-    QJsonObject kateTestTool;
-    kateTestTool[QStringLiteral("name")] = QStringLiteral("kate_test");
-    kateTestTool[QStringLiteral("description")] =
-        QStringLiteral("A test tool that echoes input. Use this to verify the Kate MCP server is working.");
-    kateTestTool[QStringLiteral("inputSchema")] = inputSchema;
-
-    // Read-only annotation for test tool
-    QJsonObject testAnnotations;
-    testAnnotations[QStringLiteral("readOnlyHint")] = true;
-    testAnnotations[QStringLiteral("destructiveHint")] = false;
-    kateTestTool[QStringLiteral("annotations")] = testAnnotations;
-
     // katecode_documents tool definition
     QJsonObject docsTool;
     docsTool[QStringLiteral("name")] = QStringLiteral("katecode_documents");
@@ -284,7 +259,7 @@ QJsonObject MCPServer::handleToolsList(int id, const QJsonObject &params)
     askUserTool[QStringLiteral("annotations")] = askUserAnnotations;
 
     QJsonObject result;
-    result[QStringLiteral("tools")] = QJsonArray{kateTestTool, docsTool, readTool, editTool, writeTool, askUserTool};
+    result[QStringLiteral("tools")] = QJsonArray{docsTool, readTool, editTool, writeTool, askUserTool};
 
     return makeResponse(id, result);
 }
@@ -294,9 +269,7 @@ QJsonObject MCPServer::handleToolsCall(int id, const QJsonObject &params)
     const QString toolName = params[QStringLiteral("name")].toString();
     const QJsonObject arguments = params[QStringLiteral("arguments")].toObject();
 
-    if (toolName == QStringLiteral("kate_test")) {
-        return makeResponse(id, executeKateTest(arguments));
-    } else if (toolName == QStringLiteral("katecode_documents")) {
+    if (toolName == QStringLiteral("katecode_documents")) {
         return makeResponse(id, executeDocuments(arguments));
     } else if (toolName == QStringLiteral("katecode_read")) {
         return makeResponse(id, executeRead(arguments));
@@ -309,19 +282,6 @@ QJsonObject MCPServer::handleToolsCall(int id, const QJsonObject &params)
     }
 
     return makeErrorResponse(id, -32602, QStringLiteral("Unknown tool: %1").arg(toolName));
-}
-
-QJsonObject MCPServer::executeKateTest(const QJsonObject &arguments)
-{
-    const QString message = arguments[QStringLiteral("message")].toString();
-
-    QJsonObject textContent;
-    textContent[QStringLiteral("type")] = QStringLiteral("text");
-    textContent[QStringLiteral("text")] = QStringLiteral("Kate MCP echo: %1").arg(message);
-
-    QJsonObject result;
-    result[QStringLiteral("content")] = QJsonArray{textContent};
-    return result;
 }
 
 QJsonObject MCPServer::executeDocuments(const QJsonObject &arguments)
