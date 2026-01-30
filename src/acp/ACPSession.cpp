@@ -22,22 +22,23 @@
 #include <QUuid>
 
 // Helper functions to check tool types (mirrors logic in chat.js)
+// Uses suffix matching for katecode tools to handle different MCP host prefixes
 static bool isReadTool(const QString &name)
 {
     return name == QStringLiteral("Read") || name == QStringLiteral("mcp__acp__Read") ||
-           name == QStringLiteral("mcp__kate__katecode_read");
+           name.endsWith(QStringLiteral("_katecode_read"));
 }
 
 static bool isWriteTool(const QString &name)
 {
     return name == QStringLiteral("Write") || name == QStringLiteral("mcp__acp__Write") ||
-           name == QStringLiteral("mcp__kate__katecode_write");
+           name.endsWith(QStringLiteral("_katecode_write"));
 }
 
 static bool isEditTool(const QString &name)
 {
     return name == QStringLiteral("Edit") || name == QStringLiteral("mcp__acp__Edit") ||
-           name == QStringLiteral("mcp__kate__katecode_edit");
+           name.endsWith(QStringLiteral("_katecode_edit"));
 }
 
 static bool isBashTool(const QString &name)
