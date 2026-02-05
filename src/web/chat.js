@@ -123,6 +123,18 @@ function isAskUserTool(toolName) {
     return toolName && toolName.endsWith('_katecode_ask_user');
 }
 
+// Check if a tool is a Glob tool (standard or MCP variants)
+function isGlobTool(toolName) {
+    if (!toolName) return false;
+    return toolName === 'Glob' || toolName.toLowerCase().includes('glob');
+}
+
+// Check if a tool is a Grep tool (standard or MCP variants)
+function isGrepTool(toolName) {
+    if (!toolName) return false;
+    return toolName === 'Grep' || toolName.toLowerCase().includes('grep');
+}
+
 // Get display name for a tool (strips mcp__acp__ prefix or extracts from _katecode_ suffix)
 function getToolDisplayName(toolName) {
     if (!toolName) return 'Tool';
@@ -134,6 +146,12 @@ function getToolDisplayName(toolName) {
     if (katecodeMatch) {
         // Convert read -> Read, edit -> Edit, ask_user -> Ask_user, etc.
         const baseName = katecodeMatch[1];
+        return baseName.charAt(0).toUpperCase() + baseName.slice(1);
+    }
+    // Handle acp-tools__<name> pattern (e.g., acp-tools__glob -> Glob)
+    const acpToolsMatch = toolName.match(/^acp-tools__(\w+)$/);
+    if (acpToolsMatch) {
+        const baseName = acpToolsMatch[1];
         return baseName.charAt(0).toUpperCase() + baseName.slice(1);
     }
     return toolName;
@@ -643,7 +661,8 @@ function renderToolCall(toolCall) {
     else if (isEditTool(toolCall.name)) toolIconName = 'edit';
     else if (isWriteTool(toolCall.name)) toolIconName = 'edit_document';
     else if (isReadTool(toolCall.name)) toolIconName = 'description';
-    else if (toolCall.name === 'Glob' || toolCall.name === 'Grep') toolIconName = 'search';
+    else if (isGlobTool(toolCall.name)) toolIconName = 'folder_open';  // folder icon for glob
+    else if (isGrepTool(toolCall.name)) toolIconName = 'search';       // search for grep
     else if (isAskUserTool(toolCall.name)) toolIconName = 'quiz';
     const toolIcon = materialIcon(toolIconName, 'material-icon-sm');
 
@@ -686,6 +705,26 @@ function renderToolCall(toolCall) {
         taskOutputSummaryHtml += `<span class="task-indicator ${blocking ? 'task-blocking' : 'task-nonblocking'}" title="${blocking ? 'Waiting for completion' : 'Non-blocking'}">${materialIcon(blocking ? 'hourglass_empty' : 'sync', 'material-icon-sm')}</span>`;
     }
 
+    // Build Glob-specific summary elements
+    let globSummaryHtml = '';
+    if (isGlobTool(toolCall.name) && toolCall.input) {
+        const pattern = toolCall.input.pattern || '';
+        if (pattern) {
+            globSummaryHtml = `<span class="tool-call-pattern">${escapeHtml(pattern)}</span>`;
+        }
+    }
+
+    // Build Grep-specific summary elements
+    let grepSummaryHtml = '';
+    if (isGrepTool(toolCall.name) && toolCall.input) {
+        const pattern = toolCall.input.pattern || '';
+        if (pattern) {
+            // Show first 40 chars of pattern
+            const shortPattern = pattern.length > 40 ? pattern.substring(0, 40) + '...' : pattern;
+            grepSummaryHtml = `<span class="tool-call-pattern">${escapeHtml(shortPattern)}</span>`;
+        }
+    }
+
     // Get display name (strip mcp__acp__ prefix) and check if Kate tool
     const displayName = getToolDisplayName(toolCall.name);
     const isKate = isKateTool(toolCall.name);
@@ -697,6 +736,8 @@ function renderToolCall(toolCall) {
                 <span class="tool-call-name">${escapeHtml(displayName)}</span>
                 ${taskSummaryHtml}
                 ${taskOutputSummaryHtml}
+                ${globSummaryHtml}
+                ${grepSummaryHtml}
                 ${commandDisplay ? `<span class="tool-call-command">${escapeHtml(commandDisplay)}</span>` : ''}
                 ${fileName ? `<span class="tool-call-file">${escapeHtml(fileName)}</span>` : ''}
                 ${isKate ? '<span class="tool-call-kate-badge">Kate</span>' : ''}
@@ -991,12 +1032,19 @@ function toggleToolCall(toolCallId) {
     }
 }
 
-// Clear all messages
+// Clear all messages and reset all state for new session
 function clearMessages() {
     messages = {};
+    terminals = {};  // Clear terminal output cache
+    questionSelections = {};  // Clear any pending question state
+
     document.getElementById('messages').innerHTML = '';
-    // Also clear todos when messages are cleared (new session)
+
+    // Clear todos when messages are cleared (new session)
     clearTodos();
+
+    // Clear edit tracking (also hides/removes the edit summary panel)
+    clearEditSummary();
 }
 
 // Clear todos display

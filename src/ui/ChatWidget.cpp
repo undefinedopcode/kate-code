@@ -148,30 +148,8 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::initializeComplete, this, &ChatWidget::onInitializeComplete);
     connect(m_session, &ACPSession::sessionLoadFailed, this, &ChatWidget::onSessionLoadFailed);
 
-    // Terminal output updates (forward to web view for live display)
-    connect(m_session, &ACPSession::terminalOutputUpdated, m_chatWebView, &ChatWebView::updateTerminalOutput);
-    connect(m_session, &ACPSession::toolCallTerminalIdSet, m_chatWebView, &ChatWebView::setToolCallTerminalId);
-
-    // Connect web view permission responses back to ACP
-    connect(m_chatWebView, &ChatWebView::permissionResponseReady, this, [this](int requestId, const QString &optionId) {
-        QJsonObject outcomeObj;
-        outcomeObj[QStringLiteral("outcome")] = QStringLiteral("selected");
-        outcomeObj[QStringLiteral("optionId")] = optionId;
-        m_session->sendPermissionResponse(requestId, outcomeObj);
-    });
-
-    // Connect web view user question responses (MCP AskUserQuestion tool)
-    connect(m_chatWebView, &ChatWebView::userQuestionAnswered, this, &ChatWidget::onUserQuestionAnswered);
-
-    // Edit tracking: connect EditTracker to ChatWebView
-    connect(m_session->editTracker(), &EditTracker::editRecorded, m_chatWebView, &ChatWebView::addTrackedEdit);
-    connect(m_session->editTracker(), &EditTracker::editsCleared, m_chatWebView, &ChatWebView::clearEditSummary);
-
-    // Forward jump to edit requests from WebView
-    connect(m_chatWebView, &ChatWebView::jumpToEditRequested, this, &ChatWidget::jumpToEditRequested);
-
-    // Apply diff colors when WebView is ready (after page load)
-    connect(m_chatWebView, &ChatWebView::webViewReady, this, &ChatWidget::applyDiffColors);
+    // Connect all ChatWebView signals
+    connectWebViewSignals();
 }
 
 ChatWidget::~ChatWidget()
@@ -309,9 +287,9 @@ void ChatWidget::onResumeSessionClicked()
                 // Trigger summary generation for current session before stopping
                 triggerSummaryGeneration();
 
-                // Stop current session and clear chat
+                // Stop current session and reset WebView to reclaim memory
                 m_session->stop();
-                m_chatWebView->clearMessages();
+                resetWebView();
             }
 
             // Reset user message tracking for new session
@@ -351,9 +329,11 @@ void ChatWidget::onNewSessionClicked()
     m_sessionStore->clearSession(projectRoot);
     m_pendingSummaryContext.clear();
 
-    // Stop current session, clear chat, and start a new session
+    // Stop current session
     m_session->stop();
-    m_chatWebView->clearMessages();
+
+    // Destroy and recreate WebView to reclaim Chromium memory
+    resetWebView();
 
     m_pendingAction = PendingAction::CreateSession;
 
@@ -1138,4 +1118,74 @@ void ChatWidget::onUserQuestionAnswered(const QString &requestId, const QJsonObj
     qDebug() << "[ChatWidget] onUserQuestionAnswered, requestId:" << requestId;
     QString responseJson = QString::fromUtf8(QJsonDocument(answers).toJson(QJsonDocument::Compact));
     Q_EMIT userQuestionAnswered(requestId, responseJson);
+}
+
+void ChatWidget::connectWebViewSignals()
+{
+    // Terminal output updates (forward to web view for live display)
+    connect(m_session, &ACPSession::terminalOutputUpdated, m_chatWebView, &ChatWebView::updateTerminalOutput);
+    connect(m_session, &ACPSession::toolCallTerminalIdSet, m_chatWebView, &ChatWebView::setToolCallTerminalId);
+
+    // Connect web view permission responses back to ACP
+    connect(m_chatWebView, &ChatWebView::permissionResponseReady, this, [this](int requestId, const QString &optionId) {
+        QJsonObject outcomeObj;
+        outcomeObj[QStringLiteral("outcome")] = QStringLiteral("selected");
+        outcomeObj[QStringLiteral("optionId")] = optionId;
+        m_session->sendPermissionResponse(requestId, outcomeObj);
+    });
+
+    // Connect web view user question responses (MCP AskUserQuestion tool)
+    connect(m_chatWebView, &ChatWebView::userQuestionAnswered, this, &ChatWidget::onUserQuestionAnswered);
+
+    // Edit tracking: connect EditTracker to ChatWebView
+    connect(m_session->editTracker(), &EditTracker::editRecorded, m_chatWebView, &ChatWebView::addTrackedEdit);
+    connect(m_session->editTracker(), &EditTracker::editsCleared, m_chatWebView, &ChatWebView::clearEditSummary);
+
+    // Forward jump to edit requests from WebView
+    connect(m_chatWebView, &ChatWebView::jumpToEditRequested, this, &ChatWidget::jumpToEditRequested);
+
+    // Apply diff colors when WebView is ready (after page load)
+    connect(m_chatWebView, &ChatWebView::webViewReady, this, &ChatWidget::applyDiffColors);
+}
+
+void ChatWidget::resetWebView()
+{
+    qDebug() << "[ChatWidget] Resetting WebView to reclaim memory";
+
+    // Get the layout and find the web view's position
+    auto *mainLayout = qobject_cast<QVBoxLayout*>(layout());
+    if (!mainLayout) {
+        qWarning() << "[ChatWidget] Could not get main layout for web view reset";
+        return;
+    }
+
+    int webViewIndex = mainLayout->indexOf(m_chatWebView);
+    if (webViewIndex < 0) {
+        qWarning() << "[ChatWidget] Could not find web view in layout";
+        return;
+    }
+
+    // Disconnect signals from session to old web view (prevents dangling connections)
+    disconnect(m_session, &ACPSession::terminalOutputUpdated, m_chatWebView, nullptr);
+    disconnect(m_session, &ACPSession::toolCallTerminalIdSet, m_chatWebView, nullptr);
+    disconnect(m_session->editTracker(), &EditTracker::editRecorded, m_chatWebView, nullptr);
+    disconnect(m_session->editTracker(), &EditTracker::editsCleared, m_chatWebView, nullptr);
+
+    // Remove from layout and delete the old web view
+    mainLayout->removeWidget(m_chatWebView);
+    delete m_chatWebView;
+    m_chatWebView = nullptr;
+
+    // Create a fresh web view
+    m_chatWebView = new ChatWebView(this);
+    m_chatWebView->setMinimumHeight(200);
+    m_chatWebView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    // Insert at the same position in layout
+    mainLayout->insertWidget(webViewIndex, m_chatWebView, 1);
+
+    // Reconnect all signals
+    connectWebViewSignals();
+
+    qDebug() << "[ChatWidget] WebView reset complete";
 }

@@ -122,6 +122,8 @@ private:
     void populateProviderCombo();
     void onProviderComboChanged(int index);
     void updateTerminalSize();
+    void resetWebView();
+    void connectWebViewSignals();
     // Pending session action for after initialize completes
     enum class PendingAction {
         None,
