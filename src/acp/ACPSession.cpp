@@ -824,6 +824,81 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         if (!m_currentMessageId.isEmpty()) {
             Q_EMIT toolCallAdded(m_currentMessageId, toolCall);
             m_transcript->recordToolCall(toolCall);
+
+            // Handle already-completed tool calls (some agents send tool_call with status=completed
+            // and rawOutput in a single event, without a separate tool_call_update)
+            if (toolCall.status == QStringLiteral("completed")) {
+                QString result;
+                QJsonValue rawOutputValue = update[QStringLiteral("rawOutput")];
+
+                // Check if rawOutput is an object (bash tool format with exitCode, stdout, stderr)
+                if (rawOutputValue.isObject()) {
+                    QJsonObject rawObj = rawOutputValue.toObject();
+                    if (rawObj.contains(QStringLiteral("stdout")) || rawObj.contains(QStringLiteral("stderr"))) {
+                        QString stdoutText = rawObj[QStringLiteral("stdout")].toString();
+                        QString stderrText = rawObj[QStringLiteral("stderr")].toString();
+                        int exitCode = rawObj[QStringLiteral("exitCode")].toInt();
+
+                        QStringList parts;
+                        if (!stdoutText.isEmpty()) {
+                            parts.append(stdoutText);
+                        }
+                        if (!stderrText.isEmpty()) {
+                            if (!stdoutText.isEmpty()) {
+                                parts.append(QStringLiteral("stderr:\n") + stderrText);
+                            } else {
+                                parts.append(stderrText);
+                            }
+                        }
+                        if (!parts.isEmpty()) {
+                            result = parts.join(QStringLiteral("\n"));
+                        } else if (exitCode != 0) {
+                            result = QStringLiteral("Exit code: %1").arg(exitCode);
+                        }
+                        qDebug() << "[ACPSession] tool_call completed inline with bash rawOutput - exitCode:"
+                                 << exitCode << "stdout len:" << stdoutText.length();
+                    }
+                }
+
+                // Fall back to rawOutput as string
+                if (result.isEmpty()) {
+                    QString rawOutput = rawOutputValue.toString();
+                    if (!rawOutput.isEmpty()) {
+                        // Try parsing as JSON
+                        QJsonDocument rawDoc = QJsonDocument::fromJson(rawOutput.toUtf8());
+                        if (!rawDoc.isNull() && rawDoc.isObject()) {
+                            QJsonObject rawObj = rawDoc.object();
+                            QJsonValue contentValue = rawObj[QStringLiteral("content")];
+                            if (contentValue.isString()) {
+                                result = contentValue.toString();
+                            } else if (contentValue.isArray()) {
+                                QJsonArray contentArray = contentValue.toArray();
+                                QStringList texts;
+                                for (const QJsonValue &item : contentArray) {
+                                    if (item.isObject()) {
+                                        QString text = item.toObject()[QStringLiteral("text")].toString();
+                                        if (!text.isEmpty()) {
+                                            texts.append(text);
+                                        }
+                                    }
+                                }
+                                result = texts.join(QString());
+                            }
+                        }
+                        if (result.isEmpty()) {
+                            result = rawOutput;  // Use as-is
+                        }
+                        qDebug() << "[ACPSession] tool_call completed inline - result length:" << result.length();
+                    }
+                }
+
+                // Emit update if we extracted a result
+                if (!result.isEmpty()) {
+                    Q_EMIT toolCallUpdated(m_currentMessageId, toolCall.id, toolCall.status, result,
+                                          toolCall.filePath, toolCall.name);
+                    m_transcript->recordToolUpdate(toolCall.id, toolCall.status, result);
+                }
+            }
         }
     }
     else if (updateType == QStringLiteral("tool_call_update")) {
@@ -908,9 +983,47 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
 
         // If result is still empty or just a summary, check rawOutput (vibe-acp format)
         // vibe-acp tools like Read return actual content in rawOutput as a JSON string
+        // Bash tools may return rawOutput as an object with exitCode, stdout, stderr
         if (result.isEmpty() || (!update[QStringLiteral("rawOutput")].isUndefined() && result.length() < 200)) {
-            QString rawOutput = update[QStringLiteral("rawOutput")].toString();
-            if (!rawOutput.isEmpty()) {
+            QJsonValue rawOutputValue = update[QStringLiteral("rawOutput")];
+
+            // Check if rawOutput is an object (bash tool format with exitCode, stdout, stderr)
+            if (rawOutputValue.isObject()) {
+                QJsonObject rawObj = rawOutputValue.toObject();
+                // Check for bash-style output (has stdout or stderr fields)
+                if (rawObj.contains(QStringLiteral("stdout")) || rawObj.contains(QStringLiteral("stderr"))) {
+                    QString stdoutText = rawObj[QStringLiteral("stdout")].toString();
+                    QString stderrText = rawObj[QStringLiteral("stderr")].toString();
+                    int exitCode = rawObj[QStringLiteral("exitCode")].toInt();
+
+                    // Combine stdout and stderr for display
+                    QStringList parts;
+                    if (!stdoutText.isEmpty()) {
+                        parts.append(stdoutText);
+                    }
+                    if (!stderrText.isEmpty()) {
+                        // Prefix stderr if there's also stdout
+                        if (!stdoutText.isEmpty()) {
+                            parts.append(QStringLiteral("stderr:\n") + stderrText);
+                        } else {
+                            parts.append(stderrText);
+                        }
+                    }
+                    if (!parts.isEmpty()) {
+                        result = parts.join(QStringLiteral("\n"));
+                    } else if (exitCode != 0) {
+                        // No output but non-zero exit - report the exit code
+                        result = QStringLiteral("Exit code: %1").arg(exitCode);
+                    }
+                    qDebug() << "[ACPSession] Bash rawOutput - exitCode:" << exitCode
+                             << "stdout len:" << stdoutText.length()
+                             << "stderr len:" << stderrText.length();
+                }
+            }
+
+            // Fall back to rawOutput as string (original format)
+            QString rawOutput = rawOutputValue.toString();
+            if (!rawOutput.isEmpty() && result.isEmpty()) {
                 // rawOutput may be a JSON string (e.g., Read tool returns {"path":...,"content":...})
                 QJsonDocument rawDoc = QJsonDocument::fromJson(rawOutput.toUtf8());
                 if (!rawDoc.isNull() && rawDoc.isObject()) {
@@ -935,7 +1048,26 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
                         qDebug() << "[ACPSession] Edit rawOutput - file:" << file
                                  << "blocks:" << blocksApplied << "lines:" << linesChanged;
                     } else {
-                        QString fileContent = rawObj[QStringLiteral("content")].toString();
+                        // Handle both string and array formats for content
+                        QJsonValue contentValue = rawObj[QStringLiteral("content")];
+                        QString fileContent;
+                        if (contentValue.isString()) {
+                            fileContent = contentValue.toString();
+                        } else if (contentValue.isArray()) {
+                            // Anthropic tool result format: [{"type":"text","text":"..."}]
+                            QJsonArray contentArray = contentValue.toArray();
+                            QStringList texts;
+                            for (const QJsonValue &item : contentArray) {
+                                if (item.isObject()) {
+                                    QJsonObject block = item.toObject();
+                                    QString text = block[QStringLiteral("text")].toString();
+                                    if (!text.isEmpty()) {
+                                        texts.append(text);
+                                    }
+                                }
+                            }
+                            fileContent = texts.join(QString());
+                        }
                         if (!fileContent.isEmpty()) {
                             result = fileContent;
                             qDebug() << "[ACPSession] Extracted content from rawOutput - length:" << result.length();

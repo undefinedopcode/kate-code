@@ -571,6 +571,20 @@ body {
     white-space: nowrap;
 }
 
+.tool-call-pattern {
+    color: var(--fg-primary);
+    font-size: 10px;
+    font-family: var(--code-font-family, 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace);
+    padding: 2px 6px;
+    background-color: rgba(0, 122, 204, 0.2);
+    border-radius: 2px;
+    margin-left: 6px;
+    max-width: 250px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .tool-call-file {
     color: var(--fg-secondary);
     font-size: 10px;
