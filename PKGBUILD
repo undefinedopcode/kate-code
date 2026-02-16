@@ -12,6 +12,8 @@ depends=(
     'kcoreaddons'
     'kxmlgui'
     'syntax-highlighting'
+    'kwallet'
+    'kpty'
     'qt6-webengine'
 )
 makedepends=(
