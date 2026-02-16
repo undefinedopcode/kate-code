@@ -16,6 +16,8 @@ RUN dnf install -y \
     kf6-kcoreaddons-devel \
     kf6-kxmlgui-devel \
     kf6-syntax-highlighting-devel \
+    kf6-kwallet-devel \
+    kf6-kpty-devel \
     qt6-qtwebengine-devel \
     && dnf clean all
 
