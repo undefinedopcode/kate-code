@@ -79,14 +79,24 @@ QJsonObject MCPServer::handleToolsList(int id, const QJsonObject &params)
     QJsonObject readTool;
     readTool[QStringLiteral("name")] = QStringLiteral("katecode_read");
     readTool[QStringLiteral("description")] =
-        QStringLiteral("Reads the content of a file. If the file is open in Kate, returns the current buffer content (which may have unsaved changes). Otherwise reads from disk.\n\nIn sessions with mcp__kate__katecode_read always use it instead of Read or mcp__acp__Read, as it contains the most up-to-date contents provided by the editor.");
+        QStringLiteral("Reads the content of a file. If the file is open in Kate, returns the current buffer content (which may have unsaved changes). Otherwise reads from disk. By default returns up to 2000 lines; use offset and limit for larger files.\n\nIn sessions with mcp__kate__katecode_read always use it instead of Read or mcp__acp__Read, as it contains the most up-to-date contents provided by the editor.");
 
     QJsonObject readPathProp;
     readPathProp[QStringLiteral("type")] = QStringLiteral("string");
     readPathProp[QStringLiteral("description")] = QStringLiteral("The absolute path to the file to read");
 
+    QJsonObject readOffsetProp;
+    readOffsetProp[QStringLiteral("type")] = QStringLiteral("integer");
+    readOffsetProp[QStringLiteral("description")] = QStringLiteral("Line number to start reading from (1-based). Default: 1");
+
+    QJsonObject readLimitProp;
+    readLimitProp[QStringLiteral("type")] = QStringLiteral("integer");
+    readLimitProp[QStringLiteral("description")] = QStringLiteral("Maximum number of lines to return. Default: 2000");
+
     QJsonObject readProps;
     readProps[QStringLiteral("file_path")] = readPathProp;
+    readProps[QStringLiteral("offset")] = readOffsetProp;
+    readProps[QStringLiteral("limit")] = readLimitProp;
 
     QJsonObject readSchema;
     readSchema[QStringLiteral("type")] = QStringLiteral("object");
@@ -360,6 +370,18 @@ QJsonObject MCPServer::executeRead(const QJsonObject &arguments)
 {
     const QString filePath = arguments[QStringLiteral("file_path")].toString();
 
+    // Parse optional offset and limit (1-based line numbers)
+    const int defaultLimit = 2000;
+    int offset = 1;  // 1-based, default to first line
+    int limit = defaultLimit;
+
+    if (arguments.contains(QStringLiteral("offset"))) {
+        offset = qMax(1, arguments[QStringLiteral("offset")].toInt(1));
+    }
+    if (arguments.contains(QStringLiteral("limit"))) {
+        limit = qMax(1, arguments[QStringLiteral("limit")].toInt(defaultLimit));
+    }
+
     if (filePath.isEmpty()) {
         QJsonObject textContent;
         textContent[QStringLiteral("type")] = QStringLiteral("text");
@@ -407,9 +429,53 @@ QJsonObject MCPServer::executeRead(const QJsonObject &arguments)
         return result;
     }
 
+    // Split content into lines and apply offset/limit
+    QStringList allLines = content.split(QLatin1Char('\n'));
+    const int totalLines = allLines.size();
+
+    // Convert 1-based offset to 0-based index
+    int startIdx = offset - 1;
+    if (startIdx >= totalLines) {
+        startIdx = qMax(0, totalLines - 1);
+    }
+
+    int endIdx = qMin(startIdx + limit, totalLines);
+    int linesOmittedBefore = startIdx;
+    int linesOmittedAfter = totalLines - endIdx;
+
+    // Build output with line numbers (like Claude Code's Read tool)
+    // Format: "   42→content" with arrow separator
+    QString outputText;
+    int lineNumWidth = QString::number(endIdx).length();
+
+    for (int i = startIdx; i < endIdx; ++i) {
+        int lineNum = i + 1;  // 1-based line number
+        outputText += QStringLiteral("%1→%2\n")
+            .arg(lineNum, lineNumWidth)
+            .arg(allLines[i]);
+    }
+
+    // Remove trailing newline if present
+    if (outputText.endsWith(QLatin1Char('\n'))) {
+        outputText.chop(1);
+    }
+
+    // Add truncation warnings
+    QString header;
+    if (linesOmittedBefore > 0 || linesOmittedAfter > 0) {
+        header = QStringLiteral("(%1 total lines").arg(totalLines);
+        if (linesOmittedBefore > 0) {
+            header += QStringLiteral(", %1 omitted before").arg(linesOmittedBefore);
+        }
+        if (linesOmittedAfter > 0) {
+            header += QStringLiteral(", %1 omitted after").arg(linesOmittedAfter);
+        }
+        header += QStringLiteral(")\n\n");
+    }
+
     QJsonObject textContent;
     textContent[QStringLiteral("type")] = QStringLiteral("text");
-    textContent[QStringLiteral("text")] = content;
+    textContent[QStringLiteral("text")] = QString(header + outputText);
 
     QJsonObject result;
     result[QStringLiteral("content")] = QJsonArray{textContent};
