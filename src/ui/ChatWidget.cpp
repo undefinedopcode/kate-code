@@ -14,6 +14,7 @@
 
 #include <QComboBox>
 #include <QDir>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
 #include <QFileInfo>

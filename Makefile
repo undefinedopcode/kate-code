@@ -10,7 +10,7 @@ build:
 	cmake --build $(BUILD_DIR)
 
 install: build
-	sudo cmake --install $(BUILD_DIR)
+	cmake --install $(BUILD_DIR)
 
 package:
 	./build-packages.sh
