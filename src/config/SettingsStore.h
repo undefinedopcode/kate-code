@@ -101,6 +101,7 @@ private:
     void openWallet();
     void closeWallet();
     void migrateOldBackendSettings();
+    void migrateOldSummaryModel();
     QList<ACPProvider> builtinProviders() const;
     QList<ACPProvider> customProviders() const;
 

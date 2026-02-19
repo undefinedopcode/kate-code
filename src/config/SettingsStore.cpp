@@ -9,7 +9,7 @@
 
 const QString SettingsStore::WALLET_FOLDER = QStringLiteral("KateCode");
 const QString SettingsStore::API_KEY_ENTRY = QStringLiteral("AnthropicApiKey");
-const QString SettingsStore::DEFAULT_SUMMARY_MODEL = QStringLiteral("claude-3-5-haiku-20241022");
+const QString SettingsStore::DEFAULT_SUMMARY_MODEL = QStringLiteral("claude-haiku-4-5-20251001");
 
 SettingsStore::SettingsStore(QObject *parent)
     : QObject(parent)
@@ -20,6 +20,7 @@ SettingsStore::SettingsStore(QObject *parent)
 {
     qDebug() << "[SettingsStore] Initialized, config file:" << m_settings.fileName();
     migrateOldBackendSettings();
+    migrateOldSummaryModel();
 }
 
 SettingsStore::~SettingsStore()
@@ -386,6 +387,21 @@ void SettingsStore::migrateOldBackendSettings()
     m_settings.remove(QStringLiteral("ACP/customExecutable"));
     m_settings.sync();
     qDebug() << "[SettingsStore] Migrated old ACP backend settings to provider:" << newActiveId;
+}
+
+void SettingsStore::migrateOldSummaryModel()
+{
+    QString model = m_settings.value(QStringLiteral("Summaries/model")).toString();
+    if (model.isEmpty()) {
+        return;
+    }
+
+    // Deprecated model IDs that are no longer available
+    if (model.startsWith(QStringLiteral("claude-3-")) || model.startsWith(QStringLiteral("claude-3."))) {
+        qDebug() << "[SettingsStore] Migrating deprecated summary model" << model << "to" << DEFAULT_SUMMARY_MODEL;
+        m_settings.setValue(QStringLiteral("Summaries/model"), DEFAULT_SUMMARY_MODEL);
+        m_settings.sync();
+    }
 }
 
 bool SettingsStore::debugLogging() const

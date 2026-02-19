@@ -226,9 +226,8 @@ void KateCodeConfigPage::setupSummariesTab(QWidget *tab)
     summaryLayout->addRow(m_enableSummariesCheck);
 
     m_summaryModelCombo = new QComboBox(tab);
-    m_summaryModelCombo->addItem(QStringLiteral("claude-3-5-haiku-20241022"), QStringLiteral("claude-3-5-haiku-20241022"));
-    m_summaryModelCombo->addItem(QStringLiteral("claude-3-5-sonnet-20241022"), QStringLiteral("claude-3-5-sonnet-20241022"));
-    m_summaryModelCombo->addItem(QStringLiteral("claude-3-haiku-20240307"), QStringLiteral("claude-3-haiku-20240307"));
+    m_summaryModelCombo->addItem(QStringLiteral("claude-haiku-4-5-20251001"), QStringLiteral("claude-haiku-4-5-20251001"));
+    m_summaryModelCombo->addItem(QStringLiteral("claude-sonnet-4-5-20250514"), QStringLiteral("claude-sonnet-4-5-20250514"));
     connect(m_summaryModelCombo, &QComboBox::currentIndexChanged,
             this, &KateCodeConfigPage::onSettingChanged);
     summaryLayout->addRow(i18n("Summary model:"), m_summaryModelCombo);

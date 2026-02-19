@@ -905,7 +905,13 @@ void ChatWidget::onSummaryReady(const QString &sessionId, const QString &project
 void ChatWidget::onSummaryError(const QString &sessionId, const QString &error)
 {
     qWarning() << "[ChatWidget] Summary generation failed for" << sessionId << ":" << error;
-    // Don't show error to user - summary is optional
+
+    Message sysMsg;
+    sysMsg.id = QStringLiteral("sys_summary_error");
+    sysMsg.role = QStringLiteral("system");
+    sysMsg.content = QStringLiteral("Summary generation failed: %1").arg(error);
+    sysMsg.timestamp = QDateTime::currentDateTime();
+    m_chatWebView->addMessage(sysMsg);
 }
 
 void ChatWidget::onApiKeyLoadedForSummary(bool success)
