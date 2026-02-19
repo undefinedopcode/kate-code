@@ -78,6 +78,7 @@ void SummaryGenerator::generateSummary(const QString &sessionId,
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("x-api-key", apiKey.toUtf8());
     request.setRawHeader("anthropic-version", "2023-06-01");
+    request.setRawHeader("anthropic-dangerous-direct-browser-access", "true");
 
     // Set timeout
     request.setTransferTimeout(30000); // 30 seconds
