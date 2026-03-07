@@ -9,24 +9,30 @@ cd "$SCRIPT_DIR"
 
 mkdir -p dist
 
-build_deb() {
-    echo "=== Building .deb package ==="
+build_deb() {                                                                                                                                                                                                                         
+    echo "=== Building .deb package ==="                  
     docker build -f Dockerfile.deb -t kate-code-deb .
-    docker run --rm -v "$(pwd)/dist:/output" kate-code-deb
+    docker create --name deb-out kate-code-deb
+    docker cp deb-out:/output/. dist/
+    docker rm deb-out
     echo "=== .deb package built in dist/ ==="
 }
 
 build_rpm() {
     echo "=== Building .rpm package ==="
     docker build -f Dockerfile.rpm -t kate-code-rpm .
-    docker run --rm -v "$(pwd)/dist:/output" kate-code-rpm
+    docker create --name rpm-out kate-code-rpm
+    docker cp rpm-out:/output/. dist/
+    docker rm rpm-out
     echo "=== .rpm package built in dist/ ==="
 }
 
 build_arch() {
     echo "=== Building .pkg.tar.zst package (Arch) ==="
     docker build -f Dockerfile.arch -t kate-code-arch .
-    docker run --rm -v "$(pwd)/dist:/output" kate-code-arch
+    docker create --name arch-out kate-code-arch
+    docker cp arch-out:/output/. dist/
+    docker rm arch-out
     echo "=== .pkg.tar.zst package built in dist/ ==="
 }
 
