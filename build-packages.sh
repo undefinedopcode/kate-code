@@ -13,7 +13,7 @@ build_deb() {
     echo "=== Building .deb package ==="                  
     docker build -f Dockerfile.deb -t kate-code-deb .
     docker create --name deb-out kate-code-deb
-    docker cp deb-out:/output/. dist/
+    docker cp deb-out:/dist/. dist/
     docker rm deb-out
     echo "=== .deb package built in dist/ ==="
 }
@@ -22,7 +22,7 @@ build_rpm() {
     echo "=== Building .rpm package ==="
     docker build -f Dockerfile.rpm -t kate-code-rpm .
     docker create --name rpm-out kate-code-rpm
-    docker cp rpm-out:/output/. dist/
+    docker cp rpm-out:/dist/. dist/
     docker rm rpm-out
     echo "=== .rpm package built in dist/ ==="
 }
@@ -31,7 +31,7 @@ build_arch() {
     echo "=== Building .pkg.tar.zst package (Arch) ==="
     docker build -f Dockerfile.arch -t kate-code-arch .
     docker create --name arch-out kate-code-arch
-    docker cp arch-out:/output/. dist/
+    docker cp arch-out:/dist/. dist/
     docker rm arch-out
     echo "=== .pkg.tar.zst package built in dist/ ==="
 }
