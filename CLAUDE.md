@@ -1,6 +1,6 @@
 # Kate-Code Plugin
 
-A Kate text editor plugin that wraps Claude Code using claude-code-acp.
+A Kate text editor plugin that wraps Claude Code using claude-agent-acp.
 
 ## Build Instructions
 
@@ -22,7 +22,7 @@ Settings > Configure Kate > Plugins > Enable "Kate Code"
 
 ### Layer Structure
 - **Plugin**: KateCodePlugin, KateCodeView - Kate integration
-- **ACP**: ACPService, ACPSession - JSON-RPC 2.0 over stdin/stdout to claude-code-acp
+- **ACP**: ACPService, ACPSession - JSON-RPC 2.0 over stdin/stdout to claude-agent-acp
 - **MCP**: MCPServer - Built-in MCP server executable for Kate editor tools
 - **UI**: ChatWidget, ChatWebView, ChatInputWidget, PermissionDialog
 - **Util**: KDEColorScheme - reads ~/.config/kdeglobals
@@ -30,7 +30,7 @@ Settings > Configure Kate > Plugins > Enable "Kate Code"
 ### Key Files
 - `src/plugin/KateCodePlugin.{h,cpp}` - Plugin registration via K_PLUGIN_CLASS_WITH_JSON
 - `src/plugin/KateCodeView.{h,cpp}` - Creates side panel tool view, provides Kate context
-- `src/acp/ACPService.{h,cpp}` - QProcess-based claude-code-acp subprocess management
+- `src/acp/ACPService.{h,cpp}` - QProcess-based claude-agent-acp subprocess management
 - `src/acp/ACPSession.{h,cpp}` - Protocol flow and session state management
 - `src/acp/ACPModels.h` - Data structures (Message, ToolCall, TodoItem, etc.)
 - `src/mcp/MCPServer.{h,cpp}` - MCP protocol handler (initialize, tools/list, tools/call)

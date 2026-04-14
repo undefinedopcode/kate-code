@@ -22,7 +22,7 @@ makedepends=(
     'gcc'
 )
 optdepends=(
-    'claude-code-acp: Required for Claude Code functionality'
+    'claude-agent-acp: Required for Claude Code functionality'
 )
 source=("${pkgname}::git+https://github.com/undefinedopcode/kate-code.git")
 sha256sums=('SKIP')

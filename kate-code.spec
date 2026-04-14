@@ -19,7 +19,7 @@ BuildRequires:  kf6-kwallet-devel
 BuildRequires:  kf6-kpty-devel
 BuildRequires:  qt6-qtwebengine-devel
 
-Recommends:     claude-code-acp
+Recommends:     claude-agent-acp
 
 %description
 A Kate plugin that provides Claude AI assistant integration via the
