@@ -194,7 +194,7 @@ void SettingsStore::setAutoResumeSessions(bool enable)
 QList<ACPProvider> SettingsStore::builtinProviders() const
 {
     return {
-        {QStringLiteral("claude-code"), QStringLiteral("Claude Code"), QStringLiteral("claude-code-acp"), QString(), true},
+        {QStringLiteral("claude-code"), QStringLiteral("Claude Code"), QStringLiteral("claude-agent-acp"), QString(), true},
         {QStringLiteral("vibe-mistral"), QStringLiteral("Vibe (Mistral)"), QStringLiteral("vibe-acp"), QString(), true},
     };
 }
