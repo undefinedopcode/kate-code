@@ -24,6 +24,7 @@ public:
     ~ACPSession() override;
 
     void setExecutable(const QString &executable, const QStringList &args = QStringList());
+    void setMcpConfigPath(const QString &path);
     void start(const QString &workingDir, const QString &permissionMode = QStringLiteral("default"));
     void stop();
 
@@ -139,4 +140,7 @@ private:
 
     // Current tool call ID for edit tracking
     QString m_currentToolCallId;
+
+    // MCP config path for loading external MCP servers
+    QString m_mcpConfigPath;
 };

@@ -17,6 +17,7 @@ struct ACPProvider {
     QString description;  // Display name
     QString executable;   // Binary name or path
     QString options;      // Command-line arguments string
+    QString mcpConfigPath; // Path to MCP server config JSON file (e.g. ~/.cursor/mcp.json)
     bool builtin = false; // true for built-in providers (can't be deleted)
 };
 

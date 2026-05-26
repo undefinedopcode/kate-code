@@ -1019,7 +1019,9 @@ void ChatWidget::applyACPBackend()
         args = QProcess::splitCommand(provider.options);
     }
     m_session->setExecutable(provider.executable, args);
-    qDebug() << "[ChatWidget] ACP backend configured:" << provider.executable << args;
+    m_session->setMcpConfigPath(provider.mcpConfigPath);
+    qDebug() << "[ChatWidget] ACP backend configured:" << provider.executable << args
+             << "MCP config:" << provider.mcpConfigPath;
 }
 
 void ChatWidget::populateProviderCombo()

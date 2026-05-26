@@ -106,6 +106,12 @@ void ACPSession::setExecutable(const QString &executable, const QStringList &arg
     m_service->setExecutable(executable, args);
 }
 
+void ACPSession::setMcpConfigPath(const QString &path)
+{
+    m_mcpConfigPath = path;
+    qDebug() << "[ACPSession] MCP config path set to:" << path;
+}
+
 void ACPSession::start(const QString &workingDir, const QString &permissionMode)
 {
     Q_UNUSED(permissionMode);  // Modes are now discovered from agent
@@ -204,6 +210,81 @@ void ACPSession::setMode(const QString &modeId)
     m_service->sendRequest(QStringLiteral("session/set_mode"), params);
 }
 
+static QJsonArray loadExternalMcpServers(const QString &configPath)
+{
+    QJsonArray servers;
+
+    // Skip if no config path is set
+    if (configPath.isEmpty()) {
+        qDebug() << "[ACPSession] No MCP config path configured, skipping external servers";
+        return servers;
+    }
+
+    QFile configFile(configPath);
+
+    if (!configFile.exists()) {
+        qDebug() << "[ACPSession] No external MCP config found at:" << configPath;
+        return servers;
+    }
+
+    if (!configFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        qWarning() << "[ACPSession] Failed to open MCP config:" << configPath;
+        return servers;
+    }
+
+    QByteArray data = configFile.readAll();
+    configFile.close();
+
+    QJsonDocument doc = QJsonDocument::fromJson(data);
+    if (doc.isNull() || !doc.isObject()) {
+        qWarning() << "[ACPSession] Invalid JSON in MCP config:" << configPath;
+        return servers;
+    }
+
+    QJsonObject root = doc.object();
+    QJsonObject mcpServersObj = root[QStringLiteral("mcpServers")].toObject();
+
+    if (mcpServersObj.isEmpty()) {
+        qDebug() << "[ACPSession] No mcpServers found in config";
+        return servers;
+    }
+
+    for (auto it = mcpServersObj.begin(); it != mcpServersObj.end(); ++it) {
+        QString serverName = it.key();
+        QJsonObject serverConfig = it.value().toObject();
+
+        if (serverConfig.isEmpty()) {
+            qWarning() << "[ACPSession] Empty config for MCP server:" << serverName;
+            continue;
+        }
+
+        // Build server object in ACP format
+        QJsonObject server;
+        server[QStringLiteral("name")] = serverName;
+        server[QStringLiteral("type")] = serverConfig.value(QStringLiteral("type")).toString(QStringLiteral("stdio"));
+        server[QStringLiteral("command")] = serverConfig[QStringLiteral("command")];
+        server[QStringLiteral("args")] = serverConfig[QStringLiteral("args")].toArray();
+
+        // Convert env object to array of {name, value} objects for ACP protocol
+        QJsonObject envObj = serverConfig[QStringLiteral("env")].toObject();
+        QJsonArray envArray;
+        for (auto envIt = envObj.begin(); envIt != envObj.end(); ++envIt) {
+            QJsonObject envEntry;
+            envEntry[QStringLiteral("name")] = envIt.key();
+            envEntry[QStringLiteral("value")] = envIt.value().toString();
+            envArray.append(envEntry);
+        }
+        server[QStringLiteral("env")] = envArray;
+
+        servers.append(server);
+        qDebug() << "[ACPSession] Loaded external MCP server:" << serverName
+                 << "command:" << serverConfig[QStringLiteral("command")].toString();
+    }
+
+    qDebug() << "[ACPSession] Loaded" << servers.size() << "external MCP server(s)";
+    return servers;
+}
+
 void ACPSession::createNewSession()
 {
     if (m_status != ConnectionStatus::Connecting) {
@@ -242,6 +323,16 @@ void ACPSession::createNewSession()
         qDebug() << "[ACPSession] Added Kate MCP server:" << mcpServerPath;
     } else {
         qWarning() << "[ACPSession] Kate MCP server not found";
+    }
+
+    // Load external MCP servers from configured path (if any)
+    if (!m_mcpConfigPath.isEmpty()) {
+        QJsonArray externalServers = loadExternalMcpServers(m_mcpConfigPath);
+        for (const QJsonValue &server : externalServers) {
+            mcpServers.append(server);
+        }
+    } else {
+        qDebug() << "[ACPSession] No MCP config path configured for this provider";
     }
 
     params[QStringLiteral("mcpServers")] = mcpServers;

@@ -194,8 +194,8 @@ void SettingsStore::setAutoResumeSessions(bool enable)
 QList<ACPProvider> SettingsStore::builtinProviders() const
 {
     return {
-        {QStringLiteral("claude-code"), QStringLiteral("Claude Code"), QStringLiteral("claude-code-acp"), QString(), true},
-        {QStringLiteral("vibe-mistral"), QStringLiteral("Vibe (Mistral)"), QStringLiteral("vibe-acp"), QString(), true},
+        {QStringLiteral("claude-code"), QStringLiteral("Claude Code"), QStringLiteral("claude-code-acp"), QString(), QString(), true},
+        {QStringLiteral("vibe-mistral"), QStringLiteral("Vibe (Mistral)"), QStringLiteral("vibe-acp"), QString(), QString(), true},
     };
 }
 
@@ -210,6 +210,7 @@ QList<ACPProvider> SettingsStore::customProviders() const
         p.description = m_settings.value(QStringLiteral("description")).toString();
         p.executable = m_settings.value(QStringLiteral("executable")).toString();
         p.options = m_settings.value(QStringLiteral("options")).toString();
+        p.mcpConfigPath = m_settings.value(QStringLiteral("mcpConfigPath")).toString();
         p.builtin = false;
         if (!p.id.isEmpty() && !p.executable.isEmpty()) {
             list.append(p);
@@ -266,6 +267,7 @@ void SettingsStore::addCustomProvider(const ACPProvider &provider)
         m_settings.setValue(QStringLiteral("description"), list[i].description);
         m_settings.setValue(QStringLiteral("executable"), list[i].executable);
         m_settings.setValue(QStringLiteral("options"), list[i].options);
+        m_settings.setValue(QStringLiteral("mcpConfigPath"), list[i].mcpConfigPath);
     }
     m_settings.endArray();
     m_settings.sync();
@@ -289,6 +291,7 @@ void SettingsStore::updateCustomProvider(const QString &id, const ACPProvider &p
         m_settings.setValue(QStringLiteral("description"), list[i].description);
         m_settings.setValue(QStringLiteral("executable"), list[i].executable);
         m_settings.setValue(QStringLiteral("options"), list[i].options);
+        m_settings.setValue(QStringLiteral("mcpConfigPath"), list[i].mcpConfigPath);
     }
     m_settings.endArray();
     m_settings.sync();
@@ -307,6 +310,7 @@ void SettingsStore::removeCustomProvider(const QString &id)
         m_settings.setValue(QStringLiteral("description"), list[i].description);
         m_settings.setValue(QStringLiteral("executable"), list[i].executable);
         m_settings.setValue(QStringLiteral("options"), list[i].options);
+        m_settings.setValue(QStringLiteral("mcpConfigPath"), list[i].mcpConfigPath);
     }
     m_settings.endArray();
     m_settings.sync();

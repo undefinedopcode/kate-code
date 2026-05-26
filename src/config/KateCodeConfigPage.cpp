@@ -90,11 +90,13 @@ void KateCodeConfigPage::setupGeneralTab(QWidget *tab)
     auto *providerGroup = new QGroupBox(i18n("ACP Providers"), tab);
     auto *providerLayout = new QVBoxLayout(providerGroup);
 
-    m_providerTable = new QTableWidget(0, 3, tab);
-    m_providerTable->setHorizontalHeaderLabels({i18n("Description"), i18n("Executable"), i18n("Options")});
-    m_providerTable->horizontalHeader()->setStretchLastSection(true);
+    m_providerTable = new QTableWidget(0, 4, tab);
+    m_providerTable->setHorizontalHeaderLabels({i18n("Description"), i18n("Executable"), i18n("Options"), i18n("MCP Config")});
+    m_providerTable->horizontalHeader()->setStretchLastSection(false);
     m_providerTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_providerTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_providerTable->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    m_providerTable->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
     m_providerTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_providerTable->setSelectionMode(QAbstractItemView::SingleSelection);
     m_providerTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -265,6 +267,7 @@ void KateCodeConfigPage::populateProviderTable()
         auto *descItem = new QTableWidgetItem(p.description);
         descItem->setData(Qt::UserRole, p.id);           // Store provider id
         descItem->setData(Qt::UserRole + 1, p.builtin);  // Store builtin flag
+        descItem->setData(Qt::UserRole + 2, p.mcpConfigPath);  // Store MCP config path
         if (p.builtin) {
             descItem->setFlags(descItem->flags() & ~Qt::ItemIsEditable);
         }
@@ -275,6 +278,9 @@ void KateCodeConfigPage::populateProviderTable()
 
         auto *optItem = new QTableWidgetItem(p.options);
         m_providerTable->setItem(row, 2, optItem);
+
+        auto *mcpItem = new QTableWidgetItem(p.mcpConfigPath);
+        m_providerTable->setItem(row, 3, mcpItem);
     }
 }
 
@@ -361,6 +367,10 @@ void KateCodeConfigPage::onAddProvider()
     optEdit->setPlaceholderText(i18n("e.g. --experimental-acp"));
     layout->addRow(i18n("Options:"), optEdit);
 
+    auto *mcpEdit = new QLineEdit(&dialog);
+    mcpEdit->setPlaceholderText(i18n("e.g. ~/.cursor/mcp.json (optional)"));
+    layout->addRow(i18n("MCP Config:"), mcpEdit);
+
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
@@ -385,6 +395,7 @@ void KateCodeConfigPage::onAddProvider()
     provider.description = desc;
     provider.executable = exe;
     provider.options = optEdit->text().trimmed();
+    provider.mcpConfigPath = mcpEdit->text().trimmed();
     provider.builtin = false;
 
     m_settings->addCustomProvider(provider);
@@ -407,6 +418,7 @@ void KateCodeConfigPage::onEditProvider()
     QString currentDesc = item->text();
     QString currentExe = m_providerTable->item(row, 1)->text();
     QString currentOpt = m_providerTable->item(row, 2)->text();
+    QString currentMcp = m_providerTable->item(row, 3)->text();
 
     QDialog dialog(this);
     dialog.setWindowTitle(i18n("Edit ACP Provider"));
@@ -420,6 +432,10 @@ void KateCodeConfigPage::onEditProvider()
 
     auto *optEdit = new QLineEdit(currentOpt, &dialog);
     layout->addRow(i18n("Options:"), optEdit);
+
+    auto *mcpEdit = new QLineEdit(currentMcp, &dialog);
+    mcpEdit->setPlaceholderText(i18n("e.g. ~/.cursor/mcp.json (optional)"));
+    layout->addRow(i18n("MCP Config:"), mcpEdit);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
@@ -442,6 +458,7 @@ void KateCodeConfigPage::onEditProvider()
     provider.description = desc;
     provider.executable = exe;
     provider.options = optEdit->text().trimmed();
+    provider.mcpConfigPath = mcpEdit->text().trimmed();
     provider.builtin = false;
 
     m_settings->updateCustomProvider(providerId, provider);
