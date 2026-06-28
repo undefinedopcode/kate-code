@@ -191,6 +191,24 @@ void SessionStore::writeAll(const QString &projectRoot, const QList<SessionEntry
     m_settings.sync();
 }
 
+QStringList SessionStore::listAllProjectRoots() const
+{
+    QSettings &settings = const_cast<QSettings &>(m_settings);
+    settings.beginGroup(QStringLiteral("Sessions2"));
+    QStringList keys = settings.childGroups();
+    settings.endGroup();
+
+    QStringList roots;
+    for (const QString &key : keys) {
+        QString path = key;
+        path.replace(QStringLiteral("__"), QStringLiteral("/"));
+        if (!path.isEmpty())
+            roots.append(path);
+    }
+    roots.sort();
+    return roots;
+}
+
 QString SessionStore::normalizeKey(const QString &projectRoot) const
 {
     QString normalized = QDir::cleanPath(projectRoot);

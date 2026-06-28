@@ -172,6 +172,7 @@ private:
     QString m_pendingSessionId;
     QString m_pendingSessionName;
     QString m_pendingSessionNote;
+    QString m_pendingCwd;
 
     // Summary generation
     SettingsStore *m_settingsStore;

@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QSettings>
 #include <QString>
+#include <QStringList>
 
 struct SessionEntry {
     QString id;
@@ -52,6 +53,9 @@ public:
 
     // Compatibility: save a single session (adds to front of list with auto-name)
     void saveSession(const QString &projectRoot, const QString &sessionId);
+
+    // List all project roots that have saved sessions
+    QStringList listAllProjectRoots() const;
 
 private:
     QString normalizeKey(const QString &projectRoot) const;

@@ -407,6 +407,12 @@ void ChatWebView::clearMessages()
     runJavaScript(QStringLiteral("clearMessages();"));
 }
 
+void ChatWebView::clearTodos()
+{
+    if (!m_isLoaded) return;
+    runJavaScript(QStringLiteral("clearTodos();"));
+}
+
 void ChatWebView::updateTerminalOutput(const QString &terminalId, const QString &output, bool finished)
 {
     if (!m_isLoaded) return;

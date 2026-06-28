@@ -3,6 +3,7 @@
 #include "../util/SessionStore.h"
 #include <QDialog>
 
+class QComboBox;
 class QListWidget;
 class QLineEdit;
 class QLabel;
@@ -39,18 +40,22 @@ public:
     QString selectedSessionId() const { return m_selectedSessionId; }
     QString selectedSessionName() const { return m_selectedSessionName; }
     QString selectedSessionNote() const { return m_selectedSessionNote; }
+    QString selectedCwd() const { return m_selectedCwd; }
 
 private Q_SLOTS:
     void onItemChanged(int row);
     void onContinueClicked();
     void onRenameClicked();
     void onDeleteClicked();
+    void onBrowseClicked();
+    void onRootChanged(const QString &root);
     void saveCurrentNote();
 
 private:
     QString m_projectRoot;
     SessionStore *m_sessionStore;
 
+    QComboBox *m_rootCombo;
     QListWidget *m_sessionList;
     QStackedWidget *m_detailStack;
 
@@ -72,4 +77,5 @@ private:
     QString m_selectedSessionId;
     QString m_selectedSessionName;
     QString m_selectedSessionNote;
+    QString m_selectedCwd;
 };

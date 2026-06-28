@@ -13,6 +13,8 @@
 #include "../util/SummaryStore.h"
 
 #include <QDir>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
@@ -244,41 +246,18 @@ void ChatWidget::onConnectClicked()
     m_pendingSummaryContext.clear();
     m_userSentMessage = false;
 
-    // If saved sessions exist, show the session picker
-    if (m_sessionStore->hasSession(projectRoot)) {
-        SessionSelectionDialog dialog(projectRoot, m_sessionStore, m_summaryStore, this);
-        if (dialog.exec() != QDialog::Accepted) {
-            return; // cancelled
-        }
+    // Always show the session picker so the user can change the working directory
+    SessionSelectionDialog dialog(projectRoot, m_sessionStore, m_summaryStore, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return; // cancelled
+    }
 
-        if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
-            m_pendingAction = PendingAction::LoadSession;
-            m_pendingSessionId = dialog.selectedSessionId();
-            m_pendingSessionName.clear();
-            m_pendingSessionNote.clear();
+    QString cwd = dialog.selectedCwd().isEmpty() ? projectRoot : dialog.selectedCwd();
+    m_pendingCwd = cwd;
 
-            Message sysMsg;
-            sysMsg.id = QStringLiteral("sys_connect");
-            sysMsg.role = QStringLiteral("system");
-            sysMsg.timestamp = QDateTime::currentDateTime();
-            sysMsg.content = QStringLiteral("Resuming session in: %1").arg(projectRoot);
-            m_chatWebView->addMessage(sysMsg);
-        } else {
-            // New session chosen from dialog
-            m_pendingAction = PendingAction::CreateSession;
-            m_pendingSessionName = dialog.selectedSessionName();
-            m_pendingSessionNote = dialog.selectedSessionNote();
-
-            Message sysMsg;
-            sysMsg.id = QStringLiteral("sys_connect");
-            sysMsg.role = QStringLiteral("system");
-            sysMsg.timestamp = QDateTime::currentDateTime();
-            sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
-            m_chatWebView->addMessage(sysMsg);
-        }
-    } else {
-        // First time connecting to this project — go straight to new session
-        m_pendingAction = PendingAction::CreateSession;
+    if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
+        m_pendingAction = PendingAction::LoadSession;
+        m_pendingSessionId = dialog.selectedSessionId();
         m_pendingSessionName.clear();
         m_pendingSessionNote.clear();
 
@@ -286,11 +265,22 @@ void ChatWidget::onConnectClicked()
         sysMsg.id = QStringLiteral("sys_connect");
         sysMsg.role = QStringLiteral("system");
         sysMsg.timestamp = QDateTime::currentDateTime();
-        sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
+        sysMsg.content = QStringLiteral("Resuming session in: %1").arg(cwd);
+        m_chatWebView->addMessage(sysMsg);
+    } else {
+        m_pendingAction = PendingAction::CreateSession;
+        m_pendingSessionName = dialog.selectedSessionName();
+        m_pendingSessionNote = dialog.selectedSessionNote();
+
+        Message sysMsg;
+        sysMsg.id = QStringLiteral("sys_connect");
+        sysMsg.role = QStringLiteral("system");
+        sysMsg.timestamp = QDateTime::currentDateTime();
+        sysMsg.content = QStringLiteral("Starting new session in: %1").arg(cwd);
         m_chatWebView->addMessage(sysMsg);
     }
 
-    m_session->start(projectRoot);
+    m_session->start(cwd);
 }
 
 void ChatWidget::onNewSessionClicked()
@@ -389,8 +379,29 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         sysMsg.content = QStringLiteral("Disconnected from %1").arg(m_settingsStore->activeProvider().description);
         m_chatWebView->addMessage(sysMsg);
 
+        // Clear task list from previous session
+        m_chatWebView->clearTodos();
+
         // Trigger summary generation for the ended session
         triggerSummaryGeneration();
+
+        // Offer rename if there was an actual conversation
+        if (m_userSentMessage && !m_lastSessionId.isEmpty() && !m_lastProjectRoot.isEmpty()) {
+            QList<SessionEntry> sessions = m_sessionStore->listSessions(m_lastProjectRoot);
+            QString currentName;
+            for (const SessionEntry &e : sessions) {
+                if (e.id == m_lastSessionId) {
+                    currentName = e.name;
+                    break;
+                }
+            }
+            bool ok = false;
+            QString newName = QInputDialog::getText(this, tr("Rename Session"),
+                                                    tr("Session name:"), QLineEdit::Normal,
+                                                    currentName, &ok);
+            if (ok && !newName.trimmed().isEmpty() && newName.trimmed() != currentName)
+                m_sessionStore->renameSession(m_lastProjectRoot, m_lastSessionId, newName.trimmed());
+        }
         break;
     case ConnectionStatus::Connecting:
         m_connectButton->setEnabled(false);
@@ -418,7 +429,9 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
 
         // Save session ID for future resume and summary generation
         {
-            QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+            QString projectRoot = m_pendingCwd.isEmpty()
+                ? (m_projectRootProvider ? m_projectRootProvider() : QDir::homePath())
+                : m_pendingCwd;
             m_sessionStore->addSession(projectRoot, m_session->sessionId(), m_pendingSessionName, m_pendingSessionNote);
             m_pendingSessionName.clear();
             m_pendingSessionNote.clear();

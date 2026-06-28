@@ -1094,19 +1094,27 @@ function updateTodos(todosJson) {
         return;
     }
 
+    // Count completed vs total
+    const completedCount = todos.filter(t => t.status === 'completed').length;
+    const totalCount = todos.length;
+
+    // Auto-hide when all tasks are completed
+    if (completedCount === totalCount) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
     container.style.display = 'block';
 
     // Check if collapsed state is stored
     const isCollapsed = localStorage.getItem('todos-collapsed') === 'true';
 
-    // Count completed vs total
-    const completedCount = todos.filter(t => t.status === 'completed').length;
-    const totalCount = todos.length;
-
     let html = `
         <div class="todos-header" onclick="toggleTodos()">
             <span class="todos-title">Tasks (${completedCount}/${totalCount})</span>
             <span class="todos-toggle">${materialIcon(isCollapsed ? 'expand_less' : 'expand_more', 'material-icon-sm')}</span>
+            <span class="todos-close" onclick="event.stopPropagation(); clearTodos();" title="Dismiss">${materialIcon('close', 'material-icon-sm')}</span>
         </div>
         <div class="todos-content ${isCollapsed ? 'collapsed' : ''}">
             <div class="todos-list">

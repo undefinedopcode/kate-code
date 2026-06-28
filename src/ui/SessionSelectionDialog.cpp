@@ -1,7 +1,9 @@
 #include "SessionSelectionDialog.h"
 #include "../util/SummaryStore.h"
 
+#include <QComboBox>
 #include <QDialogButtonBox>
+#include <QFileDialog>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QMessageBox>
@@ -26,6 +28,7 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &projectRoot,
     : QDialog(parent)
     , m_projectRoot(projectRoot)
     , m_sessionStore(sessionStore)
+    , m_rootCombo(nullptr)
     , m_sessionList(nullptr)
     , m_detailStack(nullptr)
     , m_nameEdit(nullptr)
@@ -34,6 +37,7 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &projectRoot,
     , m_renameButton(nullptr)
     , m_idEdit(nullptr)
     , m_result(Result::Cancelled)
+    , m_selectedCwd(projectRoot)
 {
     Q_UNUSED(summaryStore)
 
@@ -43,6 +47,21 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &projectRoot,
 
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(10);
+
+    // Directory picker
+    auto *dirRow = new QHBoxLayout();
+    dirRow->addWidget(new QLabel(tr("Working directory:"), this));
+    m_rootCombo = new QComboBox(this);
+    m_rootCombo->setEditable(true);
+    QStringList knownRoots = sessionStore->listAllProjectRoots();
+    if (!knownRoots.contains(projectRoot))
+        knownRoots.prepend(projectRoot);
+    m_rootCombo->addItems(knownRoots);
+    m_rootCombo->setCurrentText(projectRoot);
+    dirRow->addWidget(m_rootCombo, 1);
+    auto *browseButton = new QPushButton(tr("Browse…"), this);
+    dirRow->addWidget(browseButton);
+    layout->addLayout(dirRow);
 
     auto *descLabel = new QLabel(tr("Select a session to resume, or start a new one:"), this);
     layout->addWidget(descLabel);
@@ -136,6 +155,10 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &projectRoot,
     connect(continueButton, &QPushButton::clicked,
             this, &SessionSelectionDialog::onContinueClicked);
     connect(buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(browseButton, &QPushButton::clicked,
+            this, &SessionSelectionDialog::onBrowseClicked);
+    connect(m_rootCombo, &QComboBox::currentTextChanged,
+            this, &SessionSelectionDialog::onRootChanged);
 
     layout->addWidget(buttonBox);
 }
@@ -270,5 +293,39 @@ void SessionSelectionDialog::onContinueClicked()
         m_selectedSessionName.clear();
         m_selectedSessionNote.clear();
     }
+    m_selectedCwd = m_rootCombo->currentText().trimmed();
     accept();
+}
+
+void SessionSelectionDialog::onBrowseClicked()
+{
+    QString dir = QFileDialog::getExistingDirectory(this, tr("Select Working Directory"),
+                                                    m_rootCombo->currentText());
+    if (!dir.isEmpty())
+        m_rootCombo->setCurrentText(dir);
+}
+
+void SessionSelectionDialog::onRootChanged(const QString &root)
+{
+    m_selectedCwd = root;
+    m_lastExistingSessionId.clear();
+
+    // Rebuild session list for the new root
+    m_sessionList->clear();
+
+    auto *newItem = new QListWidgetItem(tr("+ New Session"), m_sessionList);
+    newItem->setData(Qt::UserRole, QString());
+
+    QList<SessionEntry> sessions = m_sessionStore->listSessions(root);
+    for (const SessionEntry &entry : sessions) {
+        QString label = entry.name + QStringLiteral("  —  ") +
+                        entry.timestamp.toString(QStringLiteral("yyyy-MM-dd hh:mm"));
+        auto *item = new QListWidgetItem(label, m_sessionList);
+        item->setData(Qt::UserRole, entry.id);
+    }
+
+    auto *manualItem = new QListWidgetItem(tr("↩ Resume by session ID..."), m_sessionList);
+    manualItem->setData(Qt::UserRole, ManualIdSentinel);
+
+    m_sessionList->setCurrentRow(NewSessionRow);
 }

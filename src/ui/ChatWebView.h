@@ -22,6 +22,7 @@ public:
     void showPermissionRequest(const PermissionRequest &request);
     void updateTodos(const QList<TodoItem> &todos);
     void clearMessages();
+    void clearTodos();
 
     // Terminal support
     void updateTerminalOutput(const QString &terminalId, const QString &output, bool finished);
