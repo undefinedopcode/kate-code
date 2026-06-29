@@ -7,6 +7,7 @@
 #include <KPluginFactory>
 #include <KTextEditor/MainWindow>
 #include <QApplication>
+#include <QTimer>
 
 K_PLUGIN_FACTORY_WITH_JSON(KateCodePluginFactory, "katecode.json", registerPlugin<KateCodePlugin>();)
 
@@ -15,7 +16,19 @@ KateCodePlugin::KateCodePlugin(QObject *parent, const QVariantList &)
     , m_settings(new SettingsStore(this))
     , m_dbusService(new EditorDBusService(this))
 {
-    m_dbusService->registerOnBus();
+    // Defer DBus registration to the next event loop iteration.  Calling
+    // registerService() directly in the constructor can fail (empty error)
+    // if the session bus connection has not fully settled during plugin
+    // load.  The single-shot timer also adds a 1 s retry so that transient
+    // failures during Kate startup are recovered automatically.
+    QTimer::singleShot(0, this, [this]() {
+        if (!m_dbusService->registerOnBus()) {
+            qWarning() << "[KateCode] DBus registration failed on first attempt, retrying in 1s";
+            QTimer::singleShot(1000, this, [this]() {
+                m_dbusService->registerOnBus();
+            });
+        }
+    });
 
     // Connect to application shutdown to trigger summary generation
     connect(qApp, &QApplication::aboutToQuit, this, &KateCodePlugin::onAboutToQuit);

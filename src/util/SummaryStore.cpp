@@ -76,6 +76,38 @@ QStringList SummaryStore::listSessionSummaries(const QString &projectRoot) const
     return sessionIds;
 }
 
+QStringList SummaryStore::listTranscriptSessions(const QString &projectRoot) const
+{
+    QDir dir(transcriptDir(projectRoot));
+    if (!dir.exists()) {
+        return QStringList();
+    }
+
+    const QStringList files = dir.entryList({QStringLiteral("*.md")}, QDir::Files, QDir::Time);
+    QStringList sessionIds;
+    for (const QString &file : files) {
+        sessionIds << file.chopped(3); // Remove ".md"
+    }
+    return sessionIds;
+}
+
+QString SummaryStore::transcriptPath(const QString &projectRoot, const QString &sessionId) const
+{
+    return transcriptDir(projectRoot) + QStringLiteral("/") + sessionId + QStringLiteral(".md");
+}
+
+QString SummaryStore::loadTranscript(const QString &projectRoot, const QString &sessionId) const
+{
+    QFile file(transcriptPath(projectRoot, sessionId));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+    QTextStream stream(&file);
+    QString content = stream.readAll();
+    file.close();
+    return content;
+}
+
 QString SummaryStore::projectPathToFolderName(const QString &projectRoot) const
 {
     // Convert path like /home/april/projects/kate-code
@@ -101,6 +133,13 @@ QString SummaryStore::projectPathToFolderName(const QString &projectRoot) const
 QString SummaryStore::summaryDir(const QString &projectRoot) const
 {
     return baseDir() + QStringLiteral("/") + projectPathToFolderName(projectRoot);
+}
+
+QString SummaryStore::transcriptDir(const QString &projectRoot) const
+{
+    // Mirrors TranscriptWriter's layout: ~/.kate-code/transcripts/<project folder>
+    return QDir::homePath() + QStringLiteral("/.kate-code/transcripts/")
+           + projectPathToFolderName(projectRoot);
 }
 
 QString SummaryStore::baseDir() const

@@ -10,6 +10,7 @@ class Document;
 }
 
 class ACPSession;
+class ACPLogger;
 class ChatWebView;
 class ChatInputWidget;
 class SessionStore;
@@ -117,6 +118,8 @@ private Q_SLOTS:
 
 private:
     void triggerSummaryGeneration();
+    // Resolve prior-session context for resuming (summary, on-demand summary, or raw transcript).
+    QString resolveResumeContext(const QString &projectRoot, const QString &sessionId);
     void applyDiffColors();
     void applyACPBackend();
     void populateProviderCombo();
@@ -173,6 +176,12 @@ private:
 
     // Session resumption context (sent automatically after connect)
     QString m_pendingSummaryContext;
+    // Whether the pending context should be injected once Connected. Set for
+    // option A (context injection) and when option B (true resume) falls back.
+    bool m_injectContextOnConnect = false;
+
+    // Writes raw ACP JSON traffic to a per-session file when enabled in settings.
+    ACPLogger *m_acpLogger;
 
     // Track whether user has sent a message (for summary generation decision)
     bool m_userSentMessage = false;

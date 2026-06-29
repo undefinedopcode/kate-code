@@ -33,6 +33,7 @@ set(katecode_SRCS
     util/TranscriptWriter.cpp
     util/SummaryStore.cpp
     util/SummaryGenerator.cpp
+    util/ACPLogger.cpp
 )
 
 # Qt resources

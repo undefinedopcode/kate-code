@@ -5,6 +5,7 @@
 #include "SessionSelectionDialog.h"
 #include "../acp/ACPSession.h"
 #include "../config/SettingsStore.h"
+#include "../util/ACPLogger.h"
 #include "../util/EditTracker.h"
 #include "../util/SessionStore.h"
 #include "../util/KateThemeConverter.h"
@@ -38,6 +39,7 @@ ChatWidget::ChatWidget(QWidget *parent)
     , m_settingsStore(nullptr)
     , m_summaryStore(new SummaryStore(this))
     , m_summaryGenerator(nullptr)
+    , m_acpLogger(new ACPLogger(this))
 {
     // Create layout
     auto *layout = new QVBoxLayout(this);
@@ -143,6 +145,8 @@ ChatWidget::ChatWidget(QWidget *parent)
         if (m_settingsStore && m_settingsStore->debugLogging()) {
             Q_EMIT debugLogMessage(QStringLiteral("[ACP %1] %2").arg(direction, json));
         }
+        // Persist the raw traffic to disk if file logging is enabled (no-op otherwise).
+        m_acpLogger->logPayload(direction, json);
     });
 
     // Session persistence signals
@@ -262,8 +266,9 @@ void ChatWidget::onResumeSessionClicked()
     // Get current project root
     QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
 
-    // Check if any sessions with summaries exist
-    QStringList sessionIds = m_summaryStore->listSessionSummaries(projectRoot);
+    // Transcripts are written for every session (even abandoned ones), so use
+    // them - not the optional AI summaries - as the source of resumable sessions.
+    QStringList sessionIds = m_summaryStore->listTranscriptSessions(projectRoot);
     if (sessionIds.isEmpty()) {
         // No sessions to resume - show message
         Message sysMsg;
@@ -277,40 +282,78 @@ void ChatWidget::onResumeSessionClicked()
 
     // Show dialog to let user select a session to resume
     SessionSelectionDialog dialog(projectRoot, m_summaryStore, this);
-    if (dialog.exec() == QDialog::Accepted) {
-        if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
-            // Store summary of selected session to send after session connects
-            QString selectedId = dialog.selectedSessionId();
-            m_pendingSummaryContext = m_summaryStore->loadSummary(projectRoot, selectedId);
-
-            // If already connected, stop current session first (like onNewSessionClicked)
-            if (m_session->isConnected()) {
-                // Trigger summary generation for current session before stopping
-                triggerSummaryGeneration();
-
-                // Stop current session and reset WebView to reclaim memory
-                m_session->stop();
-                resetWebView();
-            }
-
-            // Reset user message tracking for new session
-            m_userSentMessage = false;
-
-            m_pendingAction = PendingAction::CreateSession;
-
-            // Add system message
-            Message sysMsg;
-            sysMsg.id = QStringLiteral("sys_connect");
-            sysMsg.role = QStringLiteral("system");
-            sysMsg.timestamp = QDateTime::currentDateTime();
-            sysMsg.content = QStringLiteral("Resuming session with prior context in: %1").arg(projectRoot);
-            m_chatWebView->addMessage(sysMsg);
-
-            m_session->start(projectRoot);
-        }
-        // If NewSession was selected in the dialog, do nothing (user can click Connect)
+    if (dialog.exec() != QDialog::Accepted
+        || dialog.selectedResult() != SessionSelectionDialog::Result::Resume) {
+        // Cancelled or "Start new session" chosen - user can click Connect.
+        return;
     }
-    // Cancelled - do nothing
+
+    const QString selectedId = dialog.selectedSessionId();
+
+    // Resolve the prior-session context to inject (option A). Prefer an existing
+    // AI summary; otherwise optionally summarise the raw transcript on demand;
+    // failing that, fall back to the raw transcript text itself.
+    m_pendingSummaryContext = resolveResumeContext(projectRoot, selectedId);
+
+    // If already connected, stop current session first (like onNewSessionClicked)
+    if (m_session->isConnected()) {
+        triggerSummaryGeneration();
+        m_session->stop();
+        resetWebView();
+    }
+
+    // Reset user message tracking for new session
+    m_userSentMessage = false;
+
+    // Option B (per-provider): try a real ACP session/load, falling back to
+    // context injection if it fails. Otherwise use option A directly.
+    const ACPProvider provider = m_settingsStore->activeProvider();
+    if (provider.trueResume) {
+        m_pendingAction = PendingAction::LoadSession;
+        m_pendingSessionId = selectedId;
+        m_injectContextOnConnect = false;  // set on load failure (see onSessionLoadFailed)
+    } else {
+        m_pendingAction = PendingAction::CreateSession;
+        m_injectContextOnConnect = true;
+    }
+
+    // Add system message
+    Message sysMsg;
+    sysMsg.id = QStringLiteral("sys_connect");
+    sysMsg.role = QStringLiteral("system");
+    sysMsg.timestamp = QDateTime::currentDateTime();
+    sysMsg.content = QStringLiteral("Resuming session with prior context in: %1").arg(projectRoot);
+    m_chatWebView->addMessage(sysMsg);
+
+    m_session->start(projectRoot);
+}
+
+QString ChatWidget::resolveResumeContext(const QString &projectRoot, const QString &sessionId)
+{
+    // An AI summary is the most compact context, so use it if one already exists.
+    if (m_summaryStore->hasSummary(projectRoot, sessionId)) {
+        return m_summaryStore->loadSummary(projectRoot, sessionId);
+    }
+
+    const QString transcript = m_summaryStore->loadTranscript(projectRoot, sessionId);
+
+    // Optionally summarise an abandoned (raw) session before resuming, so the
+    // injected context stays small. This blocks briefly on the summary model.
+    if (m_settingsStore && m_settingsStore->summariseOnResume()
+        && m_summaryGenerator && !transcript.isEmpty()) {
+        if (m_settingsStore->hasApiKey()) {
+            m_summaryGenerator->generateSummary(sessionId, projectRoot, transcript);
+            m_summaryGenerator->waitForPendingRequests();
+            if (m_summaryStore->hasSummary(projectRoot, sessionId)) {
+                return m_summaryStore->loadSummary(projectRoot, sessionId);
+            }
+        } else {
+            qWarning() << "[ChatWidget] summariseOnResume enabled but no API key; using raw transcript";
+        }
+    }
+
+    // Fall back to the raw transcript text.
+    return transcript;
 }
 
 void ChatWidget::onNewSessionClicked()
@@ -408,10 +451,19 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         sysMsg.content = QStringLiteral("Disconnected from %1").arg(m_settingsStore->activeProvider().description);
         m_chatWebView->addMessage(sysMsg);
 
+        // Close the ACP log file so the next session starts a fresh one.
+        m_acpLogger->endSession();
+
         // Trigger summary generation for the ended session
         triggerSummaryGeneration();
         break;
     case ConnectionStatus::Connecting:
+        // Configure file logging before the initialize payloads flow.
+        if (m_settingsStore) {
+            m_acpLogger->configure(m_settingsStore->acpLogEnabled(),
+                                   m_settingsStore->acpLogDirectory(),
+                                   m_settingsStore->acpLogSubdirectory());
+        }
         m_connectButton->setEnabled(false);
         m_resumeSessionButton->setEnabled(false);
         m_newSessionButton->setEnabled(false);
@@ -451,13 +503,16 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
             m_inputWidget->setAvailableFiles(files);
         }
 
-        // Auto-send summary context if resuming a session
-        if (!m_pendingSummaryContext.isEmpty()) {
+        // Auto-send prior-session context if resuming via option A (context
+        // injection). When option B (true resume) succeeds the flag is false,
+        // so we do not duplicate context the agent already restored.
+        if (m_injectContextOnConnect && !m_pendingSummaryContext.isEmpty()) {
             QString contextMessage = QStringLiteral(
                 "Summary from last session:\n\n%1").arg(m_pendingSummaryContext);
             m_session->sendMessage(contextMessage, QString(), QString(), {});
-            m_pendingSummaryContext.clear();
         }
+        m_pendingSummaryContext.clear();
+        m_injectContextOnConnect = false;
         break;
     case ConnectionStatus::Error:
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
@@ -468,6 +523,7 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_providerCombo->setEnabled(true);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #d9534f; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Error"));
+        m_acpLogger->endSession();
         break;
     }
 }
@@ -568,9 +624,13 @@ void ChatWidget::onSessionLoadFailed(const QString &error)
     Message sysMsg;
     sysMsg.id = QStringLiteral("sys_load_failed");
     sysMsg.role = QStringLiteral("system");
-    sysMsg.content = QStringLiteral("Previous session unavailable, starting new session");
+    sysMsg.content = QStringLiteral("Previous session unavailable, resuming with prior context instead");
     sysMsg.timestamp = QDateTime::currentDateTime();
     m_chatWebView->addMessage(sysMsg);
+
+    // Option B failed: fall back to option A by injecting the prior-session
+    // context (still held in m_pendingSummaryContext) once the new session connects.
+    m_injectContextOnConnect = true;
 
     // Create new session
     m_session->createNewSession();
@@ -1020,8 +1080,10 @@ void ChatWidget::applyACPBackend()
     }
     m_session->setExecutable(provider.executable, args);
     m_session->setMcpConfigPath(provider.mcpConfigPath);
+    m_session->setSessionConfig(provider.sessionConfig);
     qDebug() << "[ChatWidget] ACP backend configured:" << provider.executable << args
-             << "MCP config:" << provider.mcpConfigPath;
+             << "MCP config:" << provider.mcpConfigPath
+             << "session config keys:" << provider.sessionConfig.keys();
 }
 
 void ChatWidget::populateProviderCombo()

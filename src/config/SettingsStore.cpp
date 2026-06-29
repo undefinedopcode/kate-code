@@ -5,7 +5,11 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonParseError>
 #include <QStandardPaths>
+
+#include <algorithm>
 
 const QString SettingsStore::WALLET_FOLDER = QStringLiteral("KateCode");
 const QString SettingsStore::API_KEY_ENTRY = QStringLiteral("AnthropicApiKey");
@@ -21,6 +25,7 @@ SettingsStore::SettingsStore(QObject *parent)
     qDebug() << "[SettingsStore] Initialized, config file:" << m_settings.fileName();
     migrateOldBackendSettings();
     migrateOldSummaryModel();
+    seedDefaultProvidersIfNeeded();
 }
 
 SettingsStore::~SettingsStore()
@@ -189,17 +194,68 @@ void SettingsStore::setAutoResumeSessions(bool enable)
     Q_EMIT settingsChanged();
 }
 
-// --- ACP Provider Management ---
-
-QList<ACPProvider> SettingsStore::builtinProviders() const
+bool SettingsStore::summariseOnResume() const
 {
-    return {
-        {QStringLiteral("claude-code"), QStringLiteral("Claude Code"), QStringLiteral("claude-code-acp"), QString(), QString(), true},
-        {QStringLiteral("vibe-mistral"), QStringLiteral("Vibe (Mistral)"), QStringLiteral("vibe-acp"), QString(), QString(), true},
-    };
+    return m_settings.value(QStringLiteral("Sessions/summariseOnResume"), false).toBool();
 }
 
-QList<ACPProvider> SettingsStore::customProviders() const
+void SettingsStore::setSummariseOnResume(bool enable)
+{
+    m_settings.setValue(QStringLiteral("Sessions/summariseOnResume"), enable);
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+bool SettingsStore::acpLogEnabled() const
+{
+    return m_settings.value(QStringLiteral("AcpLog/enabled"), false).toBool();
+}
+
+void SettingsStore::setAcpLogEnabled(bool enable)
+{
+    m_settings.setValue(QStringLiteral("AcpLog/enabled"), enable);
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+QString SettingsStore::acpLogDirectory() const
+{
+    const QString defaultDir = QDir::homePath() + QStringLiteral("/.kate-code");
+    return m_settings.value(QStringLiteral("AcpLog/directory"), defaultDir).toString();
+}
+
+void SettingsStore::setAcpLogDirectory(const QString &dir)
+{
+    m_settings.setValue(QStringLiteral("AcpLog/directory"), dir);
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+QString SettingsStore::acpLogSubdirectory() const
+{
+    return m_settings.value(QStringLiteral("AcpLog/subdirectory"),
+                            QStringLiteral("kate_code_sessions")).toString();
+}
+
+void SettingsStore::setAcpLogSubdirectory(const QString &name)
+{
+    m_settings.setValue(QStringLiteral("AcpLog/subdirectory"), name);
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+// --- ACP Provider Management ---
+
+QList<ACPProvider> SettingsStore::defaultProviders() const
+{
+    // Seed providers offered on first run. They are fully editable and removable
+    // afterwards, so this list is only used to populate empty storage.
+    ACPProvider claude{QStringLiteral("claude-code"), QStringLiteral("Claude Code"), QStringLiteral("claude-code-acp"), QString(), QString(), {}, true, false};
+    ACPProvider vibe{QStringLiteral("vibe-mistral"), QStringLiteral("Vibe (Mistral)"), QStringLiteral("vibe-acp"), QString(), QString(), {}, true, false};
+    return {claude, vibe};
+}
+
+QList<ACPProvider> SettingsStore::storedProviders() const
 {
     QList<ACPProvider> list;
     int size = m_settings.beginReadArray(QStringLiteral("ACP/customProviders"));
@@ -211,6 +267,18 @@ QList<ACPProvider> SettingsStore::customProviders() const
         p.executable = m_settings.value(QStringLiteral("executable")).toString();
         p.options = m_settings.value(QStringLiteral("options")).toString();
         p.mcpConfigPath = m_settings.value(QStringLiteral("mcpConfigPath")).toString();
+        const QByteArray sessionConfigJson = m_settings.value(QStringLiteral("sessionConfig")).toString().toUtf8();
+        if (!sessionConfigJson.isEmpty()) {
+            QJsonParseError parseError;
+            const QJsonDocument document = QJsonDocument::fromJson(sessionConfigJson, &parseError);
+            if (parseError.error == QJsonParseError::NoError && document.isObject()) {
+                p.sessionConfig = document.object();
+            } else {
+                qWarning() << "[SettingsStore] Ignoring invalid ACP session config for" << p.id
+                           << parseError.errorString();
+            }
+        }
+        p.trueResume = m_settings.value(QStringLiteral("trueResume"), false).toBool();
         p.builtin = false;
         if (!p.id.isEmpty() && !p.executable.isEmpty()) {
             list.append(p);
@@ -220,10 +288,59 @@ QList<ACPProvider> SettingsStore::customProviders() const
     return list;
 }
 
+void SettingsStore::writeProviders(const QList<ACPProvider> &list)
+{
+    m_settings.beginWriteArray(QStringLiteral("ACP/customProviders"), list.size());
+    for (int i = 0; i < list.size(); ++i) {
+        m_settings.setArrayIndex(i);
+        m_settings.setValue(QStringLiteral("id"), list[i].id);
+        m_settings.setValue(QStringLiteral("description"), list[i].description);
+        m_settings.setValue(QStringLiteral("executable"), list[i].executable);
+        m_settings.setValue(QStringLiteral("options"), list[i].options);
+        m_settings.setValue(QStringLiteral("mcpConfigPath"), list[i].mcpConfigPath);
+        m_settings.setValue(QStringLiteral("sessionConfig"),
+                            QString::fromUtf8(QJsonDocument(list[i].sessionConfig).toJson(QJsonDocument::Compact)));
+        m_settings.setValue(QStringLiteral("trueResume"), list[i].trueResume);
+    }
+    m_settings.endArray();
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+void SettingsStore::seedDefaultProvidersIfNeeded()
+{
+    if (m_settings.value(QStringLiteral("ACP/seeded"), false).toBool()) {
+        return;
+    }
+
+    // Prepend the default providers ahead of any pre-existing custom entries,
+    // skipping ids that somehow already exist so upgrades stay idempotent.
+    QList<ACPProvider> existing = storedProviders();
+    QList<ACPProvider> merged;
+    for (const ACPProvider &seed : defaultProviders()) {
+        bool present = false;
+        for (const ACPProvider &e : existing) {
+            if (e.id == seed.id) { present = true; break; }
+        }
+        if (!present) {
+            merged.append(seed);
+        }
+    }
+    merged.append(existing);
+
+    writeProviders(merged);
+    m_settings.setValue(QStringLiteral("ACP/seeded"), true);
+    m_settings.sync();
+    qDebug() << "[SettingsStore] Seeded default providers, total:" << merged.size();
+}
+
 QList<ACPProvider> SettingsStore::providers() const
 {
-    QList<ACPProvider> all = builtinProviders();
-    all.append(customProviders());
+    QList<ACPProvider> all = storedProviders();
+    // Safety net: never present an empty list (e.g. corrupted storage).
+    if (all.isEmpty()) {
+        all = defaultProviders();
+    }
     return all;
 }
 
@@ -257,64 +374,57 @@ void SettingsStore::setActiveProviderId(const QString &id)
 
 void SettingsStore::addCustomProvider(const ACPProvider &provider)
 {
-    auto list = customProviders();
+    auto list = storedProviders();
     list.append(provider);
-
-    m_settings.beginWriteArray(QStringLiteral("ACP/customProviders"), list.size());
-    for (int i = 0; i < list.size(); ++i) {
-        m_settings.setArrayIndex(i);
-        m_settings.setValue(QStringLiteral("id"), list[i].id);
-        m_settings.setValue(QStringLiteral("description"), list[i].description);
-        m_settings.setValue(QStringLiteral("executable"), list[i].executable);
-        m_settings.setValue(QStringLiteral("options"), list[i].options);
-        m_settings.setValue(QStringLiteral("mcpConfigPath"), list[i].mcpConfigPath);
-    }
-    m_settings.endArray();
-    m_settings.sync();
-    Q_EMIT settingsChanged();
+    writeProviders(list);
 }
 
 void SettingsStore::updateCustomProvider(const QString &id, const ACPProvider &provider)
 {
-    auto list = customProviders();
+    auto list = storedProviders();
     for (int i = 0; i < list.size(); ++i) {
         if (list[i].id == id) {
             list[i] = provider;
             break;
         }
     }
-
-    m_settings.beginWriteArray(QStringLiteral("ACP/customProviders"), list.size());
-    for (int i = 0; i < list.size(); ++i) {
-        m_settings.setArrayIndex(i);
-        m_settings.setValue(QStringLiteral("id"), list[i].id);
-        m_settings.setValue(QStringLiteral("description"), list[i].description);
-        m_settings.setValue(QStringLiteral("executable"), list[i].executable);
-        m_settings.setValue(QStringLiteral("options"), list[i].options);
-        m_settings.setValue(QStringLiteral("mcpConfigPath"), list[i].mcpConfigPath);
-    }
-    m_settings.endArray();
-    m_settings.sync();
-    Q_EMIT settingsChanged();
+    writeProviders(list);
 }
 
 void SettingsStore::removeCustomProvider(const QString &id)
 {
-    auto list = customProviders();
+    auto list = storedProviders();
     list.removeIf([&id](const ACPProvider &p) { return p.id == id; });
+    writeProviders(list);
+}
 
-    m_settings.beginWriteArray(QStringLiteral("ACP/customProviders"), list.size());
-    for (int i = 0; i < list.size(); ++i) {
-        m_settings.setArrayIndex(i);
-        m_settings.setValue(QStringLiteral("id"), list[i].id);
-        m_settings.setValue(QStringLiteral("description"), list[i].description);
-        m_settings.setValue(QStringLiteral("executable"), list[i].executable);
-        m_settings.setValue(QStringLiteral("options"), list[i].options);
-        m_settings.setValue(QStringLiteral("mcpConfigPath"), list[i].mcpConfigPath);
+void SettingsStore::setProviderOrder(const QStringList &providerIds)
+{
+    const QList<ACPProvider> current = storedProviders();
+    QList<ACPProvider> reordered;
+    reordered.reserve(current.size());
+
+    for (const QString &id : providerIds) {
+        for (const ACPProvider &provider : current) {
+            if (provider.id == id && std::none_of(reordered.cbegin(), reordered.cend(), [&id](const ACPProvider &entry) {
+                    return entry.id == id;
+                })) {
+                reordered.append(provider);
+                break;
+            }
+        }
     }
-    m_settings.endArray();
-    m_settings.sync();
-    Q_EMIT settingsChanged();
+
+    for (const ACPProvider &provider : current) {
+        const bool alreadyAdded = std::any_of(reordered.cbegin(), reordered.cend(), [&provider](const ACPProvider &entry) {
+            return entry.id == provider.id;
+        });
+        if (!alreadyAdded) {
+            reordered.append(provider);
+        }
+    }
+
+    writeProviders(reordered);
 }
 
 bool SettingsStore::isExecutableAvailable(const QString &executable)

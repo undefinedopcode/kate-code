@@ -2,8 +2,10 @@
 
 #include "ACPModels.h"
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <functional>
 
 namespace KTextEditor {
@@ -25,6 +27,7 @@ public:
 
     void setExecutable(const QString &executable, const QStringList &args = QStringList());
     void setMcpConfigPath(const QString &path);
+    void setSessionConfig(const QJsonObject &config);
     void start(const QString &workingDir, const QString &permissionMode = QStringLiteral("default"));
     void stop();
 
@@ -95,8 +98,15 @@ private:
     void handleInitializeResponse(int id, const QJsonObject &result);
     void handleSessionNewResponse(int id, const QJsonObject &result);
     void handleSessionLoadResponse(int id, const QJsonObject &result, const QJsonObject &error);
+    void handleSessionConfigResponse(const QJsonObject &result, const QJsonObject &error);
     void handleSessionUpdate(const QJsonObject &params);
     void handlePermissionRequest(const QJsonObject &params, int requestId);
+    QJsonArray buildMcpServers() const;
+    void parseSessionSetupResult(const QJsonObject &result);
+    void updateSessionConfigOptions(const QJsonArray &configOptions, bool emitChanges);
+    void beginSessionConfiguration(bool loadedSession);
+    void sendNextSessionConfigOption();
+    void completeSessionSetup(bool loadedSession);
 
     // Terminal request handlers
     void handleTerminalCreate(const QJsonObject &params, int requestId);
@@ -127,7 +137,9 @@ private:
     int m_initializeRequestId;
     int m_sessionNewRequestId;
     int m_sessionLoadRequestId;
+    int m_sessionConfigRequestId;
     int m_promptRequestId;
+    QString m_sessionLoadId;
 
     // Message counter
     int m_messageCounter;
@@ -143,4 +155,11 @@ private:
 
     // MCP config path for loading external MCP servers
     QString m_mcpConfigPath;
+
+    // Per-provider ACP session configuration applied after session/new or load.
+    QJsonObject m_sessionConfig;
+    QJsonArray m_availableConfigOptions;
+    QStringList m_pendingSessionConfigKeys;
+    QString m_currentSessionConfigKey;
+    bool m_configuringLoadedSession = false;
 };

@@ -32,8 +32,17 @@ public:
     // List all sessions with summaries for a project
     QStringList listSessionSummaries(const QString &projectRoot) const;
 
+    // Transcript helpers (transcripts are always written, even without a summary)
+    // List all sessions that have a transcript on disk, most recent first.
+    QStringList listTranscriptSessions(const QString &projectRoot) const;
+    // Path to a session's transcript file.
+    QString transcriptPath(const QString &projectRoot, const QString &sessionId) const;
+    // Load a session's transcript content (empty if none).
+    QString loadTranscript(const QString &projectRoot, const QString &sessionId) const;
+
 private:
     QString projectPathToFolderName(const QString &projectRoot) const;
     QString summaryDir(const QString &projectRoot) const;
+    QString transcriptDir(const QString &projectRoot) const;
     QString baseDir() const;
 };

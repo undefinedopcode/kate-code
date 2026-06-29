@@ -1,5 +1,5 @@
 Name:           kate-code
-Version:        1.0.0
+Version:        1.3.0
 Release:        1%{?dist}
 Summary:        Claude Code integration for Kate text editor
 
@@ -17,7 +17,7 @@ BuildRequires:  kf6-kxmlgui-devel
 BuildRequires:  kf6-syntax-highlighting-devel
 BuildRequires:  kf6-kwallet-devel
 BuildRequires:  kf6-kpty-devel
-BuildRequires:  qt6-qtwebengine-devel
+BuildRequires:  qt6-webenginewidgets-devel
 
 Recommends:     claude-code-acp
 
@@ -41,8 +41,24 @@ execution with permission controls, and session management.
 %{_libdir}/qt6/plugins/kf6/ktexteditor/katecode.so
 %{_libdir}/qt6/plugins/kf6/ktexteditor/katecode.json
 %{_datadir}/kate/plugins/katecode/katecodeui.rc
-%{_libdir}/libexec/kate-mcp-server
+%{_libexecdir}/kate-mcp-server
 
 %changelog
+* Mon Jun 29 2026 Ben <ben@localhost> - 1.3.0-1
+- Add ordered ACP provider descriptions with full configuration editing
+- Add per-provider ACP session configuration options for model and related settings
+- Preserve Kate and configured external MCP servers for new and resumed sessions
+- Improve standard ACP session/load, config option, and mode update compatibility
+
+* Mon Jun 22 2026 Ben <ben@localhost> - 1.2.0-1
+- Source resumable sessions from transcripts so abandoned sessions appear
+- Add per-provider true ACP session/load resume with context fallback
+- Make built-in providers editable and removable (at least one kept)
+- Add optional ACP JSON traffic logging to file (flushed per line)
+- Rename Summaries config tab to Advanced; add log and resume options
+
+* Wed May 27 2026 Ben <ben@localhost> - 1.1.0-1
+- Improve Codex ACP MCP integration and local MCP discovery
+
 * Fri Jan 16 2026 April <apriljayres@gmail.com> - 1.0.0-1
 - Initial release

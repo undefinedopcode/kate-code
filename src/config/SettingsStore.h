@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QJsonObject>
 #include <QList>
 #include <QObject>
 #include <QSettings>
@@ -18,7 +19,9 @@ struct ACPProvider {
     QString executable;   // Binary name or path
     QString options;      // Command-line arguments string
     QString mcpConfigPath; // Path to MCP server config JSON file (e.g. ~/.cursor/mcp.json)
-    bool builtin = false; // true for built-in providers (can't be deleted)
+    QJsonObject sessionConfig; // ACP session config option id -> desired JSON value
+    bool builtin = false; // true for the default-seeded providers (kept for reference only)
+    bool trueResume = false; // try ACP session/load (option B) before falling back to context injection (option A)
 };
 
 // Color schemes for diff highlighting (colorblind-friendly options)
@@ -62,6 +65,18 @@ public:
     bool autoResumeSessions() const;
     void setAutoResumeSessions(bool enable);
 
+    // Summarise an abandoned (raw) session with the summary model when resuming
+    bool summariseOnResume() const;
+    void setSummariseOnResume(bool enable);
+
+    // ACP session logging to file (separate from on-screen output)
+    bool acpLogEnabled() const;
+    void setAcpLogEnabled(bool enable);
+    QString acpLogDirectory() const;       // base directory to place the log folder in
+    void setAcpLogDirectory(const QString &dir);
+    QString acpLogSubdirectory() const;    // name of the folder created inside the base directory
+    void setAcpLogSubdirectory(const QString &name);
+
     // ACP provider management
     QList<ACPProvider> providers() const;
     ACPProvider activeProvider() const;
@@ -71,6 +86,7 @@ public:
     void addCustomProvider(const ACPProvider &provider);
     void updateCustomProvider(const QString &id, const ACPProvider &provider);
     void removeCustomProvider(const QString &id);
+    void setProviderOrder(const QStringList &providerIds);
 
     // Check if an executable can be found on PATH or common directories
     static bool isExecutableAvailable(const QString &executable);
@@ -103,8 +119,10 @@ private:
     void closeWallet();
     void migrateOldBackendSettings();
     void migrateOldSummaryModel();
-    QList<ACPProvider> builtinProviders() const;
-    QList<ACPProvider> customProviders() const;
+    void seedDefaultProvidersIfNeeded();
+    QList<ACPProvider> defaultProviders() const;
+    QList<ACPProvider> storedProviders() const;
+    void writeProviders(const QList<ACPProvider> &list);
 
     mutable QSettings m_settings;
     KWallet::Wallet *m_wallet;

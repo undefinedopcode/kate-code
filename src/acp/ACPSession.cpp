@@ -9,6 +9,7 @@
 #include <KTextEditor/Range>
 #include <KTextEditor/View>
 
+#include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QFile>
@@ -16,6 +17,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
+#include <QSet>
 #include <QTextStream>
 #include <QStandardPaths>
 #include <QUrl>
@@ -76,6 +79,7 @@ ACPSession::ACPSession(QObject *parent)
     , m_initializeRequestId(-1)
     , m_sessionNewRequestId(-1)
     , m_sessionLoadRequestId(-1)
+    , m_sessionConfigRequestId(-1)
     , m_promptRequestId(-1)
     , m_messageCounter(0)
     , m_editTracker(new EditTracker(this))
@@ -112,6 +116,12 @@ void ACPSession::setMcpConfigPath(const QString &path)
     qDebug() << "[ACPSession] MCP config path set to:" << path;
 }
 
+void ACPSession::setSessionConfig(const QJsonObject &config)
+{
+    m_sessionConfig = config;
+    qDebug() << "[ACPSession] Session configuration keys set to:" << config.keys();
+}
+
 void ACPSession::start(const QString &workingDir, const QString &permissionMode)
 {
     Q_UNUSED(permissionMode);  // Modes are now discovered from agent
@@ -143,7 +153,16 @@ void ACPSession::stop()
     // already Disconnected and skips emitting a duplicate statusChanged.
     m_status = ConnectionStatus::Disconnected;
     m_sessionId.clear();
+    m_sessionLoadId.clear();
+    m_initializeRequestId = -1;
+    m_sessionNewRequestId = -1;
+    m_sessionLoadRequestId = -1;
+    m_sessionConfigRequestId = -1;
+    m_pendingSessionConfigKeys.clear();
+    m_currentSessionConfigKey.clear();
+    m_availableConfigOptions = {};
     m_promptRequestId = -1;
+    m_messageCounter = 0;
 
     m_service->stop();
 
@@ -210,6 +229,26 @@ void ACPSession::setMode(const QString &modeId)
     m_service->sendRequest(QStringLiteral("session/set_mode"), params);
 }
 
+static QString expandConfigPath(const QString &path)
+{
+    QString expanded = path.trimmed();
+    if (expanded == QStringLiteral("~")) {
+        expanded = QDir::homePath();
+    } else if (expanded.startsWith(QStringLiteral("~/"))) {
+        expanded = QDir::homePath() + expanded.mid(1);
+    }
+
+    static const QRegularExpression envVarPattern(QStringLiteral("\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}"));
+    QRegularExpressionMatchIterator it = envVarPattern.globalMatch(expanded);
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    while (it.hasNext()) {
+        const QRegularExpressionMatch match = it.next();
+        expanded.replace(match.captured(0), env.value(match.captured(1)));
+    }
+
+    return QDir::cleanPath(expanded);
+}
+
 static QJsonArray loadExternalMcpServers(const QString &configPath)
 {
     QJsonArray servers;
@@ -220,15 +259,16 @@ static QJsonArray loadExternalMcpServers(const QString &configPath)
         return servers;
     }
 
-    QFile configFile(configPath);
+    const QString expandedConfigPath = expandConfigPath(configPath);
+    QFile configFile(expandedConfigPath);
 
     if (!configFile.exists()) {
-        qDebug() << "[ACPSession] No external MCP config found at:" << configPath;
+        qDebug() << "[ACPSession] No external MCP config found at:" << expandedConfigPath;
         return servers;
     }
 
     if (!configFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        qWarning() << "[ACPSession] Failed to open MCP config:" << configPath;
+        qWarning() << "[ACPSession] Failed to open MCP config:" << expandedConfigPath;
         return servers;
     }
 
@@ -237,7 +277,7 @@ static QJsonArray loadExternalMcpServers(const QString &configPath)
 
     QJsonDocument doc = QJsonDocument::fromJson(data);
     if (doc.isNull() || !doc.isObject()) {
-        qWarning() << "[ACPSession] Invalid JSON in MCP config:" << configPath;
+        qWarning() << "[ACPSession] Invalid JSON in MCP config:" << expandedConfigPath;
         return servers;
     }
 
@@ -285,6 +325,119 @@ static QJsonArray loadExternalMcpServers(const QString &configPath)
     return servers;
 }
 
+static void addExecutableCandidate(QStringList &candidates, const QString &path)
+{
+    if (path.isEmpty()) {
+        return;
+    }
+
+    const QString cleanPath = QDir::cleanPath(path);
+    if (!candidates.contains(cleanPath)) {
+        candidates.append(cleanPath);
+    }
+}
+
+static QString findKateMcpServerPath()
+{
+    QStringList candidates;
+
+#ifdef KATE_MCP_SERVER_PATH
+    const QString compiledPath = QStringLiteral(KATE_MCP_SERVER_PATH);
+    addExecutableCandidate(candidates, compiledPath);
+
+    static const QStringList installPrefixes = {
+        QDir::homePath() + QStringLiteral("/.local"),
+        QStringLiteral("/usr/local"),
+        QStringLiteral("/usr"),
+    };
+    static const QStringList compiledPrefixes = {
+        QStringLiteral("/usr/local"),
+        QStringLiteral("/usr"),
+    };
+    for (const QString &compiledPrefix : compiledPrefixes) {
+        if (!compiledPath.startsWith(compiledPrefix + QLatin1Char('/'))) {
+            continue;
+        }
+
+        const QString relativePath = compiledPath.mid(compiledPrefix.size());
+        for (const QString &installPrefix : installPrefixes) {
+            addExecutableCandidate(candidates, installPrefix + relativePath);
+        }
+    }
+#endif
+
+    addExecutableCandidate(candidates, QCoreApplication::applicationDirPath() + QStringLiteral("/kate-mcp-server"));
+    addExecutableCandidate(candidates, QDir::homePath() + QStringLiteral("/.local/libexec/kate-mcp-server"));
+    addExecutableCandidate(candidates, QDir::homePath() + QStringLiteral("/.local/lib64/libexec/kate-mcp-server"));
+    addExecutableCandidate(candidates, QStringLiteral("/usr/local/libexec/kate-mcp-server"));
+    addExecutableCandidate(candidates, QStringLiteral("/usr/local/lib64/libexec/kate-mcp-server"));
+    addExecutableCandidate(candidates, QStringLiteral("/usr/libexec/kate-mcp-server"));
+    addExecutableCandidate(candidates, QStringLiteral("/usr/lib64/libexec/kate-mcp-server"));
+
+    addExecutableCandidate(candidates, QStandardPaths::findExecutable(QStringLiteral("kate-mcp-server")));
+
+    for (const QString &candidate : candidates) {
+        const QFileInfo info(candidate);
+        if (info.exists() && info.isFile() && info.isExecutable()) {
+            return candidate;
+        }
+    }
+
+    qWarning() << "[ACPSession] Kate MCP server not found. Checked:" << candidates;
+    return {};
+}
+
+QJsonArray ACPSession::buildMcpServers() const
+{
+    QJsonArray mcpServers;
+    const QString mcpServerPath = findKateMcpServerPath();
+
+    if (!mcpServerPath.isEmpty()) {
+        QJsonObject kateMcp;
+        kateMcp[QStringLiteral("type")] = QStringLiteral("stdio");
+        kateMcp[QStringLiteral("name")] = QStringLiteral("kate");
+        kateMcp[QStringLiteral("command")] = mcpServerPath;
+        kateMcp[QStringLiteral("args")] = QJsonArray();
+
+        // The child MCP server must inherit the desktop session bus so it can
+        // reach the editor service even when the ACP agent sanitizes its env.
+        QJsonArray envArray;
+        static const QStringList sessionEnvVars = {
+            QStringLiteral("DBUS_SESSION_BUS_ADDRESS"),
+            QStringLiteral("XDG_RUNTIME_DIR"),
+            QStringLiteral("DISPLAY"),
+            QStringLiteral("WAYLAND_DISPLAY"),
+            QStringLiteral("HOME"),
+        };
+        const QProcessEnvironment sysEnv = QProcessEnvironment::systemEnvironment();
+        for (const QString &varName : sessionEnvVars) {
+            const QString value = sysEnv.value(varName);
+            if (!value.isEmpty()) {
+                QJsonObject entry;
+                entry[QStringLiteral("name")] = varName;
+                entry[QStringLiteral("value")] = value;
+                envArray.append(entry);
+            }
+        }
+        kateMcp[QStringLiteral("env")] = envArray;
+        mcpServers.append(kateMcp);
+        qDebug() << "[ACPSession] Added Kate MCP server:" << mcpServerPath;
+    } else {
+        qWarning() << "[ACPSession] Kate MCP server not found";
+    }
+
+    if (!m_mcpConfigPath.isEmpty()) {
+        const QJsonArray externalServers = loadExternalMcpServers(m_mcpConfigPath);
+        for (const QJsonValue &server : externalServers) {
+            mcpServers.append(server);
+        }
+    } else {
+        qDebug() << "[ACPSession] No MCP config path configured for this provider";
+    }
+
+    return mcpServers;
+}
+
 void ACPSession::createNewSession()
 {
     if (m_status != ConnectionStatus::Connecting) {
@@ -296,46 +449,7 @@ void ACPSession::createNewSession()
 
     QJsonObject params;
     params[QStringLiteral("cwd")] = m_workingDir;
-    // Build mcpServers array with the built-in Kate MCP server
-    QJsonArray mcpServers;
-
-    QString mcpServerPath;
-#ifdef KATE_MCP_SERVER_PATH
-    mcpServerPath = QStringLiteral(KATE_MCP_SERVER_PATH);
-#endif
-
-    // Fallback: search PATH
-    if (mcpServerPath.isEmpty() || !QFileInfo::exists(mcpServerPath)) {
-        const QString found = QStandardPaths::findExecutable(QStringLiteral("kate-mcp-server"));
-        if (!found.isEmpty()) {
-            mcpServerPath = found;
-        }
-    }
-
-    if (!mcpServerPath.isEmpty() && QFileInfo::exists(mcpServerPath)) {
-        QJsonObject kateMcp;
-        kateMcp[QStringLiteral("type")] = QStringLiteral("stdio");
-        kateMcp[QStringLiteral("name")] = QStringLiteral("kate");
-        kateMcp[QStringLiteral("command")] = mcpServerPath;
-        kateMcp[QStringLiteral("args")] = QJsonArray();
-        kateMcp[QStringLiteral("env")] = QJsonArray();
-        mcpServers.append(kateMcp);
-        qDebug() << "[ACPSession] Added Kate MCP server:" << mcpServerPath;
-    } else {
-        qWarning() << "[ACPSession] Kate MCP server not found";
-    }
-
-    // Load external MCP servers from configured path (if any)
-    if (!m_mcpConfigPath.isEmpty()) {
-        QJsonArray externalServers = loadExternalMcpServers(m_mcpConfigPath);
-        for (const QJsonValue &server : externalServers) {
-            mcpServers.append(server);
-        }
-    } else {
-        qDebug() << "[ACPSession] No MCP config path configured for this provider";
-    }
-
-    params[QStringLiteral("mcpServers")] = mcpServers;
+    params[QStringLiteral("mcpServers")] = buildMcpServers();
 
     m_sessionNewRequestId = m_service->sendRequest(QStringLiteral("session/new"), params);
     qDebug() << "[ACPSession] Sent session/new request, id:" << m_sessionNewRequestId;
@@ -359,7 +473,13 @@ void ACPSession::loadSession(const QString &sessionId)
     QJsonObject params;
     params[QStringLiteral("sessionId")] = sessionId;
     params[QStringLiteral("cwd")] = m_workingDir;
+    // A resumed Codex/app-server thread still needs the client-provided MCP
+    // definitions for this process, including Kate and provider JSON servers.
+    params[QStringLiteral("mcpServers")] = buildMcpServers();
 
+    // ACP session/load responses do not normally repeat the session id, so
+    // retain the requested id until the response arrives.
+    m_sessionLoadId = sessionId;
     m_sessionLoadRequestId = m_service->sendRequest(QStringLiteral("session/load"), params);
     qDebug() << "[ACPSession] Sent session/load request, id:" << m_sessionLoadRequestId;
 }
@@ -370,6 +490,8 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
         qWarning() << "[ACPSession] Cannot send message: not connected";
         return;
     }
+
+    const bool isFirstMessage = (m_messageCounter == 0);
 
     // Create user message (for display)
     Message userMsg;
@@ -481,8 +603,9 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
 
     // On first message, add system reminder to prefer Kate MCP tools
     QString messageText = content;
-    if (m_messageCounter == 0) {
+    if (isFirstMessage) {
         messageText += QStringLiteral("\n\n<system-reminder>"
+            "Use mcp__kate__katecode_documents when you need to see which files are open in Kate.\n\n"
             "In sessions with mcp__kate__katecode_read always use it instead of Read as it contains the most up-to-date contents.\n\n"
             "In sessions with mcp__kate__katecode_write always use it instead of Write as it will\n"
             "allow the user to conveniently review changes.\n\n"
@@ -522,6 +645,15 @@ void ACPSession::onConnected()
     fsCapabilities[QStringLiteral("readTextFile")] = true;
     fsCapabilities[QStringLiteral("writeTextFile")] = true;
     capabilities[QStringLiteral("fs")] = fsCapabilities;
+
+    // Select options are part of the base protocol. Explicitly advertise the
+    // optional boolean form because provider session configuration can retain
+    // and send native JSON booleans.
+    QJsonObject configOptionCapabilities;
+    configOptionCapabilities[QStringLiteral("boolean")] = QJsonObject();
+    QJsonObject sessionCapabilities;
+    sessionCapabilities[QStringLiteral("configOptions")] = configOptionCapabilities;
+    capabilities[QStringLiteral("session")] = sessionCapabilities;
 
     params[QStringLiteral("clientCapabilities")] = capabilities;
 
@@ -571,6 +703,13 @@ void ACPSession::onResponse(int id, const QJsonObject &result, const QJsonObject
         return;
     }
 
+    // Configuration errors are non-fatal: report the failed option and keep
+    // applying any remaining per-provider session settings.
+    if (id == m_sessionConfigRequestId) {
+        handleSessionConfigResponse(result, error);
+        return;
+    }
+
     if (!error.isEmpty()) {
         qWarning() << "[ACPSession] Error response for id" << id << ":" << error;
         Q_EMIT errorOccurred(error[QStringLiteral("message")].toString());
@@ -610,55 +749,42 @@ void ACPSession::handleInitializeResponse(int id, const QJsonObject &result)
 void ACPSession::handleSessionNewResponse(int id, const QJsonObject &result)
 {
     Q_UNUSED(id);
+    m_sessionNewRequestId = -1;
     m_sessionId = result[QStringLiteral("sessionId")].toString();
     qDebug() << "[ACPSession] Session created with ID:" << m_sessionId;
-
-    // Parse available modes
-    m_availableModes = result[QStringLiteral("availableModes")].toArray();
-    m_currentMode = result[QStringLiteral("currentModeId")].toString();
-
-    qDebug() << "[ACPSession] Available modes:" << m_availableModes.size();
-    qDebug() << "[ACPSession] Current mode:" << m_currentMode;
 
     if (m_sessionId.isEmpty()) {
         qWarning() << "[ACPSession] ERROR: Session ID is empty! Full result:" << result;
         m_status = ConnectionStatus::Error;
         Q_EMIT errorOccurred(QStringLiteral("Failed to get session ID from ACP"));
-    } else {
-        m_status = ConnectionStatus::Connected;
-        // Start transcript for new session
-        m_transcript->startSession(m_sessionId, m_workingDir);
-        // Emit modes available signal
-        Q_EMIT modesAvailable(m_availableModes);
-        if (!m_currentMode.isEmpty()) {
-            Q_EMIT modeChanged(m_currentMode);
-        }
+        Q_EMIT statusChanged(m_status);
+        return;
     }
 
-    Q_EMIT statusChanged(m_status);
+    parseSessionSetupResult(result);
+    beginSessionConfiguration(false);
 }
 
 void ACPSession::handleSessionLoadResponse(int id, const QJsonObject &result, const QJsonObject &error)
 {
     Q_UNUSED(id);
+    const QString requestedSessionId = m_sessionLoadId;
+    m_sessionLoadId.clear();
     m_sessionLoadRequestId = -1;
 
     if (!error.isEmpty()) {
+        m_sessionId.clear();
         QString errorMsg = error[QStringLiteral("message")].toString();
         qWarning() << "[ACPSession] Session load failed:" << errorMsg;
         Q_EMIT sessionLoadFailed(errorMsg);
         return;
     }
 
-    m_sessionId = result[QStringLiteral("sessionId")].toString();
+    // session/load returns mode/config state; unlike session/new, the standard
+    // response does not include sessionId. Accept it when supplied by a legacy
+    // agent, otherwise use the id from the request.
+    m_sessionId = result[QStringLiteral("sessionId")].toString(requestedSessionId);
     qDebug() << "[ACPSession] Session loaded with ID:" << m_sessionId;
-
-    // Parse available modes
-    m_availableModes = result[QStringLiteral("availableModes")].toArray();
-    m_currentMode = result[QStringLiteral("currentModeId")].toString();
-
-    qDebug() << "[ACPSession] Available modes:" << m_availableModes.size();
-    qDebug() << "[ACPSession] Current mode:" << m_currentMode;
 
     if (m_sessionId.isEmpty()) {
         qWarning() << "[ACPSession] ERROR: Session ID is empty after load!";
@@ -666,17 +792,183 @@ void ACPSession::handleSessionLoadResponse(int id, const QJsonObject &result, co
         return;
     }
 
+    parseSessionSetupResult(result);
+    beginSessionConfiguration(true);
+}
+
+void ACPSession::parseSessionSetupResult(const QJsonObject &result)
+{
+    const QJsonObject modes = result[QStringLiteral("modes")].toObject();
+    if (!modes.isEmpty()) {
+        m_availableModes = modes[QStringLiteral("availableModes")].toArray();
+        m_currentMode = modes[QStringLiteral("currentModeId")].toString();
+    } else {
+        // Compatibility with older agents that returned mode fields at the top level.
+        m_availableModes = result[QStringLiteral("availableModes")].toArray();
+        m_currentMode = result[QStringLiteral("currentModeId")].toString();
+    }
+
+    updateSessionConfigOptions(result[QStringLiteral("configOptions")].toArray(), false);
+
+    qDebug() << "[ACPSession] Available modes:" << m_availableModes.size();
+    qDebug() << "[ACPSession] Current mode:" << m_currentMode;
+    qDebug() << "[ACPSession] Available config options:" << m_availableConfigOptions.size();
+}
+
+void ACPSession::updateSessionConfigOptions(const QJsonArray &configOptions, bool emitChanges)
+{
+    m_availableConfigOptions = configOptions;
+
+    for (const QJsonValue &value : configOptions) {
+        const QJsonObject option = value.toObject();
+        if (option[QStringLiteral("id")].toString() != QStringLiteral("mode")) {
+            continue;
+        }
+
+        QJsonArray modes;
+        auto appendMode = [&modes](const QJsonObject &choice) {
+            const QString id = choice[QStringLiteral("value")].toString();
+            if (id.isEmpty()) {
+                return;
+            }
+            QJsonObject mode;
+            mode[QStringLiteral("id")] = id;
+            mode[QStringLiteral("name")] = choice[QStringLiteral("name")];
+            mode[QStringLiteral("description")] = choice[QStringLiteral("description")];
+            modes.append(mode);
+        };
+
+        // ACP select choices may be a flat array or grouped one level deep.
+        for (const QJsonValue &choiceValue : option[QStringLiteral("options")].toArray()) {
+            const QJsonObject choice = choiceValue.toObject();
+            if (choice.contains(QStringLiteral("options"))) {
+                for (const QJsonValue &nestedValue : choice[QStringLiteral("options")].toArray()) {
+                    appendMode(nestedValue.toObject());
+                }
+            } else {
+                appendMode(choice);
+            }
+        }
+
+        if (!modes.isEmpty()) {
+            m_availableModes = modes;
+        }
+        m_currentMode = option[QStringLiteral("currentValue")].toString(m_currentMode);
+
+        if (emitChanges) {
+            Q_EMIT modesAvailable(m_availableModes);
+            if (!m_currentMode.isEmpty()) {
+                Q_EMIT modeChanged(m_currentMode);
+            }
+        }
+        break;
+    }
+}
+
+void ACPSession::beginSessionConfiguration(bool loadedSession)
+{
+    m_configuringLoadedSession = loadedSession;
+    m_pendingSessionConfigKeys.clear();
+    m_currentSessionConfigKey.clear();
+
+    QSet<QString> advertised;
+    for (const QJsonValue &value : m_availableConfigOptions) {
+        const QString id = value.toObject()[QStringLiteral("id")].toString();
+        if (!id.isEmpty()) {
+            advertised.insert(id);
+        }
+    }
+
+    QStringList remainingKeys = m_sessionConfig.keys();
+    QStringList configuredKeys;
+    // Model must be selected before reasoning effort because changing model can
+    // replace the advertised effort choices.
+    static const QStringList preferredOrder = {
+        QStringLiteral("model"),
+        QStringLiteral("reasoning_effort"),
+        QStringLiteral("mode"),
+    };
+    for (const QString &key : preferredOrder) {
+        if (remainingKeys.removeOne(key)) {
+            configuredKeys.append(key);
+        }
+    }
+    configuredKeys.append(remainingKeys);
+
+    QStringList skipped;
+    for (const QString &key : configuredKeys) {
+        if (advertised.contains(key)) {
+            m_pendingSessionConfigKeys.append(key);
+        } else {
+            skipped.append(key);
+        }
+    }
+
+    if (!skipped.isEmpty()) {
+        const QString message = QStringLiteral("ACP agent did not advertise session configuration option(s): %1")
+                                    .arg(skipped.join(QStringLiteral(", ")));
+        qWarning() << "[ACPSession]" << message;
+        Q_EMIT errorOccurred(message);
+    }
+
+    sendNextSessionConfigOption();
+}
+
+void ACPSession::sendNextSessionConfigOption()
+{
+    if (m_pendingSessionConfigKeys.isEmpty()) {
+        completeSessionSetup(m_configuringLoadedSession);
+        return;
+    }
+
+    m_currentSessionConfigKey = m_pendingSessionConfigKeys.takeFirst();
+    QJsonObject params;
+    params[QStringLiteral("sessionId")] = m_sessionId;
+    params[QStringLiteral("configId")] = m_currentSessionConfigKey;
+    const QJsonValue value = m_sessionConfig.value(m_currentSessionConfigKey);
+    params[QStringLiteral("value")] = value;
+    if (value.isBool()) {
+        // Required by the ACP boolean config-option request variant.
+        params[QStringLiteral("type")] = QStringLiteral("boolean");
+    }
+    m_sessionConfigRequestId = m_service->sendRequest(QStringLiteral("session/set_config_option"), params);
+    if (m_sessionConfigRequestId < 0) {
+        qWarning() << "[ACPSession] Failed to send session config option" << m_currentSessionConfigKey;
+        sendNextSessionConfigOption();
+    }
+}
+
+void ACPSession::handleSessionConfigResponse(const QJsonObject &result, const QJsonObject &error)
+{
+    if (!error.isEmpty()) {
+        const QString message = QStringLiteral("Failed to apply ACP session configuration %1: %2")
+                                    .arg(m_currentSessionConfigKey,
+                                         error[QStringLiteral("message")].toString(QStringLiteral("unknown error")));
+        qWarning() << "[ACPSession]" << message;
+        Q_EMIT errorOccurred(message);
+    } else if (result.contains(QStringLiteral("configOptions"))) {
+        updateSessionConfigOptions(result[QStringLiteral("configOptions")].toArray(), false);
+    }
+
+    m_sessionConfigRequestId = -1;
+    m_currentSessionConfigKey.clear();
+    sendNextSessionConfigOption();
+}
+
+void ACPSession::completeSessionSetup(bool loadedSession)
+{
     m_status = ConnectionStatus::Connected;
 
-    // Start transcript for loaded session (will append if file exists)
+    // TranscriptWriter appends when a real ACP session is resumed.
     m_transcript->startSession(m_sessionId, m_workingDir);
 
-    // Emit modes available signal
     Q_EMIT modesAvailable(m_availableModes);
     if (!m_currentMode.isEmpty()) {
         Q_EMIT modeChanged(m_currentMode);
     }
 
+    qDebug() << "[ACPSession]" << (loadedSession ? "Loaded" : "New")
+             << "session ready with configured ACP options";
     Q_EMIT statusChanged(m_status);
 }
 
@@ -1254,12 +1546,19 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         qDebug() << "[ACPSession] Plan update with" << todos.size() << "entries";
         Q_EMIT todosUpdated(todos);
     }
+    else if (updateType == QStringLiteral("config_option_update")) {
+        updateSessionConfigOptions(update[QStringLiteral("configOptions")].toArray(),
+                                   m_status == ConnectionStatus::Connected);
+    }
     else if (updateType == QStringLiteral("current_mode_update")) {
         // Agent changed the mode
-        QString newMode = update[QStringLiteral("modeId")].toString();
+        const QString newMode = update[QStringLiteral("currentModeId")].toString(
+            update[QStringLiteral("modeId")].toString());
         qDebug() << "[ACPSession] Mode changed to:" << newMode;
         m_currentMode = newMode;
-        Q_EMIT modeChanged(newMode);
+        if (!newMode.isEmpty()) {
+            Q_EMIT modeChanged(newMode);
+        }
     }
     else if (updateType == QStringLiteral("available_commands_update")) {
         // Available slash commands updated

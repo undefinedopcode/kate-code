@@ -42,19 +42,21 @@ SessionSelectionDialog::SessionSelectionDialog(const QString &projectRoot,
     m_sessionCombo = new QComboBox(this);
     m_sessionCombo->setMinimumWidth(300);
 
-    // Load sessions (up to 10, most recent first)
-    QStringList sessionIds = m_summaryStore->listSessionSummaries(projectRoot);
+    // Load sessions from transcripts (always written), up to 10, most recent
+    // first. Mark each as summarised or raw so the user can tell them apart.
+    QStringList sessionIds = m_summaryStore->listTranscriptSessions(projectRoot);
     int count = qMin(sessionIds.size(), 10);
     for (int i = 0; i < count; ++i) {
         const QString &sessionId = sessionIds.at(i);
-        QString summaryPath = m_summaryStore->summaryPath(projectRoot, sessionId);
-        QFileInfo fileInfo(summaryPath);
+        QFileInfo fileInfo(m_summaryStore->transcriptPath(projectRoot, sessionId));
         QString displayText = fileInfo.lastModified().toString(QStringLiteral("yyyy-MM-dd hh:mm"));
         QString shortId = sessionId.left(12);
         if (sessionId.length() > 12) {
             shortId += QStringLiteral("...");
         }
-        displayText += QStringLiteral(" - ") + shortId;
+        const bool summarised = m_summaryStore->hasSummary(projectRoot, sessionId);
+        displayText += QStringLiteral(" - ") + shortId
+            + (summarised ? QStringLiteral(" [summarised]") : QStringLiteral(" [raw]"));
         m_sessionCombo->addItem(displayText, sessionId);
     }
 
@@ -116,8 +118,11 @@ void SessionSelectionDialog::onSessionChanged(int index)
     }
 
     QString sessionId = m_sessionCombo->itemData(index).toString();
-    QString summary = m_summaryStore->loadSummary(m_projectRoot, sessionId);
-    m_summaryPreview->setPlainText(summary);
+    // Prefer the AI summary; if none exists yet, preview the raw transcript.
+    QString preview = m_summaryStore->hasSummary(m_projectRoot, sessionId)
+        ? m_summaryStore->loadSummary(m_projectRoot, sessionId)
+        : m_summaryStore->loadTranscript(m_projectRoot, sessionId);
+    m_summaryPreview->setPlainText(preview);
 }
 
 QString SessionSelectionDialog::selectedSessionId() const
