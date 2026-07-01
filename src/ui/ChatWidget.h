@@ -108,6 +108,7 @@ private Q_SLOTS:
     void onModesAvailable(const QJsonArray &modes);
     void onModeChanged(const QString &modeId);
     void onError(const QString &message);
+    void onSessionError(const QString &message);
     void onRemoveContextChunk(const QString &id);
     void onPromptCancelled();
     void onImageAttached(const ImageAttachment &image);

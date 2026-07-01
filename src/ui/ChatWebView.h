@@ -38,6 +38,9 @@ public:
     // Diff color scheme support
     void updateDiffColors(const QString &removeBackground, const QString &addBackground);
 
+    // Show a distinct error banner in the chat (ACP/session errors).
+    void showError(const QString &text);
+
 Q_SIGNALS:
     void permissionResponseReady(int requestId, const QString &optionId);
     void jumpToEditRequested(const QString &filePath, int startLine, int endLine);

@@ -81,6 +81,8 @@ Q_SIGNALS:
     void modeChanged(const QString &modeId);
     void commandsAvailable(const QList<SlashCommand> &commands);
     void errorOccurred(const QString &message);
+    // Emitted when the agent reports a systemError threadStatus in session_info_update.
+    void sessionError(const QString &message);
     void promptCancelled();
 
     // Debug: raw JSON-RPC payloads (direction is ">>" for sent, "<<" for received)

@@ -254,8 +254,11 @@ void ACPService::onStderr()
     QString message = QString::fromUtf8(data).trimmed();
 
     if (!message.isEmpty()) {
+        // Bridge stderr is largely informational (progress, warnings). Log it,
+        // but do NOT route it through errorOccurred: that signal is surfaced in
+        // the chat now and should carry only genuine errors (process failures
+        // and JSON-RPC error responses), not noisy stderr chatter.
         qDebug() << "[ACPService] stderr:" << message;
-        Q_EMIT errorOccurred(message);
     }
 }
 

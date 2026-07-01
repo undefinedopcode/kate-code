@@ -492,6 +492,14 @@ void ChatWebView::clearEditSummary()
     runJavaScript(QStringLiteral("clearEditSummary();"));
 }
 
+void ChatWebView::showError(const QString &text)
+{
+    // Base64-encode the message so no escaping issues arise with quotes or newlines.
+    const QString base64Text = QString::fromLatin1(text.toUtf8().toBase64());
+    const QString script = QStringLiteral("addErrorMessage('%1');").arg(base64Text);
+    runJavaScript(script);
+}
+
 void ChatWebView::updateDiffColors(const QString &removeBackground, const QString &addBackground)
 {
     QString script = QStringLiteral(

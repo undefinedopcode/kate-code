@@ -431,6 +431,34 @@ function addMessage(id, role, content, timestamp, isStreaming, images) {
     scrollToBottom();
 }
 
+// Show a distinct error banner (ACP/session errors).
+// text is Base64-encoded UTF-8 to avoid JS string injection.
+function addErrorMessage(base64Text) {
+    let text;
+    try {
+        text = decodeURIComponent(escape(atob(base64Text)));
+    } catch (e) {
+        text = base64Text;  // Fall back to raw value if decode fails
+    }
+
+    const container = document.getElementById('messages');
+    const el = document.createElement('div');
+    el.className = 'message error';
+
+    const header = document.createElement('div');
+    header.className = 'message-header';
+    header.innerHTML = '<span class="message-role error">⚠ Error</span>';
+
+    const content = document.createElement('div');
+    content.className = 'message-content';
+    content.textContent = text;  // textContent avoids HTML injection
+
+    el.appendChild(header);
+    el.appendChild(content);
+    container.appendChild(el);
+    scrollToBottom();
+}
+
 // Update message content (for streaming)
 function updateMessage(id, content) {
     if (!messages[id]) return;

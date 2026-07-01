@@ -215,6 +215,17 @@ body {
     white-space: pre-line;
 }
 
+/* Error messages (ACP/session errors) — red-tinted left border so they stand out */
+.message.error .message-content {
+    white-space: pre-line;
+    border-left: 3px solid var(--negative);
+    background-color: color-mix(in srgb, var(--negative) 8%, var(--bg-secondary));
+}
+
+.message-role.error {
+    color: var(--negative);
+}
+
 .message.user .message-content {
     background-color: color-mix(in srgb, var(--accent) 10%, var(--bg-primary));
 }

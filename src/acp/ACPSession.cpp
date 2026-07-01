@@ -1778,6 +1778,32 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         m_availableCommands = commands;
         Q_EMIT commandsAvailable(commands);
     }
+    else if (updateType == QStringLiteral("session_info_update")) {
+        // Codex uses this to report thread-level status changes (e.g. upstream stream failures).
+        const QString threadStatus =
+            update[QStringLiteral("_meta")].toObject()
+                  [QStringLiteral("codex")].toObject()
+                  [QStringLiteral("threadStatus")].toObject()
+                  [QStringLiteral("type")].toString();
+
+        if (threadStatus == QStringLiteral("systemError") ||
+            threadStatus == QStringLiteral("error")) {
+            qWarning() << "[ACPSession] session_info_update: threadStatus =" << threadStatus
+                       << "— signalling sessionError";
+            // Do NOT clear m_currentMessageId or m_promptRequestId: the trailing
+            // agent_message_chunk and prompt response still finalise the turn normally.
+            Q_EMIT sessionError(QStringLiteral(
+                "The agent reported a system error; this turn failed. "
+                "Any details (including an OpenAI request ID) follow below. "
+                "You can send another message to retry."));
+        } else {
+            qDebug() << "[ACPSession] session_info_update: threadStatus =" << threadStatus;
+        }
+    }
+    else {
+        // Log any unrecognised update type so they are not silently dropped.
+        qDebug() << "[ACPSession] Unhandled session/update type:" << updateType;
+    }
 }
 
 void ACPSession::handlePermissionRequest(const QJsonObject &params, int requestId)

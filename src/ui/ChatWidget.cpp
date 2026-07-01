@@ -230,6 +230,7 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::modeChanged, this, &ChatWidget::onModeChanged);
     connect(m_session, &ACPSession::commandsAvailable, m_inputWidget, &ChatInputWidget::setAvailableCommands);
     connect(m_session, &ACPSession::errorOccurred, this, &ChatWidget::onError);
+    connect(m_session, &ACPSession::sessionError, this, &ChatWidget::onSessionError);
     connect(m_session, &ACPSession::promptCancelled, this, &ChatWidget::onPromptCancelled);
 
     // Debug JSON logging (only emits when debug logging is enabled in settings)
@@ -872,9 +873,16 @@ void ChatWidget::onPermissionRequested(const PermissionRequest &request)
 
 void ChatWidget::onError(const QString &message)
 {
-    // Log errors to console instead of showing popups
-    // Many "errors" from ACP are just informational stderr output
+    // Log to console; also surface in the chat so the user sees it.
+    // Many "errors" from ACP are just informational stderr output, but we show
+    // them anyway — the error banner style makes it easy to distinguish them.
     qWarning() << "[ChatWidget] ACP error:" << message;
+    m_chatWebView->showError(QStringLiteral("Error: ") + message);
+}
+
+void ChatWidget::onSessionError(const QString &message)
+{
+    m_chatWebView->showError(message);
 }
 
 void ChatWidget::onInitializeComplete()
