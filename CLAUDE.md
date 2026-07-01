@@ -11,9 +11,15 @@ cmake --build build
 
 ## Installation
 
+Test install:
 ```bash
 cmake --install build --prefix ~/.local
 ```
+
+Full install:
+- Bump the version (minor if minor etc)
+- Make an RPM. Use the spec at /home/ben/rpmbuild/SPECS/kate-code.spec
+- Copy the new RPM to the local repo at /volumes/localrepo
 
 Then restart Kate and enable the plugin via:
 Settings > Configure Kate > Plugins > Enable "Kate Code"

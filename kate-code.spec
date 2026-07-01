@@ -1,6 +1,6 @@
 Name:           kate-code
-Version:        1.3.0
-Release:        1%{?dist}
+Version:        1.3.1
+Release:        2%{?dist}
 Summary:        Claude Code integration for Kate text editor
 
 License:        MIT
@@ -44,6 +44,15 @@ execution with permission controls, and session management.
 %{_libexecdir}/kate-mcp-server
 
 %changelog
+* Tue Jun 30 2026 Ben <ben@localhost> - 1.3.1-2
+- Preserve ordered WebView updates received while the chat page is loading
+- Add a control to clear only the displayed chat output
+
+* Tue Jun 30 2026 Ben <ben@localhost> - 1.3.1-1
+- Restore useful ACP approval and sandbox mode labels and plain-text chat input
+- Fix web UI icons when the Material Symbols font is unavailable
+- Document native Codex ACP session KVPs for model, reasoning effort, and mode
+
 * Mon Jun 29 2026 Ben <ben@localhost> - 1.3.0-1
 - Add ordered ACP provider descriptions with full configuration editing
 - Add per-provider ACP session configuration options for model and related settings

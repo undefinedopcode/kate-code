@@ -635,7 +635,7 @@ bool KateCodeConfigPage::editProviderDialog(ACPProvider &provider, const QString
     configLabel->setFont(labelFont);
     dialogLayout->addWidget(configLabel);
 
-    auto *configHelp = new QLabel(i18n("These key/value pairs are applied after session creation through ACP session/set_config_option when the agent advertises a matching option. Values may be plain text or JSON. Standard ACP options use text or booleans; other JSON values are retained for compatible agent extensions."), &dialog);
+    auto *configHelp = new QLabel(i18n("These key/value pairs are applied after session creation through ACP session/set_config_option when the agent advertises a matching option. Values may be plain text or JSON. For @agentclientprotocol/codex-acp use model (for example gpt-5.6-sol), reasoning_effort (for example xhigh), and mode (read-only, agent, or agent-full-access). The mode controls both approval and sandboxing; Codex config.toml keys such as approval_policy and sandbox_mode are not ACP session option ids."), &dialog);
     configHelp->setWordWrap(true);
     dialogLayout->addWidget(configHelp);
 

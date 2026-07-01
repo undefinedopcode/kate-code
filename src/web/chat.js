@@ -3,10 +3,25 @@ let messages = {};
 let terminals = {};  // Terminal output state keyed by terminalId
 let bridge = null;
 
-// Material Symbols icon helper - returns HTML span with icon ligature
+// The Material Symbols font is not bundled, so map the icon names we use to
+// plain Unicode characters that render with the system font.
+const ICON_GLYPHS = {
+    expand_more: '\u25BE', expand_less: '\u25B4', chevron_right: '\u25B8',
+    content_copy: '\u29C9', check: '\u2714', check_circle: '\u2714',
+    bolt: '\u26A1', refresh: '\u21BB', hourglass_empty: '\u231B', sync: '\u27F3',
+    pending: '\u22EF', radio_button_unchecked: '\u25CB', radio_button_checked: '\u25C9',
+    check_box_outline_blank: '\u2610', check_box: '\u2611',
+    lock: '\uD83D\uDD12', help_outline: '?', clear_all: '\uD83D\uDDD1',
+    build: '\uD83D\uDD27', smart_toy: '\uD83E\uDD16', download: '\u2913', terminal: '\u276F',
+    edit: '\u270E', edit_document: '\u270E', description: '\uD83D\uDCC4',
+    folder_open: '\uD83D\uDCC2', search: '\uD83D\uDD0D', quiz: '\u2753',
+};
+
+// Icon helper - returns an HTML span containing a Unicode glyph for the name.
 function materialIcon(name, extraClass = '') {
     const cls = extraClass ? `material-icon ${extraClass}` : 'material-icon';
-    return `<span class="${cls}">${name}</span>`;
+    const glyph = ICON_GLYPHS[name] || '\u2022';
+    return `<span class="${cls}">${glyph}</span>`;
 }
 
 // Map file extensions to highlight.js language identifiers
@@ -350,14 +365,14 @@ function configureMarked() {
                 const encodedCode = btoa(unescape(encodeURIComponent(code)));
 
                 return '<div class="code-block-wrapper">' +
-                       '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code"><span class="material-icon material-icon-sm">content_copy</span></button>' +
+                       '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code">' + materialIcon('content_copy', 'material-icon-sm') + '</button>' +
                        '<pre><code class="hljs language-' + lang + '">' + highlighted + '</code></pre>' +
                        '</div>';
             }
 
             const encodedCode = btoa(unescape(encodeURIComponent(code)));
             return '<div class="code-block-wrapper">' +
-                   '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code"><span class="material-icon material-icon-sm">content_copy</span></button>' +
+                   '<button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="' + encodedCode + '" title="Copy code">' + materialIcon('content_copy', 'material-icon-sm') + '</button>' +
                    '<pre><code>' + code + '</code></pre>' +
                    '</div>';
         }
@@ -794,7 +809,7 @@ function renderToolCall(toolCall) {
             html += `<div class="tool-call-input">
                 <strong>Content:</strong>
                 <div class="code-block-wrapper">
-                    <button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="${encodedCode}" title="Copy code"><span class="material-icon material-icon-sm">content_copy</span></button>
+                    <button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="${encodedCode}" title="Copy code">${materialIcon('content_copy', 'material-icon-sm')}</button>
                     <pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre>
                 </div>
             </div>`;
@@ -843,7 +858,7 @@ function renderToolCall(toolCall) {
                 html += `<div class="tool-call-result-section">
                     <strong>Result:</strong>
                     <div class="code-block-wrapper">
-                        <button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="${encodedCode}" title="Copy code"><span class="material-icon material-icon-sm">content_copy</span></button>
+                        <button class="code-copy-btn" onclick="copyCode(this)" data-code-b64="${encodedCode}" title="Copy code">${materialIcon('content_copy', 'material-icon-sm')}</button>
                         <pre><code class="hljs${language ? ' language-' + language : ''}">${highlighted}</code></pre>
                     </div>
                 </div>`;
@@ -1167,7 +1182,7 @@ function copyCode(button) {
 
         // Visual feedback
         const originalHTML = button.innerHTML;
-        button.innerHTML = '<span class="material-icon material-icon-sm">check</span>';
+        button.innerHTML = materialIcon('check', 'material-icon-sm');
         button.classList.add('copied');
 
         setTimeout(() => {

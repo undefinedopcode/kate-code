@@ -252,6 +252,33 @@ CommandTextEdit::CompletionContext CommandTextEdit::completionUnderCursor() cons
 // ChatInputWidget Implementation
 // ============================================================================
 
+// Map ACP/Claude Code permission-mode ids to clearer, more intuitive labels.
+// Unknown ids fall back to the name supplied by the agent.
+static QString friendlyModeName(const QString &id, const QString &fallback)
+{
+    if (id == QLatin1String("default")) return QStringLiteral("Ask Before Changes");
+    if (id == QLatin1String("plan")) return QStringLiteral("Read Only (Plan)");
+    if (id == QLatin1String("acceptEdits")) return QStringLiteral("Auto-Accept Edits");
+    if (id == QLatin1String("bypassPermissions")) return QStringLiteral("Allow Everything");
+    if (id == QLatin1String("read-only")) return QStringLiteral("Read Only (Ask)");
+    if (id == QLatin1String("agent") || id == QLatin1String("auto")) return QStringLiteral("Workspace Write (Ask)");
+    if (id == QLatin1String("agent-full-access") || id == QLatin1String("full-access")) return QStringLiteral("Full Access (Never Ask)");
+    return fallback;
+}
+
+// Plain-language tooltip describing each mode's behaviour.
+static QString friendlyModeTip(const QString &id, const QString &fallback)
+{
+    if (id == QLatin1String("default")) return QStringLiteral("Asks for approval before editing files or running commands.");
+    if (id == QLatin1String("plan")) return QStringLiteral("Agent may only read and plan; it will not modify files or run commands.");
+    if (id == QLatin1String("acceptEdits")) return QStringLiteral("Automatically approves file edits; still asks for other actions.");
+    if (id == QLatin1String("bypassPermissions")) return QStringLiteral("Approves everything automatically: any edit, command or MCP tool.");
+    if (id == QLatin1String("read-only")) return QStringLiteral("Uses a read-only sandbox and asks before edits or commands.");
+    if (id == QLatin1String("agent") || id == QLatin1String("auto")) return QStringLiteral("Allows writes inside the workspace and asks before actions that need approval.");
+    if (id == QLatin1String("agent-full-access") || id == QLatin1String("full-access")) return QStringLiteral("Disables the sandbox and approvals, including for network and out-of-workspace access.");
+    return fallback;
+}
+
 ChatInputWidget::ChatInputWidget(QWidget *parent)
     : QWidget(parent)
 {
@@ -280,6 +307,9 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
 
     // Multiline text input with completer support
     m_textEdit = new CommandTextEdit(this);
+    // Plain text only: pasted rich text is flattened so the agent receives the
+    // raw characters the user sees, not HTML markup.
+    m_textEdit->setAcceptRichText(false);
     m_textEdit->setPlaceholderText(QStringLiteral("Type a message... (Enter to send, Shift+Enter for newline, / for commands)"));
     m_textEdit->setMinimumHeight(50);
     m_textEdit->setMaximumHeight(100);
@@ -411,11 +441,15 @@ void ChatInputWidget::setAvailableModes(const QJsonArray &modes)
     m_modeComboBox->clear();
 
     if (modes.isEmpty()) {
-        // Fallback to hardcoded defaults if ACP provides nothing
-        m_modeComboBox->addItem(QStringLiteral("Default"), QStringLiteral("default"));
-        m_modeComboBox->addItem(QStringLiteral("Plan"), QStringLiteral("plan"));
-        m_modeComboBox->addItem(QStringLiteral("Accept Edits"), QStringLiteral("acceptEdits"));
-        m_modeComboBox->addItem(QStringLiteral("Don't Ask"), QStringLiteral("dontAsk"));
+        // Fallback to hardcoded defaults if ACP provides nothing. Ids match the
+        // Claude Code permission modes so set_mode requests still work.
+        const QStringList fallbackIds = {QStringLiteral("default"), QStringLiteral("plan"),
+                                         QStringLiteral("acceptEdits"), QStringLiteral("bypassPermissions")};
+        for (const QString &id : fallbackIds) {
+            m_modeComboBox->addItem(friendlyModeName(id, id), id);
+            int lastIndex = m_modeComboBox->count() - 1;
+            m_modeComboBox->setItemData(lastIndex, friendlyModeTip(id, QString()), Qt::ToolTipRole);
+        }
         qDebug() << "[ChatInputWidget] Using fallback modes (ACP returned empty)";
     } else {
         // Populate from ACP response
@@ -425,12 +459,12 @@ void ChatInputWidget::setAvailableModes(const QJsonArray &modes)
             QString name = mode[QStringLiteral("name")].toString();
             QString description = mode[QStringLiteral("description")].toString();
 
-            // Use name for display, id for data
-            m_modeComboBox->addItem(name, id);
+            // Use a clearer label where we recognise the id, id for data
+            m_modeComboBox->addItem(friendlyModeName(id, name), id);
 
-            // Set tooltip to description
+            // Set tooltip to our plain-language description, else the agent's
             int lastIndex = m_modeComboBox->count() - 1;
-            m_modeComboBox->setItemData(lastIndex, description, Qt::ToolTipRole);
+            m_modeComboBox->setItemData(lastIndex, friendlyModeTip(id, description), Qt::ToolTipRole);
         }
         qDebug() << "[ChatInputWidget] Loaded" << modes.size() << "modes from ACP";
     }

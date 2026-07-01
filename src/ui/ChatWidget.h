@@ -158,6 +158,7 @@ private:
     QToolButton *m_connectButton;
     QToolButton *m_resumeSessionButton;
     QToolButton *m_newSessionButton;
+    QToolButton *m_clearOutputButton;
     QLabel *m_titleLabel;
     QLabel *m_statusIndicator;
     QWidget *m_contextChipsContainer;

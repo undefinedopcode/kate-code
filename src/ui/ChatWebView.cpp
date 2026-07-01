@@ -24,9 +24,9 @@ ChatWebView::ChatWebView(QWidget *parent)
     // Setup web channel for JavaScript <-> C++ communication
     setupBridge();
 
-    // Load the chat HTML
-    setUrl(QUrl(QStringLiteral("qrc:/katecode/web/chat.html")));
-
+    connect(this, &QWebEngineView::loadStarted, this, [this] {
+        m_isLoaded = false;
+    });
     connect(this, &QWebEngineView::loadFinished, this, &ChatWebView::onLoadFinished);
     connect(m_bridge, &WebBridge::permissionResponse, this, &ChatWebView::permissionResponseReady);
     connect(m_bridge, &WebBridge::jumpToEditRequested, this, &ChatWebView::jumpToEditRequested);
@@ -34,6 +34,10 @@ ChatWebView::ChatWebView(QWidget *parent)
         QJsonDocument doc = QJsonDocument::fromJson(answersJson.toUtf8());
         Q_EMIT userQuestionAnswered(requestId, doc.object());
     });
+
+    // Register lifecycle handlers before loading. A cached resource may
+    // finish quickly enough to otherwise miss loadFinished entirely.
+    setUrl(QUrl(QStringLiteral("qrc:/katecode/web/chat.html")));
 }
 
 ChatWebView::~ChatWebView()
@@ -48,6 +52,15 @@ void ChatWebView::onLoadFinished(bool ok)
 
         // Inject KDE color scheme
         injectColorScheme();
+
+        // A freshly-created WebView commonly receives ACP updates before
+        // loadFinished.  Replaying in insertion order is important: an
+        // assistant message must exist before its streamed chunks arrive.
+        const QStringList pendingScripts = m_pendingScripts;
+        m_pendingScripts.clear();
+        for (const QString &script : pendingScripts) {
+            runJavaScript(script);
+        }
 
         // Signal that we're ready for additional setup (like diff colors)
         Q_EMIT webViewReady();
@@ -165,11 +178,6 @@ void ChatWebView::injectColorScheme()
 
 void ChatWebView::addMessage(const Message &message)
 {
-    if (!m_isLoaded) {
-        qWarning() << "[ChatWebView] Cannot add message: page not loaded";
-        return;
-    }
-
     QString timestamp = message.timestamp.toString(Qt::ISODate);
 
     // Build images JSON array for user messages with attachments
@@ -204,11 +212,6 @@ void ChatWebView::addMessage(const Message &message)
 
 void ChatWebView::updateMessage(const QString &messageId, const QString &content)
 {
-    if (!m_isLoaded) {
-        qWarning() << "[ChatWebView] Cannot update message: page not loaded";
-        return;
-    }
-
     qDebug() << "[ChatWebView] Updating message:" << messageId << "with" << content.length() << "chars";
 
     QString script = QStringLiteral("updateMessage('%1', '%2');")
@@ -220,8 +223,6 @@ void ChatWebView::updateMessage(const QString &messageId, const QString &content
 
 void ChatWebView::finishMessage(const QString &messageId)
 {
-    if (!m_isLoaded) return;
-
     QString script = QStringLiteral("finishMessage('%1');")
                          .arg(escapeJsString(messageId));
 
@@ -230,8 +231,6 @@ void ChatWebView::finishMessage(const QString &messageId)
 
 void ChatWebView::addToolCall(const QString &messageId, const ToolCall &toolCall)
 {
-    if (!m_isLoaded) return;
-
     QString inputJson = QString::fromUtf8(QJsonDocument(toolCall.input).toJson(QJsonDocument::Compact));
 
     // Serialize edits array to JSON
@@ -263,8 +262,6 @@ void ChatWebView::addToolCall(const QString &messageId, const ToolCall &toolCall
 
 void ChatWebView::updateToolCall(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath, const QString &toolName)
 {
-    if (!m_isLoaded) return;
-
     // Base64 encode result to safely pass ANSI escape codes and other special characters
     QByteArray resultBytes = result.toUtf8();
     QString base64Result = QString::fromLatin1(resultBytes.toBase64());
@@ -286,8 +283,7 @@ void ChatWebView::showPermissionRequest(const PermissionRequest &request)
              << "toolName:" << request.toolName << "loaded:" << m_isLoaded;
 
     if (!m_isLoaded) {
-        qWarning() << "[ChatWebView] Page not loaded yet, cannot show permission request";
-        return;
+        qDebug() << "[ChatWebView] Queuing permission request until page loads";
     }
 
     // Convert options to JSON
@@ -327,8 +323,7 @@ void ChatWebView::showUserQuestion(const QString &requestId, const QString &ques
     qDebug() << "[ChatWebView] showUserQuestion called - requestId:" << requestId;
 
     if (!m_isLoaded) {
-        qWarning() << "[ChatWebView] Page not loaded yet, cannot show user question";
-        return;
+        qDebug() << "[ChatWebView] Queuing user question until page loads";
     }
 
     // Use Base64 encoding to safely pass JSON through JavaScript
@@ -350,18 +345,12 @@ void ChatWebView::removeUserQuestion(const QString &requestId)
 {
     qDebug() << "[ChatWebView] removeUserQuestion called - requestId:" << requestId;
 
-    if (!m_isLoaded) {
-        return;
-    }
-
     QString script = QStringLiteral("removeUserQuestion('%1');").arg(escapeJsString(requestId));
     runJavaScript(script);
 }
 
 void ChatWebView::updateTodos(const QList<TodoItem> &todos)
 {
-    if (!m_isLoaded) return;
-
     QJsonArray todosArray;
     for (const TodoItem &todo : todos) {
         QJsonObject todoObj;
@@ -381,14 +370,15 @@ void ChatWebView::updateTodos(const QList<TodoItem> &todos)
 
 void ChatWebView::clearMessages()
 {
+    // Clearing while the page is loading must also discard stale queued
+    // output; the initial document is already empty, so no script is needed.
+    m_pendingScripts.clear();
     if (!m_isLoaded) return;
     runJavaScript(QStringLiteral("clearMessages();"));
 }
 
 void ChatWebView::updateTerminalOutput(const QString &terminalId, const QString &output, bool finished)
 {
-    if (!m_isLoaded) return;
-
     // Base64 encode to safely pass terminal output with ANSI codes
     QByteArray outputBytes = output.toUtf8();
     QString base64Output = QString::fromLatin1(outputBytes.toBase64());
@@ -403,8 +393,6 @@ void ChatWebView::updateTerminalOutput(const QString &terminalId, const QString 
 
 void ChatWebView::setToolCallTerminalId(const QString &messageId, const QString &toolCallId, const QString &terminalId)
 {
-    if (!m_isLoaded) return;
-
     QString script = QStringLiteral("setToolCallTerminalId('%1', '%2', '%3');")
         .arg(escapeJsString(messageId),
              escapeJsString(toolCallId),
@@ -422,6 +410,12 @@ void ChatWebView::setupBridge()
 
 void ChatWebView::runJavaScript(const QString &script)
 {
+    if (!m_isLoaded) {
+        m_pendingScripts.append(script);
+        qDebug() << "[ChatWebView] Queued JS until page loads:" << script.left(100);
+        return;
+    }
+
     page()->runJavaScript(script, [script](const QVariant &result) {
         Q_UNUSED(result);
         qDebug() << "[ChatWebView] JS executed:" << script.left(100);
@@ -448,10 +442,6 @@ QString ChatWebView::escapeJsString(const QString &str)
 
 void ChatWebView::addTrackedEdit(const TrackedEdit &edit)
 {
-    if (!m_isLoaded) {
-        return;
-    }
-
     // Serialize the edit to JSON
     QJsonObject editObj;
     editObj[QStringLiteral("toolCallId")] = edit.toolCallId;
@@ -468,19 +458,11 @@ void ChatWebView::addTrackedEdit(const TrackedEdit &edit)
 
 void ChatWebView::clearEditSummary()
 {
-    if (!m_isLoaded) {
-        return;
-    }
-
     runJavaScript(QStringLiteral("clearEditSummary();"));
 }
 
 void ChatWebView::updateDiffColors(const QString &removeBackground, const QString &addBackground)
 {
-    if (!m_isLoaded) {
-        return;
-    }
-
     QString script = QStringLiteral(
         "document.documentElement.style.setProperty('--diff-remove-bg', '%1');"
         "document.documentElement.style.setProperty('--diff-add-bg', '%2');"

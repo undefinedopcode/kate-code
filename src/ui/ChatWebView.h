@@ -2,6 +2,7 @@
 
 #include "../acp/ACPModels.h"
 #include <QWebEngineView>
+#include <QStringList>
 
 class WebBridge;
 
@@ -53,6 +54,10 @@ private:
     void setupBridge();
 
     bool m_isLoaded;
+    // Events can arrive while a session is starting and the WebEngine page is
+    // still loading.  Keep their JavaScript calls in order and replay them
+    // once the page is ready instead of silently dropping agent output.
+    QStringList m_pendingScripts;
     WebBridge *m_bridge;
 };
 

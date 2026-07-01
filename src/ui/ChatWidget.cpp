@@ -80,6 +80,15 @@ ChatWidget::ChatWidget(QWidget *parent)
     m_newSessionButton->setEnabled(false);
     headerLayout->addWidget(m_newSessionButton);
 
+    // This only clears the rendered transcript.  It deliberately leaves the
+    // ACP session running, which lets the user recover a stale display
+    // without losing the agent's context.
+    m_clearOutputButton = new QToolButton(this);
+    m_clearOutputButton->setIcon(QIcon::fromTheme(QStringLiteral("edit-clear-history"), QIcon::fromTheme(QStringLiteral("edit-clear"))));
+    m_clearOutputButton->setToolTip(QStringLiteral("Clear displayed chat output (keeps the current session)"));
+    m_clearOutputButton->setAutoRaise(true);
+    headerLayout->addWidget(m_clearOutputButton);
+
     // Connect/Disconnect button (icon only)
     m_connectButton = new QToolButton(this);
     m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
@@ -120,6 +129,9 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_connectButton, &QPushButton::clicked, this, &ChatWidget::onConnectClicked);
     connect(m_resumeSessionButton, &QPushButton::clicked, this, &ChatWidget::onResumeSessionClicked);
     connect(m_newSessionButton, &QPushButton::clicked, this, &ChatWidget::onNewSessionClicked);
+    connect(m_clearOutputButton, &QToolButton::clicked, this, [this] {
+        m_chatWebView->clearMessages();
+    });
     connect(m_inputWidget, &ChatInputWidget::messageSubmitted, this, &ChatWidget::onMessageSubmitted);
     connect(m_inputWidget, &ChatInputWidget::imageAttached, this, &ChatWidget::onImageAttached);
     connect(m_inputWidget, &ChatInputWidget::permissionModeChanged, this, &ChatWidget::onPermissionModeChanged);
