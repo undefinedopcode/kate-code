@@ -1,6 +1,6 @@
 Name:           kate-code
-Version:        1.3.1
-Release:        2%{?dist}
+Version:        1.4.0
+Release:        1%{?dist}
 Summary:        Claude Code integration for Kate text editor
 
 License:        MIT
@@ -44,6 +44,19 @@ execution with permission controls, and session management.
 %{_libexecdir}/kate-mcp-server
 
 %changelog
+* Wed Jul 01 2026 Ben <ben@localhost> - 1.4.0-1
+- Fix a crash when closing Kate while an agent session was active
+- Support agents in separate Kate processes via a per-process editor DBus
+  name; block a second agent within one process with a clear message
+- Prefer ACP session/set_config_option for the mode dropdown with a
+  session/set_mode fallback and rollback on failure
+- Detect prompt capabilities and orient the agent that it runs in Kate
+- Queue follow-up prompts instead of creating a second streaming cursor
+- Make the input area resizable up to half the output; add a waiting
+  indicator and a file-include button
+- Add a save-output control and a global command auto-approval allow-list
+- Stop the streaming caret from flashing
+
 * Tue Jun 30 2026 Ben <ben@localhost> - 1.3.1-2
 - Preserve ordered WebView updates received while the chat page is loading
 - Add a control to clear only the displayed chat output
