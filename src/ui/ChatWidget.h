@@ -2,6 +2,7 @@
 
 #include "../acp/ACPModels.h"
 #include <QJsonArray>
+#include <QSplitter>
 #include <QWidget>
 #include <functional>
 
@@ -182,6 +183,9 @@ private:
     QLabel *m_titleLabel;
     QLabel *m_statusIndicator;
     QWidget *m_contextChipsContainer;
+    // Splitter separating the chat view from the input area (Task 9)
+    QSplitter *m_splitter;
+    QWidget *m_inputArea;
 
     // Session persistence
     SessionStore *m_sessionStore;

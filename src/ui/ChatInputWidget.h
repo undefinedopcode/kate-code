@@ -5,6 +5,7 @@
 #include <QTextEdit>
 
 class QJsonArray;
+class QLabel;
 class QPushButton;
 class QComboBox;
 class QCompleter;
@@ -85,13 +86,19 @@ private Q_SLOTS:
     void onStopClicked();
     void onModeChanged(int index);
     void onImagePasteDetected(const QMimeData *mimeData);
+    void onAttachFileClicked();
 
 private:
+    void updateWaitingIndicator();
+
     CommandTextEdit *m_textEdit;
     QPushButton *m_sendButton;
     QPushButton *m_stopButton;
+    QPushButton *m_attachFileButton;
     QComboBox *m_modeComboBox;
+    QLabel *m_waitingLabel;
     bool m_promptRunning = false;
+    bool m_inputEnabled = false;
     QCompleter *m_completer;
     QList<SlashCommand> m_availableCommands;
     QStringList m_availableFiles;

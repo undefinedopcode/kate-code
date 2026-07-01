@@ -104,11 +104,10 @@ ChatWidget::ChatWidget(QWidget *parent)
 
     layout->addLayout(headerLayout);
 
-    // Chat web view
+    // Chat web view (top pane of the splitter)
     m_chatWebView = new ChatWebView(this);
     m_chatWebView->setMinimumHeight(200);
     m_chatWebView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    layout->addWidget(m_chatWebView, 1);
 
     // Context chips container (for displaying added context chunks)
     m_contextChipsContainer = new QWidget(this);
@@ -117,13 +116,33 @@ ChatWidget::ChatWidget(QWidget *parent)
     chipsLayout->setSpacing(4);
     chipsLayout->addStretch();
     m_contextChipsContainer->setVisible(false);  // Hidden until chunks are added
-    layout->addWidget(m_contextChipsContainer);
 
     // Message input
     m_inputWidget = new ChatInputWidget(this);
     m_inputWidget->setEnabled(false);
     m_inputWidget->setMinimumHeight(60);
-    layout->addWidget(m_inputWidget);
+
+    // Bottom pane: chips + input area combined into one widget so the splitter
+    // handle resizes both together.
+    m_inputArea = new QWidget(this);
+    auto *inputAreaLayout = new QVBoxLayout(m_inputArea);
+    inputAreaLayout->setContentsMargins(0, 0, 0, 0);
+    inputAreaLayout->setSpacing(0);
+    inputAreaLayout->addWidget(m_contextChipsContainer);
+    inputAreaLayout->addWidget(m_inputWidget);
+
+    // Splitter: top = chat view, bottom = input area
+    m_splitter = new QSplitter(Qt::Vertical, this);
+    m_splitter->setChildrenCollapsible(false);
+    m_splitter->addWidget(m_chatWebView);
+    m_splitter->addWidget(m_inputArea);
+    // Stretch: chat view takes all spare space; input area keeps its natural size
+    m_splitter->setStretchFactor(0, 1);
+    m_splitter->setStretchFactor(1, 0);
+    // Sensible initial split: large top, ~120 px bottom
+    m_splitter->setSizes({800, 120});
+
+    layout->addWidget(m_splitter, 1);
 
     // Connect signals
     connect(m_connectButton, &QPushButton::clicked, this, &ChatWidget::onConnectClicked);
@@ -1281,6 +1300,11 @@ void ChatWidget::onProviderComboChanged(int index)
 void ChatWidget::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
+    // Cap the input area at half the widget height so dragging the splitter
+    // handle cannot crowd out the chat view entirely.
+    if (m_inputArea) {
+        m_inputArea->setMaximumHeight(height() / 2);
+    }
     updateTerminalSize();
 }
 
@@ -1361,39 +1385,29 @@ void ChatWidget::resetWebView()
 {
     qDebug() << "[ChatWidget] Resetting WebView to reclaim memory";
 
-    // Get the layout and find the web view's position
-    auto *mainLayout = qobject_cast<QVBoxLayout*>(layout());
-    if (!mainLayout) {
-        qWarning() << "[ChatWidget] Could not get main layout for web view reset";
-        return;
-    }
-
-    int webViewIndex = mainLayout->indexOf(m_chatWebView);
-    if (webViewIndex < 0) {
-        qWarning() << "[ChatWidget] Could not find web view in layout";
-        return;
-    }
-
     // Disconnect signals from session to old web view (prevents dangling connections)
     disconnect(m_session, &ACPSession::terminalOutputUpdated, m_chatWebView, nullptr);
     disconnect(m_session, &ACPSession::toolCallTerminalIdSet, m_chatWebView, nullptr);
     disconnect(m_session->editTracker(), &EditTracker::editRecorded, m_chatWebView, nullptr);
     disconnect(m_session->editTracker(), &EditTracker::editsCleared, m_chatWebView, nullptr);
 
-    // Remove from layout and delete the old web view
-    mainLayout->removeWidget(m_chatWebView);
-    delete m_chatWebView;
-    m_chatWebView = nullptr;
+    // Create a fresh web view before removing the old one so the splitter is
+    // never momentarily empty.
+    auto *newWebView = new ChatWebView(this);
+    newWebView->setMinimumHeight(200);
+    newWebView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-    // Create a fresh web view
-    m_chatWebView = new ChatWebView(this);
-    m_chatWebView->setMinimumHeight(200);
-    m_chatWebView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    // Atomically swap: replaceWidget returns the old widget (reparented to null).
+    QWidget *old = m_splitter->replaceWidget(0, newWebView);
+    m_chatWebView = newWebView;
 
-    // Insert at the same position in layout
-    mainLayout->insertWidget(webViewIndex, m_chatWebView, 1);
+    // Schedule destruction of the old view after the event loop returns, which
+    // gives QWebEngine time to tear down the renderer cleanly.
+    if (old) {
+        old->deleteLater();
+    }
 
-    // Reconnect all signals
+    // Reconnect all signals to the new view
     connectWebViewSignals();
 
     qDebug() << "[ChatWidget] WebView reset complete";

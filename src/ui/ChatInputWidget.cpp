@@ -5,6 +5,9 @@
 #include <QComboBox>
 #include <QCompleter>
 #include <QEvent>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QImage>
@@ -13,8 +16,11 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMimeData>
+#include <QMimeDatabase>
+#include <QMimeType>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QStandardPaths>
 #include <QStringListModel>
 #include <QTextCursor>
 #include <QVBoxLayout>
@@ -294,9 +300,14 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     m_modeComboBox = new QComboBox(this);
     m_modeComboBox->setMinimumWidth(150);
 
+    // Waiting-for-input indicator (Task 10): pushed to the right of the mode row
+    m_waitingLabel = new QLabel(this);
+    m_waitingLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
     modeLayout->addWidget(modeLabel);
     modeLayout->addWidget(m_modeComboBox);
     modeLayout->addStretch();
+    modeLayout->addWidget(m_waitingLabel);
 
     mainLayout->addLayout(modeLayout);
 
@@ -312,7 +323,8 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     m_textEdit->setAcceptRichText(false);
     m_textEdit->setPlaceholderText(QStringLiteral("Type a message... (Enter to send, Shift+Enter for newline, / for commands)"));
     m_textEdit->setMinimumHeight(50);
-    m_textEdit->setMaximumHeight(100);
+    // No maximum height: the text edit fills the resizable input pane (Task 9).
+    m_textEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_textEdit->installEventFilter(this);
 
     // Create completer
@@ -343,8 +355,18 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     m_stopButton->setMaximumSize(40, 40);
     m_stopButton->setEnabled(false);  // Disabled by default
 
+    // Attach file button (Task 11)
+    m_attachFileButton = new QPushButton(this);
+    m_attachFileButton->setIcon(
+        QIcon::fromTheme(QStringLiteral("mail-attachment"),
+                         QIcon::fromTheme(QStringLiteral("document-open"))));
+    m_attachFileButton->setToolTip(QStringLiteral("Include a file"));
+    m_attachFileButton->setMinimumSize(40, 40);
+    m_attachFileButton->setMaximumSize(40, 40);
+
     buttonLayout->addWidget(m_sendButton);
     buttonLayout->addWidget(m_stopButton);
+    buttonLayout->addWidget(m_attachFileButton);
     buttonLayout->addStretch();
 
     inputLayout->addWidget(m_textEdit, 1);
@@ -354,10 +376,14 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
 
     connect(m_sendButton, &QPushButton::clicked, this, &ChatInputWidget::onSendClicked);
     connect(m_stopButton, &QPushButton::clicked, this, &ChatInputWidget::onStopClicked);
+    connect(m_attachFileButton, &QPushButton::clicked, this, &ChatInputWidget::onAttachFileClicked);
     connect(m_modeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ChatInputWidget::onModeChanged);
     connect(m_textEdit, &CommandTextEdit::imagePasteDetected,
             this, &ChatInputWidget::onImagePasteDetected);
+
+    // Initial indicator state: not connected
+    updateWaitingIndicator();
 }
 
 ChatInputWidget::~ChatInputWidget()
@@ -366,10 +392,13 @@ ChatInputWidget::~ChatInputWidget()
 
 void ChatInputWidget::setEnabled(bool enabled)
 {
+    m_inputEnabled = enabled;
     m_textEdit->setEnabled(enabled);
     m_sendButton->setEnabled(enabled);
     m_modeComboBox->setEnabled(enabled);
+    m_attachFileButton->setEnabled(enabled);
     // Stop button state is controlled by setPromptRunning(), not general enabled state
+    updateWaitingIndicator();
 }
 
 void ChatInputWidget::clear()
@@ -546,6 +575,30 @@ void ChatInputWidget::setPromptRunning(bool running)
 {
     m_promptRunning = running;
     m_stopButton->setEnabled(running);
+    updateWaitingIndicator();
+}
+
+void ChatInputWidget::updateWaitingIndicator()
+{
+    if (!m_inputEnabled) {
+        // Not connected: no indicator text
+        m_waitingLabel->setText(QString());
+        m_waitingLabel->setToolTip(QString());
+        return;
+    }
+    if (m_promptRunning) {
+        // Agent is busy: muted text
+        m_waitingLabel->setText(QStringLiteral("○ Agent is working…"));
+        m_waitingLabel->setStyleSheet(
+            QStringLiteral("QLabel { color: palette(mid); font-size: 11px; }"));
+        m_waitingLabel->setToolTip(QStringLiteral("The agent is processing your request"));
+    } else {
+        // Agent has finished: highlight that it is waiting for input
+        m_waitingLabel->setText(QStringLiteral("● Waiting for your input"));
+        m_waitingLabel->setStyleSheet(
+            QStringLiteral("QLabel { color: #5cb85c; font-size: 11px; font-weight: bold; }"));
+        m_waitingLabel->setToolTip(QStringLiteral("The agent is ready and waiting for your next message"));
+    }
 }
 
 void ChatInputWidget::onStopClicked()
@@ -584,4 +637,76 @@ void ChatInputWidget::onImagePasteDetected(const QMimeData *mimeData)
              << "size:" << attachment.data.size() << "bytes";
 
     Q_EMIT imageAttached(attachment);
+}
+
+// ============================================================================
+// Task 11 — file-include button
+// ============================================================================
+
+void ChatInputWidget::onAttachFileClicked()
+{
+    // Open a file picker starting at the user's home directory
+    const QString startDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    const QString path = QFileDialog::getOpenFileName(this, QStringLiteral("Include a file"), startDir);
+    if (path.isEmpty()) {
+        return;  // Cancelled
+    }
+
+    QFileInfo fi(path);
+
+    // Determine whether to inline the file or just insert its path
+    constexpr qint64 maxInlineBytes = 1024 * 1024;  // 1 MiB cap for inlining
+    bool treatAsText = false;
+    bool tooBig = fi.size() > maxInlineBytes;
+
+    if (!tooBig) {
+        // Primary check: MIME type
+        QMimeDatabase mimeDb;
+        QMimeType mime = mimeDb.mimeTypeForFile(path, QMimeDatabase::MatchContent);
+        if (mime.inherits(QStringLiteral("text/plain"))
+            || mime.name().startsWith(QLatin1String("text/"))) {
+            treatAsText = true;
+        } else {
+            // Fallback: read up to 8 KiB and test for valid UTF-8 with no NUL bytes
+            QFile probe(path);
+            if (probe.open(QIODevice::ReadOnly)) {
+                QByteArray sample = probe.read(8192);
+                probe.close();
+                if (!sample.contains('\0')) {
+                    QString decoded = QString::fromUtf8(sample);
+                    // If decoding produced replacement characters it is likely binary
+                    treatAsText = !decoded.contains(QChar::ReplacementCharacter);
+                }
+            }
+        }
+    }
+
+    QTextCursor cursor = m_textEdit->textCursor();
+
+    if (treatAsText && !tooBig) {
+        // Read and inline the file as a fenced code block
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            qWarning() << "[ChatInputWidget] Could not read file for inlining:" << path;
+            // Fall back to inserting the path only
+            cursor.insertText(QStringLiteral("\n") + path + QStringLiteral("\n"));
+            return;
+        }
+        const QString content = QString::fromUtf8(f.readAll());
+        f.close();
+
+        // Insert as: \n<path>:\n```\n<content>\n```\n
+        const QString block = QStringLiteral("\n%1:\n```\n%2\n```\n").arg(path, content);
+        cursor.insertText(block);
+        qDebug() << "[ChatInputWidget] Inlined text file:" << path
+                 << "(" << fi.size() << "bytes)";
+    } else {
+        // Binary, unreadable, or too large: insert the bare path so the agent
+        // can access it via the Kate MCP / fs tools.
+        cursor.insertText(QStringLiteral("\n") + path + QStringLiteral("\n"));
+        qDebug() << "[ChatInputWidget] Inserted path for binary/large file:" << path;
+    }
+
+    m_textEdit->setTextCursor(cursor);
+    m_textEdit->setFocus();
 }
