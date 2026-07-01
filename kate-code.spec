@@ -1,5 +1,5 @@
 Name:           kate-code
-Version:        1.4.0
+Version:        1.4.1
 Release:        1%{?dist}
 Summary:        Claude Code integration for Kate text editor
 
@@ -44,6 +44,14 @@ execution with permission controls, and session management.
 %{_libexecdir}/kate-mcp-server
 
 %changelog
+* Wed Jul 01 2026 Ben <ben@localhost> - 1.4.1-1
+- Surface Codex systemError and genuine ACP errors as distinct chat
+  messages instead of dropping them or disguising them as normal output
+- Make agent output reliably reach the end of the log: scroll the message
+  container, clear stale content on a fresh connect, record the assistant
+  transcript for agents that end a turn via the prompt response, and log
+  JS exceptions from injected calls
+
 * Wed Jul 01 2026 Ben <ben@localhost> - 1.4.0-1
 - Fix a crash when closing Kate while an agent session was active
 - Support agents in separate Kate processes via a per-process editor DBus
