@@ -300,7 +300,7 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     m_modeComboBox = new QComboBox(this);
     m_modeComboBox->setMinimumWidth(150);
 
-    // Waiting-for-input indicator (Task 10): pushed to the right of the mode row
+    // Waiting-for-input indicator: pushed to the right of the mode row
     m_waitingLabel = new QLabel(this);
     m_waitingLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
@@ -323,7 +323,7 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     m_textEdit->setAcceptRichText(false);
     m_textEdit->setPlaceholderText(QStringLiteral("Type a message... (Enter to send, Shift+Enter for newline, / for commands)"));
     m_textEdit->setMinimumHeight(50);
-    // No maximum height: the text edit fills the resizable input pane (Task 9).
+    // No maximum height: the text edit fills the resizable input pane.
     m_textEdit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     m_textEdit->installEventFilter(this);
 
@@ -355,7 +355,7 @@ ChatInputWidget::ChatInputWidget(QWidget *parent)
     m_stopButton->setMaximumSize(40, 40);
     m_stopButton->setEnabled(false);  // Disabled by default
 
-    // Attach file button (Task 11)
+    // Attach file button: include a file's text (or path) in the prompt
     m_attachFileButton = new QPushButton(this);
     m_attachFileButton->setIcon(
         QIcon::fromTheme(QStringLiteral("mail-attachment"),
@@ -640,7 +640,7 @@ void ChatInputWidget::onImagePasteDetected(const QMimeData *mimeData)
 }
 
 // ============================================================================
-// Task 11 — file-include button
+// File-include button
 // ============================================================================
 
 void ChatInputWidget::onAttachFileClicked()

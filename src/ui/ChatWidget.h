@@ -184,7 +184,7 @@ private:
     QLabel *m_titleLabel;
     QLabel *m_statusIndicator;
     QWidget *m_contextChipsContainer;
-    // Splitter separating the chat view from the input area (Task 9)
+    // Splitter separating the chat view from the input area
     QSplitter *m_splitter;
     QWidget *m_inputArea;
 
