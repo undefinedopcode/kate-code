@@ -105,6 +105,11 @@ ACPSession::~ACPSession()
     stop();
 }
 
+QString ACPSession::transcriptFilePath() const
+{
+    return m_transcript ? m_transcript->transcriptPath() : QString();
+}
+
 void ACPSession::setExecutable(const QString &executable, const QStringList &args)
 {
     m_service->setExecutable(executable, args);

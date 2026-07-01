@@ -14,9 +14,12 @@
 #include "../util/SummaryStore.h"
 
 #include <QComboBox>
+#include <QDateTime>
 #include <QDir>
+#include <QFileDialog>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QFile>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -28,6 +31,7 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QStandardItemModel>
+#include <QStandardPaths>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -79,6 +83,13 @@ ChatWidget::ChatWidget(QWidget *parent)
     m_newSessionButton->setAutoRaise(true);
     m_newSessionButton->setEnabled(false);
     headerLayout->addWidget(m_newSessionButton);
+
+    // Save the current session transcript to a user-chosen file.
+    m_saveOutputButton = new QToolButton(this);
+    m_saveOutputButton->setIcon(QIcon::fromTheme(QStringLiteral("document-save")));
+    m_saveOutputButton->setToolTip(QStringLiteral("Save chat output to a file…"));
+    m_saveOutputButton->setAutoRaise(true);
+    headerLayout->addWidget(m_saveOutputButton);
 
     // This only clears the rendered transcript.  It deliberately leaves the
     // ACP session running, which lets the user recover a stale display
@@ -148,6 +159,56 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_connectButton, &QPushButton::clicked, this, &ChatWidget::onConnectClicked);
     connect(m_resumeSessionButton, &QPushButton::clicked, this, &ChatWidget::onResumeSessionClicked);
     connect(m_newSessionButton, &QPushButton::clicked, this, &ChatWidget::onNewSessionClicked);
+    connect(m_saveOutputButton, &QToolButton::clicked, this, [this] {
+        // Fetch the path of the live transcript file.
+        const QString src = m_session->transcriptFilePath();
+        if (src.isEmpty() || !QFileInfo::exists(src)) {
+            Message sysMsg;
+            sysMsg.id        = QStringLiteral("sys_save_no_transcript");
+            sysMsg.role      = QStringLiteral("system");
+            sysMsg.timestamp = QDateTime::currentDateTime();
+            sysMsg.content   = QStringLiteral("No transcript to save yet — start a session first.");
+            m_chatWebView->addMessage(sysMsg);
+            return;
+        }
+
+        // Build a sensible default file name from the session id.
+        const QString sessionId = m_session->sessionId();
+        const QString defaultName = sessionId.isEmpty()
+            ? QStringLiteral("kate-code-session.md")
+            : QStringLiteral("kate-code-%1.md").arg(sessionId);
+        const QString defaultDir =
+            QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation).isEmpty()
+            ? QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
+            : QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+
+        const QString dest = QFileDialog::getSaveFileName(
+            this,
+            QStringLiteral("Save chat output"),
+            defaultDir + QLatin1Char('/') + defaultName,
+            QStringLiteral("Markdown (*.md);;All files (*)"));
+
+        if (dest.isEmpty()) {
+            return;  // User cancelled
+        }
+
+        // getSaveFileName already confirmed overwrite; remove any existing file.
+        if (QFile::exists(dest)) {
+            QFile::remove(dest);
+        }
+
+        Message sysMsg;
+        sysMsg.id        = QStringLiteral("sys_save_result_%1").arg(QDateTime::currentMSecsSinceEpoch());
+        sysMsg.role      = QStringLiteral("system");
+        sysMsg.timestamp = QDateTime::currentDateTime();
+        if (QFile::copy(src, dest)) {
+            sysMsg.content = QStringLiteral("Chat output saved to: %1").arg(dest);
+        } else {
+            sysMsg.content = QStringLiteral("Failed to save chat output to: %1").arg(dest);
+        }
+        m_chatWebView->addMessage(sysMsg);
+    });
+
     connect(m_clearOutputButton, &QToolButton::clicked, this, [this] {
         m_chatWebView->clearMessages();
     });
@@ -736,6 +797,75 @@ void ChatWidget::onTodosUpdated(const QList<TodoItem> &todos)
 
 void ChatWidget::onPermissionRequested(const PermissionRequest &request)
 {
+    // --- Conservative auto-approval against the allow-list ---
+    // Extract the command string from request.input.
+    QString command;
+    const QJsonValue cmdVal = request.input[QStringLiteral("command")];
+    if (cmdVal.isString()) {
+        command = cmdVal.toString();
+    } else if (cmdVal.isArray()) {
+        QStringList parts;
+        for (const QJsonValue &v : cmdVal.toArray()) {
+            parts.append(v.toString());
+        }
+        command = parts.join(QLatin1Char(' '));
+    }
+
+    if (!command.isEmpty() && m_settingsStore && m_settingsStore->isCommandAllowed(command)) {
+        // Search for the best "allow" option in the order specified in the task.
+        // Priority: allow_once > allow_always > kind starts with "allow" >
+        //           optionId/name containing "allow", "approve", or "yes".
+        const QJsonObject *best = nullptr;
+        int bestPriority = 999;
+
+        for (const QJsonObject &opt : request.options) {
+            const QString kind    = opt[QStringLiteral("kind")].toString().toLower();
+            const QString optId   = opt[QStringLiteral("optionId")].toString().toLower();
+            const QString optName = opt[QStringLiteral("name")].toString().toLower();
+
+            int priority = 999;
+            if (kind == QStringLiteral("allow_once")) {
+                priority = 0;
+            } else if (kind == QStringLiteral("allow_always")) {
+                priority = 1;
+            } else if (kind.startsWith(QStringLiteral("allow"))) {
+                priority = 2;
+            } else if (optId.contains(QStringLiteral("allow"))   ||
+                       optId.contains(QStringLiteral("approve")) ||
+                       optId.contains(QStringLiteral("yes"))     ||
+                       optName.contains(QStringLiteral("allow"))   ||
+                       optName.contains(QStringLiteral("approve")) ||
+                       optName.contains(QStringLiteral("yes"))) {
+                priority = 3;
+            }
+
+            if (priority < bestPriority) {
+                bestPriority = priority;
+                best = &opt;
+            }
+        }
+
+        if (best && bestPriority < 999) {
+            // Auto-approve: send the chosen option back immediately.
+            QJsonObject outcome;
+            outcome[QStringLiteral("outcome")]  = QStringLiteral("selected");
+            outcome[QStringLiteral("optionId")] = (*best)[QStringLiteral("optionId")].toString();
+            m_session->sendPermissionResponse(request.requestId, outcome);
+
+            Message sysMsg;
+            sysMsg.id        = QStringLiteral("sys_autoapprove_%1").arg(request.requestId);
+            sysMsg.role      = QStringLiteral("system");
+            sysMsg.timestamp = QDateTime::currentDateTime();
+            const QString truncated = command.length() > 120
+                ? command.left(120) + QStringLiteral("…")
+                : command;
+            sysMsg.content = QStringLiteral("Auto-approved (matches allow-list): %1").arg(truncated);
+            m_chatWebView->addMessage(sysMsg);
+            return;
+        }
+        // No clear allow option found — fall through to show the dialog.
+    }
+
     // Show inline permission request in web view
     m_chatWebView->showPermissionRequest(request);
 }

@@ -45,6 +45,10 @@ public:
     ConnectionStatus status() const { return m_status; }
     QString sessionId() const { return m_sessionId; }
 
+    // Passthrough to the TranscriptWriter — empty if no session has started.
+    QString transcriptFilePath() const;
+
+
     // Agent prompt capabilities, parsed from the initialize response.
     bool supportsImage() const { return m_supportsImage; }
     bool supportsEmbeddedContext() const { return m_supportsEmbeddedContext; }

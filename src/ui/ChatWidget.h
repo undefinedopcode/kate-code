@@ -180,6 +180,7 @@ private:
     QToolButton *m_resumeSessionButton;
     QToolButton *m_newSessionButton;
     QToolButton *m_clearOutputButton;
+    QToolButton *m_saveOutputButton;
     QLabel *m_titleLabel;
     QLabel *m_statusIndicator;
     QWidget *m_contextChipsContainer;
