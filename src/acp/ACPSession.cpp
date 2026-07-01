@@ -162,6 +162,7 @@ void ACPSession::stop()
     m_currentSessionConfigKey.clear();
     m_availableConfigOptions = {};
     m_promptRequestId = -1;
+    m_promptQueue.clear();
     m_messageCounter = 0;
     // Discard any in-flight or queued interactive mode-change state.
     m_interactiveModeRequestId = -1;
@@ -209,6 +210,12 @@ void ACPSession::cancelPrompt()
     }
 
     m_promptRequestId = -1;
+    // Discard queued prompts: a cancellation signals the user wants to stop, so
+    // silently auto-sending stale follow-ups would be surprising.
+    if (!m_promptQueue.isEmpty()) {
+        qDebug() << "[ACPSession] Discarding" << m_promptQueue.size() << "queued prompt(s) on cancel";
+        m_promptQueue.clear();
+    }
     Q_EMIT promptCancelled();
 }
 
@@ -576,17 +583,32 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
 
     const bool isFirstMessage = (m_messageCounter == 0);
 
-    // Create user message (for display)
+    // Emit the user message immediately so the UI updates regardless of
+    // whether the prompt can be dispatched now or must be queued.
     Message userMsg;
     userMsg.id = QStringLiteral("msg_%1").arg(++m_messageCounter);
     userMsg.role = QStringLiteral("user");
     userMsg.timestamp = QDateTime::currentDateTime();
     userMsg.content = content;
-    userMsg.images = images;  // Include attached images for display
+    userMsg.images = images;
     Q_EMIT messageAdded(userMsg);
     m_transcript->recordMessage(userMsg);
 
-    // Create assistant placeholder for streaming
+    // If a session/prompt round-trip is already in flight, queue this prompt
+    // instead of sending a concurrent request (which agents may mishandle).
+    // The assistant placeholder is created only when the prompt is dispatched.
+    if (isPromptRunning()) {
+        m_promptQueue.append(QueuedPrompt{content, filePath, selection, contextChunks, images});
+        qDebug() << "[ACPSession] Prompt busy; queued follow-up (" << m_promptQueue.size() << " queued)";
+        return;
+    }
+
+    dispatchPrompt(content, filePath, selection, contextChunks, images, isFirstMessage);
+}
+
+void ACPSession::dispatchPrompt(const QString &content, const QString &filePath, const QString &selection, const QList<ContextChunk> &contextChunks, const QList<ImageAttachment> &images, bool isFirstMessage)
+{
+    // Create assistant placeholder for streaming — exactly one per dispatched turn.
     Message assistantMsg;
     assistantMsg.id = QStringLiteral("msg_%1").arg(++m_messageCounter);
     assistantMsg.role = QStringLiteral("assistant");
@@ -600,7 +622,7 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
     // Build prompt blocks for ACP using proper resource blocks
     QJsonArray promptBlocks;
 
-    // Add file context as embedded resource if available
+    // Add file context as embedded resource if available.
     // Embedded-context (resource) blocks are only sent when the agent advertised
     // embeddedContext support in its promptCapabilities.
     if (m_supportsEmbeddedContext) {
@@ -695,7 +717,7 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
     QJsonObject textBlock;
     textBlock[QStringLiteral("type")] = QStringLiteral("text");
 
-    // On first message, add system reminder with editor context and tool preferences.
+    // On the first message, inject editor context and tool preferences.
     QString messageText = content;
     if (isFirstMessage) {
         messageText += QStringLiteral("\n\n<system-reminder>"
@@ -826,13 +848,22 @@ void ACPSession::onResponse(int id, const QJsonObject &result, const QJsonObject
     } else if (id == m_sessionNewRequestId) {
         handleSessionNewResponse(id, result);
     } else if (id == m_promptRequestId) {
-        // Prompt completed - finish streaming message
+        // Prompt completed — finish the streaming message.
         qDebug() << "[ACPSession] Prompt response received, finishing message:" << m_currentMessageId;
         if (!m_currentMessageId.isEmpty()) {
             Q_EMIT messageFinished(m_currentMessageId);
             m_currentMessageId.clear();
         }
         m_promptRequestId = -1;
+
+        // Flush the next queued prompt if one arrived while this turn was running.
+        // isPromptRunning() is now false, so dispatchPrompt sends immediately
+        // and creates exactly one new assistant placeholder.
+        if (!m_promptQueue.isEmpty()) {
+            const QueuedPrompt next = m_promptQueue.takeFirst();
+            // Not the first message; the session is already established.
+            dispatchPrompt(next.content, next.filePath, next.selection, next.contextChunks, next.images, false);
+        }
     }
 }
 

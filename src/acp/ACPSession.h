@@ -3,6 +3,7 @@
 #include "ACPModels.h"
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QList>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -100,6 +101,24 @@ private Q_SLOTS:
     void onError(const QString &message);
 
 private:
+    // A follow-up prompt queued while another session/prompt is in flight.
+    struct QueuedPrompt {
+        QString content;
+        QString filePath;
+        QString selection;
+        QList<ContextChunk> contextChunks;
+        QList<ImageAttachment> images;
+    };
+
+    // Send the assistant placeholder and session/prompt request.
+    // isFirstMessage controls whether the <system-reminder> is injected.
+    void dispatchPrompt(const QString &content,
+                        const QString &filePath,
+                        const QString &selection,
+                        const QList<ContextChunk> &contextChunks,
+                        const QList<ImageAttachment> &images,
+                        bool isFirstMessage);
+
     void handleInitializeResponse(int id, const QJsonObject &result);
     void handleSessionNewResponse(int id, const QJsonObject &result);
     void handleSessionLoadResponse(int id, const QJsonObject &result, const QJsonObject &error);
@@ -147,6 +166,9 @@ private:
     int m_sessionConfigRequestId;
     int m_promptRequestId;
     QString m_sessionLoadId;
+
+    // Follow-up prompts queued while a session/prompt round-trip is in flight.
+    QList<QueuedPrompt> m_promptQueue;
 
     // Interactive mode-change state (separate from the startup config flow).
     // m_interactiveModeRequestId: id of the in-flight session/set_config_option or
