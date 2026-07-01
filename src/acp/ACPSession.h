@@ -99,6 +99,8 @@ private:
     void handleSessionNewResponse(int id, const QJsonObject &result);
     void handleSessionLoadResponse(int id, const QJsonObject &result, const QJsonObject &error);
     void handleSessionConfigResponse(const QJsonObject &result, const QJsonObject &error);
+    // Handler for interactive (dropdown) mode-change requests.
+    void handleInteractiveModeResponse(const QJsonObject &result, const QJsonObject &error);
     void handleSessionUpdate(const QJsonObject &params);
     void handlePermissionRequest(const QJsonObject &params, int requestId);
     QJsonArray buildMcpServers() const;
@@ -140,6 +142,16 @@ private:
     int m_sessionConfigRequestId;
     int m_promptRequestId;
     QString m_sessionLoadId;
+
+    // Interactive mode-change state (separate from the startup config flow).
+    // m_interactiveModeRequestId: id of the in-flight session/set_config_option or
+    //   session/set_mode request triggered by the user's dropdown selection (-1 = none).
+    // m_pendingModeValue: the value sent in that request.
+    // m_queuedModeValue:  the latest value requested while a request is in flight;
+    //   sent as a follow-up once the current response arrives.
+    int m_interactiveModeRequestId = -1;
+    QString m_pendingModeValue;
+    QString m_queuedModeValue;
 
     // Message counter
     int m_messageCounter;

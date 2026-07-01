@@ -163,6 +163,10 @@ void ACPSession::stop()
     m_availableConfigOptions = {};
     m_promptRequestId = -1;
     m_messageCounter = 0;
+    // Discard any in-flight or queued interactive mode-change state.
+    m_interactiveModeRequestId = -1;
+    m_pendingModeValue.clear();
+    m_queuedModeValue.clear();
 
     m_service->stop();
 
@@ -216,17 +220,81 @@ void ACPSession::sendPermissionResponse(int requestId, const QJsonObject &outcom
 void ACPSession::setMode(const QString &modeId)
 {
     if (m_sessionId.isEmpty()) {
-        qWarning() << "[ACPSession] Cannot set mode: no active session";
+        qWarning() << "[ACPSession] setMode: no active session, ignoring request for" << modeId;
         return;
     }
 
-    qDebug() << "[ACPSession] Setting mode to:" << modeId;
+    // Nothing to do if the mode is already confirmed and no other request is pending.
+    if (modeId == m_currentMode && m_interactiveModeRequestId < 0) {
+        qDebug() << "[ACPSession] setMode: mode" << modeId << "already active, skipping";
+        return;
+    }
 
-    QJsonObject params;
-    params[QStringLiteral("sessionId")] = m_sessionId;
-    params[QStringLiteral("modeId")] = modeId;
+    // Coalesce rapid selections: queue the latest value and let the in-flight
+    // response handler send it once the current round-trip completes.
+    if (m_interactiveModeRequestId >= 0) {
+        qDebug() << "[ACPSession] setMode: request in flight, queuing" << modeId;
+        m_queuedModeValue = modeId;
+        return;
+    }
 
-    m_service->sendRequest(QStringLiteral("session/set_mode"), params);
+    // Decide transport: prefer session/set_config_option when the agent has
+    // advertised a config option with id=="mode"; fall back to session/set_mode
+    // for older agents that only advertise legacy modes.
+    bool useModern = false;
+    for (const QJsonValue &value : m_availableConfigOptions) {
+        if (value.toObject()[QStringLiteral("id")].toString() == QStringLiteral("mode")) {
+            useModern = true;
+            break;
+        }
+    }
+
+    if (useModern) {
+        // Validate that modeId is one of the advertised values (use m_availableModes
+        // which updateSessionConfigOptions() already built from the option's choices).
+        bool valid = false;
+        for (const QJsonValue &v : m_availableModes) {
+            if (v.toObject()[QStringLiteral("id")].toString() == modeId) {
+                valid = true;
+                break;
+            }
+        }
+        if (!valid) {
+            qWarning() << "[ACPSession] setMode: mode" << modeId
+                       << "not in advertised options, ignoring";
+            return;
+        }
+
+        QJsonObject params;
+        params[QStringLiteral("sessionId")] = m_sessionId;
+        params[QStringLiteral("configId")]  = QStringLiteral("mode");
+        params[QStringLiteral("value")]     = modeId;
+        int reqId = m_service->sendRequest(
+            QStringLiteral("session/set_config_option"), params);
+        if (reqId < 0) {
+            qWarning() << "[ACPSession] setMode: failed to send session/set_config_option";
+            return;
+        }
+        m_interactiveModeRequestId = reqId;
+        m_pendingModeValue = modeId;
+        qDebug() << "[ACPSession] setMode: sent session/set_config_option mode=" << modeId
+                 << "reqId=" << reqId;
+    } else {
+        // Legacy transport: session/set_mode
+        QJsonObject params;
+        params[QStringLiteral("sessionId")] = m_sessionId;
+        params[QStringLiteral("modeId")]    = modeId;
+        int reqId = m_service->sendRequest(
+            QStringLiteral("session/set_mode"), params);
+        if (reqId < 0) {
+            qWarning() << "[ACPSession] setMode: failed to send session/set_mode";
+            return;
+        }
+        m_interactiveModeRequestId = reqId;
+        m_pendingModeValue = modeId;
+        qDebug() << "[ACPSession] setMode: sent session/set_mode modeId=" << modeId
+                 << "reqId=" << reqId;
+    }
 }
 
 static QString expandConfigPath(const QString &path)
@@ -721,6 +789,12 @@ void ACPSession::onResponse(int id, const QJsonObject &result, const QJsonObject
         return;
     }
 
+    // Interactive mode-change response (distinct from the startup config flow).
+    if (id == m_interactiveModeRequestId) {
+        handleInteractiveModeResponse(result, error);
+        return;
+    }
+
     if (!error.isEmpty()) {
         qWarning() << "[ACPSession] Error response for id" << id << ":" << error;
         Q_EMIT errorOccurred(error[QStringLiteral("message")].toString());
@@ -964,6 +1038,49 @@ void ACPSession::handleSessionConfigResponse(const QJsonObject &result, const QJ
     m_sessionConfigRequestId = -1;
     m_currentSessionConfigKey.clear();
     sendNextSessionConfigOption();
+}
+
+void ACPSession::handleInteractiveModeResponse(const QJsonObject &result, const QJsonObject &error)
+{
+    // Always clear the in-flight state first; we capture what we need locally.
+    const QString attempted = m_pendingModeValue;
+    m_interactiveModeRequestId = -1;
+    m_pendingModeValue.clear();
+
+    if (!error.isEmpty()) {
+        const QString errMsg = error[QStringLiteral("message")].toString(
+            QStringLiteral("unknown error"));
+        qWarning() << "[ACPSession] Interactive mode change to" << attempted
+                   << "rejected by agent:" << errMsg;
+        // Roll the dropdown back to the last confirmed mode so the UI is not
+        // left showing a mode the agent refused.
+        Q_EMIT modeChanged(m_currentMode);
+    } else {
+        if (result.contains(QStringLiteral("configOptions"))) {
+            // Modern response: let updateSessionConfigOptions() drive m_currentMode
+            // and emit modesAvailable/modeChanged so the dropdown reflects the
+            // confirmed state returned by the agent.
+            updateSessionConfigOptions(
+                result[QStringLiteral("configOptions")].toArray(), true);
+        } else {
+            // Non-conforming success (e.g. legacy session/set_mode with no body):
+            // accept the attempted value as confirmed and notify the UI.
+            qDebug() << "[ACPSession] Interactive mode change to" << attempted
+                     << "succeeded (no configOptions in response)";
+            m_currentMode = attempted;
+            Q_EMIT modeChanged(m_currentMode);
+        }
+    }
+
+    // If the user changed the dropdown again while this request was in flight,
+    // send the coalesced latest selection now.
+    if (!m_queuedModeValue.isEmpty()) {
+        const QString queued = m_queuedModeValue;
+        m_queuedModeValue.clear();
+        if (queued != m_currentMode) {
+            setMode(queued);
+        }
+    }
 }
 
 void ACPSession::completeSessionSetup(bool loadedSession)
