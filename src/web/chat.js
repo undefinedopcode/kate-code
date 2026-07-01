@@ -1177,8 +1177,12 @@ function toggleTodos() {
     localStorage.setItem('todos-collapsed', isCollapsed.toString());
 }
 
-// Scroll to bottom
+// Scroll to bottom — the real scroll container is #messages (flex:1;
+// overflow-y:auto), so we must scroll that element directly.
+// The window.scrollTo call is kept as a harmless fallback.
 function scrollToBottom() {
+    const c = document.getElementById('messages');
+    if (c) { c.scrollTop = c.scrollHeight; }
     window.scrollTo(0, document.body.scrollHeight);
 }
 

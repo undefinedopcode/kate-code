@@ -856,8 +856,21 @@ void ACPSession::onResponse(int id, const QJsonObject &result, const QJsonObject
         // Prompt completed — finish the streaming message.
         qDebug() << "[ACPSession] Prompt response received, finishing message:" << m_currentMessageId;
         if (!m_currentMessageId.isEmpty()) {
+            // Record transcript here for agents that end the turn via the
+            // session/prompt RESPONSE rather than agent_message_end.  If
+            // agent_message_end already fired it cleared both fields, so this
+            // path sees them empty and is a safe no-op (no double-record).
+            if (!m_currentMessageContent.isEmpty() && m_transcript) {
+                Message assistantMsg;
+                assistantMsg.id = m_currentMessageId;
+                assistantMsg.role = QStringLiteral("assistant");
+                assistantMsg.content = m_currentMessageContent;
+                assistantMsg.timestamp = m_currentMessageTimestamp;
+                m_transcript->recordMessage(assistantMsg);
+            }
             Q_EMIT messageFinished(m_currentMessageId);
             m_currentMessageId.clear();
+            m_currentMessageContent.clear();
         }
         m_promptRequestId = -1;
 

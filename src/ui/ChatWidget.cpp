@@ -444,6 +444,9 @@ void ChatWidget::onConnectClicked()
 
     m_pendingAction = PendingAction::CreateSession;
 
+    // Clear any stale log from a previous session before starting fresh.
+    m_chatWebView->clearMessages();
+
     // Add system message
     Message sysMsg;
     sysMsg.id = QStringLiteral("sys_connect");

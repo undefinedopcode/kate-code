@@ -442,12 +442,22 @@ void ChatWebView::runJavaScript(const QString &script)
         return;
     }
 
+    // Wrap in try/catch so any JS exception is reported via qWarning rather
+    // than silently discarded.  The catch expression evaluates to a sentinel
+    // string that the callback below detects.
+    const QString wrapped = QStringLiteral("try{") + script
+        + QStringLiteral("}catch(e){'KATECODE_JS_ERROR:'+(e&&e.message?e.message:String(e))}");
+
     // Guard the callback with a QPointer so it is a no-op if the view is
     // destroyed before the Chromium worker thread delivers the result.
     QPointer<ChatWebView> guard(this);
-    page()->runJavaScript(script, [guard, script](const QVariant &result) {
-        Q_UNUSED(result);
-        if (guard) {
+    page()->runJavaScript(wrapped, [guard, script](const QVariant &result) {
+        if (!guard) return;
+        const QString str = result.toString();
+        if (str.startsWith(QStringLiteral("KATECODE_JS_ERROR:"))) {
+            qWarning() << "[ChatWebView] JS exception:" << str
+                       << "in script:" << script.left(120);
+        } else {
             qDebug() << "[ChatWebView] JS executed:" << script.left(100);
         }
     });
