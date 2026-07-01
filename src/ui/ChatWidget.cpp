@@ -261,6 +261,55 @@ void ChatWidget::setDocumentProvider(DocumentProvider provider)
     m_session->setDocumentProvider(provider);
 }
 
+void ChatWidget::setAgentSlotHooks(std::function<bool()> acquire,
+                                   std::function<void()> release,
+                                   std::function<bool()> available)
+{
+    m_tryAcquireAgentSlot = std::move(acquire);
+    m_releaseAgentSlot    = std::move(release);
+    m_agentSlotAvailable  = std::move(available);
+}
+
+bool ChatWidget::ensureAgentSlot()
+{
+    if (m_tryAcquireAgentSlot && !m_tryAcquireAgentSlot()) {
+        Message sysMsg;
+        sysMsg.id        = QStringLiteral("sys_agent_busy");
+        sysMsg.role      = QStringLiteral("system");
+        sysMsg.timestamp = QDateTime::currentDateTime();
+        sysMsg.content   = QStringLiteral(
+            "An agent is already active in another Kate window. "
+            "Only one agent can run at a time within a single Kate process; "
+            "use a separate Kate window/process, or stop the other agent.");
+        m_chatWebView->addMessage(sysMsg);
+        return false;
+    }
+    return true;
+}
+
+void ChatWidget::refreshAgentAvailability()
+{
+    // Only adjust buttons when we are not in an active session; leave
+    // onStatusChanged's own logic intact for Connecting and Connected.
+    if (m_lastStatus != ConnectionStatus::Disconnected
+        && m_lastStatus != ConnectionStatus::Error) {
+        return;
+    }
+
+    const bool available = !m_agentSlotAvailable || m_agentSlotAvailable();
+    m_connectButton->setEnabled(available);
+    m_resumeSessionButton->setEnabled(available);
+
+    if (!available) {
+        m_connectButton->setToolTip(
+            QStringLiteral("An agent is active in another Kate window"));
+        m_statusIndicator->setToolTip(
+            QStringLiteral("An agent is active in another Kate window"));
+    } else {
+        m_connectButton->setToolTip(QStringLiteral("Connect"));
+    }
+}
+
 void ChatWidget::setSettingsStore(SettingsStore *settings)
 {
     m_settingsStore = settings;
@@ -298,6 +347,11 @@ void ChatWidget::onConnectClicked()
         return;
     }
 
+    // Check the process-wide single-agent gate before starting anything.
+    if (!ensureAgentSlot()) {
+        return;
+    }
+
     // Reset user message tracking for new session
     m_userSentMessage = false;
 
@@ -322,6 +376,11 @@ void ChatWidget::onConnectClicked()
 
 void ChatWidget::onResumeSessionClicked()
 {
+    // Check the process-wide single-agent gate before starting anything.
+    if (!ensureAgentSlot()) {
+        return;
+    }
+
     // Get current project root
     QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
 
@@ -417,6 +476,11 @@ QString ChatWidget::resolveResumeContext(const QString &projectRoot, const QStri
 
 void ChatWidget::onNewSessionClicked()
 {
+    // Check the process-wide single-agent gate before starting anything.
+    if (!ensureAgentSlot()) {
+        return;
+    }
+
     // Trigger summary generation BEFORE resetting state, since stop() will
     // emit statusChanged(Disconnected) which calls triggerSummaryGeneration()
     // and that checks m_userSentMessage
@@ -490,12 +554,19 @@ void ChatWidget::onMessageSubmitted(const QString &message)
 
 void ChatWidget::onStatusChanged(ConnectionStatus status)
 {
+    // Keep m_lastStatus in sync first so refreshAgentAvailability() and any
+    // slot called from within this function sees the updated value.
+    m_lastStatus = status;
+
     Message sysMsg;
     sysMsg.role = QStringLiteral("system");
     sysMsg.timestamp = QDateTime::currentDateTime();
 
     switch (status) {
     case ConnectionStatus::Disconnected:
+        if (m_releaseAgentSlot) {
+            m_releaseAgentSlot();
+        }
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
         m_connectButton->setToolTip(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
@@ -576,6 +647,9 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_injectContextOnConnect = false;
         break;
     case ConnectionStatus::Error:
+        if (m_releaseAgentSlot) {
+            m_releaseAgentSlot();
+        }
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
         m_connectButton->setToolTip(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
@@ -587,6 +661,9 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_acpLogger->endSession();
         break;
     }
+
+    // Let all windows re-evaluate their button states after any status change.
+    refreshAgentAvailability();
 }
 
 void ChatWidget::onMessageAdded(const Message &message)

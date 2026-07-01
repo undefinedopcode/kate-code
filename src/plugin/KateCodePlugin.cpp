@@ -55,6 +55,29 @@ QObject *KateCodePlugin::createView(KTextEditor::MainWindow *mainWindow)
     return view;
 }
 
+bool KateCodePlugin::acquireAgentSlot(QObject *owner)
+{
+    if (m_agentOwner.isNull() || m_agentOwner == owner) {
+        m_agentOwner = owner;
+        Q_EMIT agentActivityChanged();
+        return true;
+    }
+    return false;
+}
+
+void KateCodePlugin::releaseAgentSlot(QObject *owner)
+{
+    if (m_agentOwner == owner) {
+        m_agentOwner = nullptr;
+        Q_EMIT agentActivityChanged();
+    }
+}
+
+bool KateCodePlugin::agentSlotAvailableFor(QObject *owner) const
+{
+    return m_agentOwner.isNull() || m_agentOwner == owner;
+}
+
 int KateCodePlugin::configPages() const
 {
     return 1;

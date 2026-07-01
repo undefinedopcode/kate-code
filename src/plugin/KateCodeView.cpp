@@ -154,6 +154,15 @@ void KateCodeView::createToolView()
     // Inject settings store for summary generation
     m_chatWidget->setSettingsStore(m_plugin->settings());
 
+    // Wire the process-wide single-agent gate so only one window runs an agent
+    // at a time within this Kate process.
+    m_chatWidget->setAgentSlotHooks(
+        [this]() { return m_plugin->acquireAgentSlot(m_chatWidget); },
+        [this]() { m_plugin->releaseAgentSlot(m_chatWidget); },
+        [this]() { return m_plugin->agentSlotAvailableFor(m_chatWidget); });
+    connect(m_plugin, &KateCodePlugin::agentActivityChanged,
+            m_chatWidget, &ChatWidget::refreshAgentAvailability);
+
     // Connect edit navigation
     connect(m_chatWidget, &ChatWidget::jumpToEditRequested, this, &KateCodeView::jumpToEdit);
 

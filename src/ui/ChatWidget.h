@@ -43,6 +43,12 @@ public:
     void setFileListProvider(FileListProvider provider);
     void setDocumentProvider(DocumentProvider provider);
 
+    // Agent-slot hooks wired by KateCodeView so the plugin-level gate can be
+    // consulted before any session is started.
+    void setAgentSlotHooks(std::function<bool()> acquire,
+                           std::function<void()> release,
+                           std::function<bool()> available);
+
     // Context chunk management
     void addContextChunk(const QString &filePath, int startLine, int endLine, const QString &content);
     void removeContextChunk(const QString &id);
@@ -62,6 +68,9 @@ public Q_SLOTS:
     void showUserQuestion(const QString &requestId, const QString &questionsJson);
     // Remove user question UI (on timeout or cancel)
     void removeUserQuestion(const QString &requestId);
+    // Called by KateCodePlugin::agentActivityChanged() to refresh connect/resume
+    // button enabled-states when another window acquires or releases the slot.
+    void refreshAgentAvailability();
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
@@ -127,6 +136,9 @@ private:
     void updateTerminalSize();
     void resetWebView();
     void connectWebViewSignals();
+    // Returns false (and shows a system message) if another window holds the
+    // agent slot; returns true if this widget can proceed to start a session.
+    bool ensureAgentSlot();
     // Pending session action for after initialize completes
     enum class PendingAction {
         None,
@@ -142,6 +154,14 @@ private:
     ContextProvider m_selectionProvider;
     ContextProvider m_projectRootProvider;
     FileListProvider m_fileListProvider;
+
+    // Agent-slot hooks (set by KateCodeView; default-empty = no gate)
+    std::function<bool()> m_tryAcquireAgentSlot;
+    std::function<void()> m_releaseAgentSlot;
+    std::function<bool()> m_agentSlotAvailable;
+
+    // Last-seen connection status, kept in sync at the top of onStatusChanged()
+    ConnectionStatus m_lastStatus = ConnectionStatus::Disconnected;
 
     // Context chunks
     QList<ContextChunk> m_contextChunks;
