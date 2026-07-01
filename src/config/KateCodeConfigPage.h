@@ -9,6 +9,7 @@ class QCheckBox;
 class QComboBox;
 class QPushButton;
 class QLabel;
+class QPlainTextEdit;
 class QListWidget;
 class QListWidgetItem;
 class QTabWidget;
@@ -92,6 +93,9 @@ private:
 
     // General tab - Debug section
     QCheckBox *m_debugLoggingCheck;
+
+    // Advanced tab - Command auto-approval section
+    QPlainTextEdit *m_allowedCommandsEdit;
 
     bool m_hasChanges;
     bool m_apiKeyVisible;

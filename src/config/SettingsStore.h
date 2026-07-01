@@ -100,6 +100,11 @@ public:
     void setDiffColorScheme(DiffColorScheme scheme);
     DiffColors diffColors() const;
 
+    // Global glob patterns for auto-approving matching agent commands
+    QStringList allowedCommandPatterns() const;
+    void setAllowedCommandPatterns(const QStringList &patterns);
+    bool isCommandAllowed(const QString &command) const;
+
     // Static helper to get colors for a scheme
     // forLightBackground: true if the code block background is light (needs brighter diff colors)
     static DiffColors colorsForScheme(DiffColorScheme scheme, bool forLightBackground = false);

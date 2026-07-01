@@ -22,6 +22,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSignalBlocker>
 #include <QTabWidget>
@@ -368,6 +369,27 @@ void KateCodeConfigPage::setupAdvancedTab(QWidget *tab)
 
     tabLayout->addWidget(logGroup);
 
+    // Command Auto-Approval Group
+    auto *approvalGroup = new QGroupBox(i18n("Command Auto-Approval"), tab);
+    auto *approvalLayout = new QVBoxLayout(approvalGroup);
+
+    auto *approvalNote = new QLabel(
+        i18n("Commands run by the agent whose text matches one of these glob patterns "
+             "are approved automatically without prompting. Enter one pattern per line. "
+             "Leave empty to always prompt.\n"
+             "Examples: git status, ls *, npm run *"),
+        tab);
+    approvalNote->setWordWrap(true);
+    approvalLayout->addWidget(approvalNote);
+
+    m_allowedCommandsEdit = new QPlainTextEdit(tab);
+    m_allowedCommandsEdit->setPlaceholderText(i18n("e.g.\ngit status\nls *\nnpm run *"));
+    connect(m_allowedCommandsEdit, &QPlainTextEdit::textChanged,
+            this, &KateCodeConfigPage::onSettingChanged);
+    approvalLayout->addWidget(m_allowedCommandsEdit);
+
+    tabLayout->addWidget(approvalGroup);
+
     // Stretch to push everything to top
     tabLayout->addStretch();
 }
@@ -419,6 +441,17 @@ void KateCodeConfigPage::apply()
     m_settings->setDiffColorScheme(static_cast<DiffColorScheme>(m_diffColorSchemeCombo->currentData().toInt()));
     m_settings->setDebugLogging(m_debugLoggingCheck->isChecked());
 
+    // Save allowed command patterns (split on newlines, trim, drop blanks)
+    const QStringList rawLines = m_allowedCommandsEdit->toPlainText().split(QLatin1Char('\n'));
+    QStringList patterns;
+    for (const QString &line : rawLines) {
+        const QString trimmed = line.trimmed();
+        if (!trimmed.isEmpty()) {
+            patterns.append(trimmed);
+        }
+    }
+    m_settings->setAllowedCommandPatterns(patterns);
+
     m_hasChanges = false;
 }
 
@@ -434,6 +467,7 @@ void KateCodeConfigPage::defaults()
     m_acpLogSubdirEdit->setText(QStringLiteral("kate_code_sessions"));
     m_diffColorSchemeCombo->setCurrentIndex(0); // RedGreen (default)
     m_debugLoggingCheck->setChecked(false);
+    m_allowedCommandsEdit->clear();
     m_hasChanges = true;
     Q_EMIT changed();
 }
@@ -465,6 +499,9 @@ void KateCodeConfigPage::reset()
 
     // Load debug setting
     m_debugLoggingCheck->setChecked(m_settings->debugLogging());
+
+    // Load allowed command patterns (join with newlines for display)
+    m_allowedCommandsEdit->setPlainText(m_settings->allowedCommandPatterns().join(QLatin1Char('\n')));
 
     // Load provider list
     populateProviderList();

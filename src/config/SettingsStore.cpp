@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QRegularExpression>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -629,4 +630,36 @@ QString SettingsStore::schemeDisplayName(DiffColorScheme scheme)
     default:
         return QStringLiteral("Red / Green (default)");
     }
+}
+
+QStringList SettingsStore::allowedCommandPatterns() const
+{
+    return m_settings.value(QStringLiteral("Permissions/allowedCommands"), QStringList()).toStringList();
+}
+
+void SettingsStore::setAllowedCommandPatterns(const QStringList &patterns)
+{
+    m_settings.setValue(QStringLiteral("Permissions/allowedCommands"), patterns);
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+bool SettingsStore::isCommandAllowed(const QString &command) const
+{
+    const QString trimmed = command.trimmed();
+    const QStringList patterns = allowedCommandPatterns();
+
+    for (const QString &pattern : patterns) {
+        const QString trimmedPattern = pattern.trimmed();
+        if (trimmedPattern.isEmpty()) {
+            continue;  // Ignore blank lines from the editor
+        }
+        // wildcardToRegularExpression() anchors the pattern for a full match.
+        const QRegularExpression re(QRegularExpression::wildcardToRegularExpression(trimmedPattern),
+                                    QRegularExpression::NoPatternOption);  // case-sensitive
+        if (re.isValid() && re.match(trimmed).hasMatch()) {
+            return true;
+        }
+    }
+    return false;  // Empty list means nothing is auto-approved
 }
