@@ -298,13 +298,10 @@ body {
 
 .message.streaming .message-content::after {
     content: '▊';
-    animation: blink 1s infinite;
+    /* Steady (non-flashing) streaming caret: the opacity is fixed so the
+       block does not blink while the agent is producing output. */
+    opacity: 0.6;
     margin-left: 2px;
-}
-
-@keyframes blink {
-    0%, 50% { opacity: 1; }
-    51%, 100% { opacity: 0; }
 }
 
 /* Markdown styles in assistant messages */
