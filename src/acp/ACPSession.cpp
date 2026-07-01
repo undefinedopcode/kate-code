@@ -419,6 +419,17 @@ QJsonArray ACPSession::buildMcpServers() const
                 envArray.append(entry);
             }
         }
+
+        // Tell the child MCP server which DBus service name to target so it
+        // reaches THIS process's editor instance, not a different Kate process.
+        {
+            QJsonObject entry;
+            entry[QStringLiteral("name")]  = QStringLiteral("KATECODE_DBUS_SERVICE");
+            entry[QStringLiteral("value")] = QString(QStringLiteral("org.kde.katecode.editor.")
+                                             + QString::number(QCoreApplication::applicationPid()));
+            envArray.append(entry);
+        }
+
         kateMcp[QStringLiteral("env")] = envArray;
         mcpServers.append(kateMcp);
         qDebug() << "[ACPSession] Added Kate MCP server:" << mcpServerPath;

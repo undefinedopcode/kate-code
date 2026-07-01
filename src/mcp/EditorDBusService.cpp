@@ -27,9 +27,18 @@ bool EditorDBusService::registerOnBus()
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
 
-    if (!bus.registerService(QStringLiteral("org.kde.katecode.editor"))) {
+    // Primary name is unique per process so multiple Kate instances can coexist.
+    const QString primaryName = QStringLiteral("org.kde.katecode.editor.")
+                                + QString::number(QCoreApplication::applicationPid());
+    if (!bus.registerService(primaryName)) {
         qWarning() << "[KateCode] Failed to register DBus service:" << bus.lastError().message();
         return false;
+    }
+
+    // Best-effort: also claim the bare legacy name so the first process to start
+    // is reachable by older tooling.  A second process silently skips this.
+    if (!bus.registerService(QStringLiteral("org.kde.katecode.editor"))) {
+        qDebug() << "[KateCode] Legacy DBus service name already claimed by another process (harmless)";
     }
 
     if (!bus.registerObject(QStringLiteral("/KateCode/Editor"), this, QDBusConnection::ExportAllSlots)) {
@@ -37,7 +46,7 @@ bool EditorDBusService::registerOnBus()
         return false;
     }
 
-    qDebug() << "[KateCode] DBus service registered: org.kde.katecode.editor";
+    qDebug() << "[KateCode] DBus service registered:" << primaryName;
     return true;
 }
 

@@ -19,8 +19,13 @@ ChatWebView::ChatWebView(QWidget *parent)
     settings()->setAttribute(QWebEngineSettings::JavascriptEnabled, true);
     settings()->setAttribute(QWebEngineSettings::LocalStorageEnabled, true);
 
-    // Enable developer tools for debugging
-    qputenv("QTWEBENGINE_REMOTE_DEBUGGING", "9222");
+    // Enable WebEngine remote debugging only when the user has explicitly opted
+    // in via KATECODE_REMOTE_DEBUGGING=<port>.  Unconditional use of a fixed
+    // port collides across multiple Kate processes and exposes a network socket
+    // to any local user without consent.
+    if (qEnvironmentVariableIsSet("KATECODE_REMOTE_DEBUGGING")) {
+        qputenv("QTWEBENGINE_REMOTE_DEBUGGING", qgetenv("KATECODE_REMOTE_DEBUGGING"));
+    }
 
     // Setup web channel for JavaScript <-> C++ communication
     setupBridge();

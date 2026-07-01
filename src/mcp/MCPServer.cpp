@@ -9,6 +9,16 @@
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QJsonDocument>
+#include <QString>
+
+// Returns the DBus service name of the editor to talk to.  When launched by
+// ACPSession the env var is set to the pid-specific name of the parent Kate
+// process.  The legacy bare name is the fallback for single-process scenarios.
+static QString editorServiceName()
+{
+    return qEnvironmentVariable("KATECODE_DBUS_SERVICE",
+                                QStringLiteral("org.kde.katecode.editor"));
+}
 
 MCPServer::MCPServer() = default;
 
@@ -298,7 +308,7 @@ QJsonObject MCPServer::executeDocuments(const QJsonObject &arguments)
 {
     Q_UNUSED(arguments);
 
-    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+    QDBusInterface iface(editorServiceName(),
                          QStringLiteral("/KateCode/Editor"),
                          QStringLiteral("org.kde.katecode.Editor"),
                          QDBusConnection::sessionBus());
@@ -392,7 +402,7 @@ QJsonObject MCPServer::executeRead(const QJsonObject &arguments)
         return result;
     }
 
-    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+    QDBusInterface iface(editorServiceName(),
                          QStringLiteral("/KateCode/Editor"),
                          QStringLiteral("org.kde.katecode.Editor"),
                          QDBusConnection::sessionBus());
@@ -498,7 +508,7 @@ QJsonObject MCPServer::executeEdit(const QJsonObject &arguments)
         return result;
     }
 
-    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+    QDBusInterface iface(editorServiceName(),
                          QStringLiteral("/KateCode/Editor"),
                          QStringLiteral("org.kde.katecode.Editor"),
                          QDBusConnection::sessionBus());
@@ -554,7 +564,7 @@ QJsonObject MCPServer::executeWrite(const QJsonObject &arguments)
         return result;
     }
 
-    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+    QDBusInterface iface(editorServiceName(),
                          QStringLiteral("/KateCode/Editor"),
                          QStringLiteral("org.kde.katecode.Editor"),
                          QDBusConnection::sessionBus());
@@ -648,7 +658,7 @@ QJsonObject MCPServer::executeAskUserQuestion(const QJsonObject &arguments)
         QJsonDocument(questions).toJson(QJsonDocument::Compact));
 
     // Call DBus method - this will block until user responds
-    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+    QDBusInterface iface(editorServiceName(),
                          QStringLiteral("/KateCode/Editor"),
                          QStringLiteral("org.kde.katecode.Editor"),
                          QDBusConnection::sessionBus());
