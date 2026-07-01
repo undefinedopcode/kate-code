@@ -189,4 +189,7 @@ private:
 
     // Track pending summary generation waiting for API key
     bool m_pendingSummaryAfterKeyLoad = false;
+
+    // Set to true by prepareForShutdown() so a second call is a no-op.
+    bool m_shutdownDone = false;
 };

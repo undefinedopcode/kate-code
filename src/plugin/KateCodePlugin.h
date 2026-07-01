@@ -28,6 +28,9 @@ public:
     // DBus service access for views (used for question routing)
     EditorDBusService *dbusService() const { return m_dbusService; }
 
+    // Called from KateCodeView::~KateCodeView() to prevent dangling pointers
+    void removeView(KateCodeView *view) { m_views.removeOne(view); }
+
 private Q_SLOTS:
     void onAboutToQuit();
 

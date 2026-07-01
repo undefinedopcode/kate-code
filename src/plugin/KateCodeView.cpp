@@ -93,6 +93,16 @@ KateCodeView::KateCodeView(KateCodePlugin *plugin, KTextEditor::MainWindow *main
 
 KateCodeView::~KateCodeView()
 {
+    // Remove this view from the plugin's list so onAboutToQuit() cannot
+    // dereference us after we are destroyed (e.g. when a window is closed
+    // before the application quits).  We do NOT call prepareForShutdown() here:
+    // the tool view (and its ChatWidget) may already have been destroyed by the
+    // MainWindow, so touching m_chatWidget would be a use-after-free.  ChatWidget
+    // severs its own signals in its destructor, and onAboutToQuit() still runs
+    // prepareForShutdown() on the application-quit path while everything is
+    // alive.
+    m_plugin->removeView(this);
+
     // Remove XMLGUI client before destruction to prevent leaks and crashes
     if (m_mainWindow && m_mainWindow->guiFactory()) {
         m_mainWindow->guiFactory()->removeClient(this);

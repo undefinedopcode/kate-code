@@ -171,19 +171,66 @@ ChatWidget::ChatWidget(QWidget *parent)
 
 ChatWidget::~ChatWidget()
 {
+    // Sever session/web-view signals in a controlled order before Qt destroys
+    // our children.  This is the key crash-on-close fix: m_chatWebView is
+    // constructed after m_session, so it is destroyed first; when m_session is
+    // then destroyed, ~ACPSession -> stop() emits disconnected(0), and if
+    // onStatusChanged were still connected it would call the already-freed
+    // m_chatWebView.  We deliberately do NOT run summary generation here: it can
+    // block on the network and pump the event loop, which is unsafe inside a
+    // destructor.  Summaries stay on the application-quit path (onAboutToQuit ->
+    // prepareForShutdown); the child destructors handle the subprocess and page.
+    if (!m_shutdownDone) {
+        m_shutdownDone = true;
+        if (m_session) {
+            disconnect(m_session, nullptr, this, nullptr);
+        }
+        if (m_chatWebView) {
+            disconnect(m_chatWebView, nullptr, this, nullptr);
+            disconnect(this, nullptr, m_chatWebView, nullptr);
+        }
+    }
 }
 
 void ChatWidget::prepareForShutdown()
 {
+    // Idempotent: a second call (e.g. from ~ChatWidget after an explicit call
+    // from KateCodeView) must be a safe no-op.
+    if (m_shutdownDone) {
+        return;
+    }
+    m_shutdownDone = true;
+
     qDebug() << "[ChatWidget] prepareForShutdown called";
 
-    // Trigger summary generation for active session
+    // Disconnect session signals into this widget so that in-flight ACP events
+    // do not call into the (possibly half-destroyed) web view.
+    if (m_session) {
+        disconnect(m_session, nullptr, this, nullptr);
+    }
+
+    // Disconnect web view signals that could fire addMessage() etc. during
+    // summary generation while the web page is being torn down.
+    if (m_chatWebView) {
+        disconnect(m_chatWebView, nullptr, this, nullptr);
+        disconnect(this, nullptr, m_chatWebView, nullptr);
+    }
+
+    // Trigger summary generation for active session (null-safe internally).
     triggerSummaryGeneration();
 
-    // Wait for summary to complete (if one was triggered)
+    // Wait for summary to complete (null-check: m_summaryGenerator is only
+    // created in setSettingsStore(), so it may be null).
     if (m_summaryGenerator && m_summaryGenerator->isGenerating()) {
         qDebug() << "[ChatWidget] Waiting for summary generation to complete...";
         m_summaryGenerator->waitForPendingRequests();
+    }
+
+    // Stop the ACP session and its subprocess so ACPService::stop() runs in a
+    // controlled order before Qt's child-destruction tears everything down.
+    if (m_session && m_session->isConnected()) {
+        qDebug() << "[ChatWidget] Stopping ACP session during shutdown";
+        m_session->stop();
     }
 
     qDebug() << "[ChatWidget] Shutdown preparation complete";
@@ -460,7 +507,9 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_statusIndicator->setToolTip(QStringLiteral("Disconnected"));
         m_titleLabel->setText(QStringLiteral("Kate Code - Session"));
         sysMsg.id = QStringLiteral("sys_disconnected");
-        sysMsg.content = QStringLiteral("Disconnected from %1").arg(m_settingsStore->activeProvider().description);
+        sysMsg.content = QStringLiteral("Disconnected from %1").arg(
+            m_settingsStore ? m_settingsStore->activeProvider().description
+                            : QStringLiteral("ACP"));
         m_chatWebView->addMessage(sysMsg);
 
         // Close the ACP log file so the next session starts a fresh one.

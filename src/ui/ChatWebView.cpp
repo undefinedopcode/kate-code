@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QPointer>
 #include <QWebChannel>
 #include <QWebEnginePage>
 #include <QWebEngineSettings>
@@ -42,6 +43,26 @@ ChatWebView::ChatWebView(QWidget *parent)
 
 ChatWebView::~ChatWebView()
 {
+    // Mark as unloaded immediately so runJavaScript() queues nothing and
+    // any callback lambdas still in flight see a dead page and short-circuit.
+    m_isLoaded = false;
+    m_pendingScripts.clear();
+
+    // Sever all signals from this view and from the bridge so nothing
+    // re-enters during the rest of destruction.
+    disconnect(this, nullptr, nullptr, nullptr);
+    disconnect(m_bridge, nullptr, nullptr, nullptr);
+
+    // Stop any in-flight page load before the page auto-destructs.
+    triggerPageAction(QWebEnginePage::Stop);
+
+    // Detach the web channel from the page symmetrically to setupBridge().
+    // The channel is a child of *this* so it will be deleted after us unless
+    // we detach it first; removing it here prevents the page from calling back
+    // into a half-destroyed channel during its own cleanup.
+    if (page()) {
+        page()->setWebChannel(nullptr);
+    }
 }
 
 void ChatWebView::onLoadFinished(bool ok)
@@ -416,9 +437,14 @@ void ChatWebView::runJavaScript(const QString &script)
         return;
     }
 
-    page()->runJavaScript(script, [script](const QVariant &result) {
+    // Guard the callback with a QPointer so it is a no-op if the view is
+    // destroyed before the Chromium worker thread delivers the result.
+    QPointer<ChatWebView> guard(this);
+    page()->runJavaScript(script, [guard, script](const QVariant &result) {
         Q_UNUSED(result);
-        qDebug() << "[ChatWebView] JS executed:" << script.left(100);
+        if (guard) {
+            qDebug() << "[ChatWebView] JS executed:" << script.left(100);
+        }
     });
 }
 
