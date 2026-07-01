@@ -44,6 +44,11 @@ public:
     ConnectionStatus status() const { return m_status; }
     QString sessionId() const { return m_sessionId; }
 
+    // Agent prompt capabilities, parsed from the initialize response.
+    bool supportsImage() const { return m_supportsImage; }
+    bool supportsEmbeddedContext() const { return m_supportsEmbeddedContext; }
+    bool supportsPromptQueueing() const { return m_supportsPromptQueueing; }
+
     void cancelPrompt();
     QJsonArray availableModes() const { return m_availableModes; }
     QString currentMode() const { return m_currentMode; }
@@ -174,4 +179,9 @@ private:
     QStringList m_pendingSessionConfigKeys;
     QString m_currentSessionConfigKey;
     bool m_configuringLoadedSession = false;
+
+    // Agent prompt capabilities from the initialize response (default false).
+    bool m_supportsImage = false;
+    bool m_supportsEmbeddedContext = false;
+    bool m_supportsPromptQueueing = false;
 };

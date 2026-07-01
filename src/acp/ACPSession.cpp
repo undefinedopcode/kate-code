@@ -167,6 +167,10 @@ void ACPSession::stop()
     m_interactiveModeRequestId = -1;
     m_pendingModeValue.clear();
     m_queuedModeValue.clear();
+    // Reset agent capability flags so they don't leak across reconnections.
+    m_supportsImage = false;
+    m_supportsEmbeddedContext = false;
+    m_supportsPromptQueueing = false;
 
     m_service->stop();
 
@@ -597,93 +601,109 @@ void ACPSession::sendMessage(const QString &content, const QString &filePath, co
     QJsonArray promptBlocks;
 
     // Add file context as embedded resource if available
-    if (!filePath.isEmpty() && !selection.isEmpty()) {
-        // Add resource block with selection
-        QJsonObject resourceBlock;
-        resourceBlock[QStringLiteral("type")] = QStringLiteral("resource");
+    // Embedded-context (resource) blocks are only sent when the agent advertised
+    // embeddedContext support in its promptCapabilities.
+    if (m_supportsEmbeddedContext) {
+        if (!filePath.isEmpty() && !selection.isEmpty()) {
+            // Add resource block with selection
+            QJsonObject resourceBlock;
+            resourceBlock[QStringLiteral("type")] = QStringLiteral("resource");
 
-        QJsonObject resource;
-        resource[QStringLiteral("uri")] = QUrl::fromLocalFile(filePath).toString();
-        resource[QStringLiteral("text")] = selection;
+            QJsonObject resource;
+            resource[QStringLiteral("uri")] = QUrl::fromLocalFile(filePath).toString();
+            resource[QStringLiteral("text")] = selection;
 
-        // Try to guess MIME type from file extension
-        QString mimeType = QStringLiteral("text/plain");
-        if (filePath.endsWith(QStringLiteral(".cpp")) || filePath.endsWith(QStringLiteral(".h")) ||
-            filePath.endsWith(QStringLiteral(".cc")) || filePath.endsWith(QStringLiteral(".cxx"))) {
-            mimeType = QStringLiteral("text/x-c++");
-        } else if (filePath.endsWith(QStringLiteral(".py"))) {
-            mimeType = QStringLiteral("text/x-python");
-        } else if (filePath.endsWith(QStringLiteral(".js"))) {
-            mimeType = QStringLiteral("text/javascript");
-        } else if (filePath.endsWith(QStringLiteral(".rs"))) {
-            mimeType = QStringLiteral("text/x-rust");
+            // Try to guess MIME type from file extension
+            QString mimeType = QStringLiteral("text/plain");
+            if (filePath.endsWith(QStringLiteral(".cpp")) || filePath.endsWith(QStringLiteral(".h")) ||
+                filePath.endsWith(QStringLiteral(".cc")) || filePath.endsWith(QStringLiteral(".cxx"))) {
+                mimeType = QStringLiteral("text/x-c++");
+            } else if (filePath.endsWith(QStringLiteral(".py"))) {
+                mimeType = QStringLiteral("text/x-python");
+            } else if (filePath.endsWith(QStringLiteral(".js"))) {
+                mimeType = QStringLiteral("text/javascript");
+            } else if (filePath.endsWith(QStringLiteral(".rs"))) {
+                mimeType = QStringLiteral("text/x-rust");
+            }
+            resource[QStringLiteral("mimeType")] = mimeType;
+
+            resourceBlock[QStringLiteral("resource")] = resource;
+            promptBlocks.append(resourceBlock);
+        } else if (!filePath.isEmpty()) {
+            // Add just a file reference (no content)
+            QJsonObject resourceBlock;
+            resourceBlock[QStringLiteral("type")] = QStringLiteral("resource");
+
+            QJsonObject resource;
+            resource[QStringLiteral("uri")] = QUrl::fromLocalFile(filePath).toString();
+            resource[QStringLiteral("text")] = QStringLiteral("(current file)");
+            resource[QStringLiteral("mimeType")] = QStringLiteral("text/plain");
+
+            resourceBlock[QStringLiteral("resource")] = resource;
+            promptBlocks.append(resourceBlock);
         }
-        resource[QStringLiteral("mimeType")] = mimeType;
 
-        resourceBlock[QStringLiteral("resource")] = resource;
-        promptBlocks.append(resourceBlock);
-    } else if (!filePath.isEmpty()) {
-        // Add just a file reference (no content)
-        QJsonObject resourceBlock;
-        resourceBlock[QStringLiteral("type")] = QStringLiteral("resource");
+        // Add context chunks as embedded resources
+        for (const ContextChunk &chunk : contextChunks) {
+            QJsonObject resourceBlock;
+            resourceBlock[QStringLiteral("type")] = QStringLiteral("resource");
 
-        QJsonObject resource;
-        resource[QStringLiteral("uri")] = QUrl::fromLocalFile(filePath).toString();
-        resource[QStringLiteral("text")] = QStringLiteral("(current file)");
-        resource[QStringLiteral("mimeType")] = QStringLiteral("text/plain");
+            QJsonObject resource;
+            resource[QStringLiteral("uri")] = QUrl::fromLocalFile(chunk.filePath).toString();
+            resource[QStringLiteral("text")] = chunk.content;
 
-        resourceBlock[QStringLiteral("resource")] = resource;
-        promptBlocks.append(resourceBlock);
+            // Guess MIME type from file extension
+            QString mimeType = QStringLiteral("text/plain");
+            if (chunk.filePath.endsWith(QStringLiteral(".cpp")) || chunk.filePath.endsWith(QStringLiteral(".h")) ||
+                chunk.filePath.endsWith(QStringLiteral(".cc")) || chunk.filePath.endsWith(QStringLiteral(".cxx"))) {
+                mimeType = QStringLiteral("text/x-c++");
+            } else if (chunk.filePath.endsWith(QStringLiteral(".py"))) {
+                mimeType = QStringLiteral("text/x-python");
+            } else if (chunk.filePath.endsWith(QStringLiteral(".js"))) {
+                mimeType = QStringLiteral("text/javascript");
+            } else if (chunk.filePath.endsWith(QStringLiteral(".rs"))) {
+                mimeType = QStringLiteral("text/x-rust");
+            }
+            resource[QStringLiteral("mimeType")] = mimeType;
+
+            resourceBlock[QStringLiteral("resource")] = resource;
+            promptBlocks.append(resourceBlock);
+        }
+    } else if (!filePath.isEmpty() || !contextChunks.isEmpty()) {
+        qDebug() << "[ACPSession] Skipping embedded-context blocks: agent did not advertise embeddedContext capability";
     }
 
-    // Add context chunks as embedded resources
-    for (const ContextChunk &chunk : contextChunks) {
-        QJsonObject resourceBlock;
-        resourceBlock[QStringLiteral("type")] = QStringLiteral("resource");
+    // Image blocks are only sent when the agent advertised image support.
+    if (m_supportsImage) {
+        for (const ImageAttachment &img : images) {
+            QJsonObject imageBlock;
+            imageBlock[QStringLiteral("type")] = QStringLiteral("image");
+            imageBlock[QStringLiteral("mimeType")] = img.mimeType;
+            imageBlock[QStringLiteral("data")] = QString::fromLatin1(img.data.toBase64());
+            promptBlocks.append(imageBlock);
 
-        QJsonObject resource;
-        resource[QStringLiteral("uri")] = QUrl::fromLocalFile(chunk.filePath).toString();
-        resource[QStringLiteral("text")] = chunk.content;
-
-        // Guess MIME type from file extension
-        QString mimeType = QStringLiteral("text/plain");
-        if (chunk.filePath.endsWith(QStringLiteral(".cpp")) || chunk.filePath.endsWith(QStringLiteral(".h")) ||
-            chunk.filePath.endsWith(QStringLiteral(".cc")) || chunk.filePath.endsWith(QStringLiteral(".cxx"))) {
-            mimeType = QStringLiteral("text/x-c++");
-        } else if (chunk.filePath.endsWith(QStringLiteral(".py"))) {
-            mimeType = QStringLiteral("text/x-python");
-        } else if (chunk.filePath.endsWith(QStringLiteral(".js"))) {
-            mimeType = QStringLiteral("text/javascript");
-        } else if (chunk.filePath.endsWith(QStringLiteral(".rs"))) {
-            mimeType = QStringLiteral("text/x-rust");
+            qDebug() << "[ACPSession] Added image block - mimeType:" << img.mimeType
+                     << "data size:" << img.data.size() << "bytes"
+                     << "base64 length:" << img.data.toBase64().size();
         }
-        resource[QStringLiteral("mimeType")] = mimeType;
-
-        resourceBlock[QStringLiteral("resource")] = resource;
-        promptBlocks.append(resourceBlock);
-    }
-
-    // Add image attachments
-    for (const ImageAttachment &img : images) {
-        QJsonObject imageBlock;
-        imageBlock[QStringLiteral("type")] = QStringLiteral("image");
-        imageBlock[QStringLiteral("mimeType")] = img.mimeType;
-        imageBlock[QStringLiteral("data")] = QString::fromLatin1(img.data.toBase64());
-        promptBlocks.append(imageBlock);
-
-        qDebug() << "[ACPSession] Added image block - mimeType:" << img.mimeType
-                 << "data size:" << img.data.size() << "bytes"
-                 << "base64 length:" << img.data.toBase64().size();
+    } else if (!images.isEmpty()) {
+        qWarning() << "[ACPSession] Skipping" << images.size()
+                   << "image(s): agent did not advertise image capability";
     }
 
     // Add user's actual message
     QJsonObject textBlock;
     textBlock[QStringLiteral("type")] = QStringLiteral("text");
 
-    // On first message, add system reminder to prefer Kate MCP tools
+    // On first message, add system reminder with editor context and tool preferences.
     QString messageText = content;
     if (isFirstMessage) {
         messageText += QStringLiteral("\n\n<system-reminder>"
+            "You are running inside the KDE Kate text editor via the Kate Code plugin. "
+            "The files the user has open in Kate are your working context. "
+            "File reads, edits, and writes should go through the kate MCP tools so the user "
+            "can review changes directly in the editor. "
+            "The workspace root is the current project directory.\n\n"
             "Use mcp__kate__katecode_documents when you need to see which files are open in Kate.\n\n"
             "In sessions with mcp__kate__katecode_read always use it instead of Read as it contains the most up-to-date contents.\n\n"
             "In sessions with mcp__kate__katecode_write always use it instead of Write as it will\n"
@@ -825,6 +845,21 @@ void ACPSession::handleInitializeResponse(int id, const QJsonObject &result)
 {
     Q_UNUSED(id);
     qDebug() << "[ACPSession] Initialize response received:" << result;
+
+    // Parse agent prompt capabilities so we can degrade gracefully on servers
+    // that don't support all block types (e.g. Codex omits image/embeddedContext).
+    const QJsonObject agentCaps = result[QStringLiteral("agentCapabilities")].toObject();
+    const QJsonObject promptCaps = agentCaps[QStringLiteral("promptCapabilities")].toObject();
+    m_supportsImage = promptCaps[QStringLiteral("image")].toBool(false);
+    m_supportsEmbeddedContext = promptCaps[QStringLiteral("embeddedContext")].toBool(false);
+    m_supportsPromptQueueing = agentCaps[QStringLiteral("_meta")].toObject()
+                                    [QStringLiteral("claudeCode")].toObject()
+                                    [QStringLiteral("promptQueueing")].toBool(false);
+
+    qDebug() << "[ACPSession] Agent capabilities:"
+             << "image=" << m_supportsImage
+             << "embeddedContext=" << m_supportsEmbeddedContext
+             << "promptQueueing=" << m_supportsPromptQueueing;
 
     // Don't automatically create session - let ChatWidget decide
     // whether to load an existing session or create a new one
