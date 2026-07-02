@@ -28,7 +28,10 @@ bool EditorDBusService::registerOnBus()
     QDBusConnection bus = QDBusConnection::sessionBus();
 
     // Primary name is unique per process so multiple Kate instances can coexist.
-    const QString primaryName = QStringLiteral("org.kde.katecode.editor.")
+    // The "p" prefix on the pid is required: a D-Bus name element must not
+    // begin with a digit, so a bare pid would be an invalid bus name.
+    // ACPSession::buildMcpServers() must build the SAME name for the child.
+    const QString primaryName = QStringLiteral("org.kde.katecode.editor.p")
                                 + QString::number(QCoreApplication::applicationPid());
     if (!bus.registerService(primaryName)) {
         qWarning() << "[KateCode] Failed to register DBus service:" << bus.lastError().message();

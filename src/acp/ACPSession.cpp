@@ -585,10 +585,12 @@ QJsonArray ACPSession::buildMcpServers() const
 
         // Tell the child MCP server which DBus service name to target so it
         // reaches THIS process's editor instance, not a different Kate process.
+        // The "p" prefix is required (a D-Bus name element must not start with
+        // a digit) and must match EditorDBusService::registerOnBus() exactly.
         {
             QJsonObject entry;
             entry[QStringLiteral("name")]  = QStringLiteral("KATECODE_DBUS_SERVICE");
-            entry[QStringLiteral("value")] = QString(QStringLiteral("org.kde.katecode.editor.")
+            entry[QStringLiteral("value")] = QString(QStringLiteral("org.kde.katecode.editor.p")
                                              + QString::number(QCoreApplication::applicationPid()));
             envArray.append(entry);
         }

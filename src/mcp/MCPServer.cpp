@@ -9,7 +9,9 @@
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QJsonDocument>
+#include <QRegularExpression>
 #include <QString>
+#include <QStringList>
 
 // Returns the DBus service name of the editor to talk to.  When launched by
 // ACPSession the env var is set to the pid-specific name of the parent Kate
@@ -18,6 +20,29 @@ static QString editorServiceName()
 {
     return qEnvironmentVariable("KATECODE_DBUS_SERVICE",
                                 QStringLiteral("org.kde.katecode.editor"));
+}
+
+// A valid D-Bus well-known bus name: at least two dot-separated elements,
+// each element matching [A-Za-z_-][A-Za-z0-9_-]* (so it cannot start with a
+// digit). This matters because constructing a QDBusInterface with an invalid
+// destination makes libdbus abort() the entire process; we check first and
+// return a normal MCP error instead.
+static bool isValidBusName(const QString &name)
+{
+    if (name.isEmpty() || name.size() > 255) {
+        return false;
+    }
+    const QStringList elements = name.split(QLatin1Char('.'));
+    if (elements.size() < 2) {
+        return false;
+    }
+    static const QRegularExpression element(QStringLiteral("\\A[A-Za-z_-][A-Za-z0-9_-]*\\z"));
+    for (const QString &e : elements) {
+        if (!element.match(e).hasMatch()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 MCPServer::MCPServer() = default;
@@ -292,6 +317,15 @@ QJsonObject MCPServer::handleToolsCall(int id, const QJsonObject &params)
 {
     const QString toolName = params[QStringLiteral("name")].toString();
     const QJsonObject arguments = params[QStringLiteral("arguments")].toObject();
+
+    // Every tool reaches Kate over D-Bus. Refuse cleanly if the configured
+    // service name is malformed rather than letting the QDBusInterface
+    // constructor abort the whole server inside libdbus.
+    if (!isValidBusName(editorServiceName())) {
+        return makeResponse(id, makeErrorResult(
+            QStringLiteral("Error: invalid Kate editor D-Bus service name: \"%1\". "
+                           "Update the Kate Code plugin.").arg(editorServiceName())));
+    }
 
     if (toolName == QStringLiteral("katecode_documents")) {
         return makeResponse(id, executeDocuments(arguments));
