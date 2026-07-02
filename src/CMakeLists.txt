@@ -47,14 +47,12 @@ target_link_libraries(katecode
     KF6::CoreAddons
     KF6::XmlGui
     KF6::SyntaxHighlighting
-    KF6::Wallet
     KF6::Pty
     Qt6::Core
     Qt6::DBus
     Qt6::Widgets
     Qt6::WebEngineWidgets
     Qt6::WebChannel
-    Qt6::Network
 )
 
 # Installation

@@ -34,10 +34,6 @@ public Q_SLOTS:
     void reset() override;
 
 private Q_SLOTS:
-    void onApiKeyLoaded(bool success);
-    void onApiKeySaved(bool success);
-    void onShowApiKeyToggled();
-    void onWalletError(const QString &message);
     void onSettingChanged();
 
     void onAddProvider();
@@ -50,7 +46,6 @@ private:
     void setupUi();
     void setupGeneralTab(QWidget *tab);
     void setupAdvancedTab(QWidget *tab);
-    void updateApiKeyStatus();
     void populateProviderList();
     void populateSummaryProviderCombo(const QString &selectedId);
     bool editProviderDialog(ACPProvider &provider, const QString &title);
@@ -74,11 +69,6 @@ private:
     // General tab - Diff colors section
     QComboBox *m_diffColorSchemeCombo;
 
-    // Summaries tab - API Key section
-    QLineEdit *m_apiKeyEdit;
-    QPushButton *m_showApiKeyButton;
-    QLabel *m_apiKeyStatus;
-
     // Advanced tab - Summary options
     QCheckBox *m_enableSummariesCheck;
     QComboBox *m_summaryProviderCombo;
@@ -99,5 +89,4 @@ private:
     QPlainTextEdit *m_allowedCommandsEdit;
 
     bool m_hasChanges;
-    bool m_apiKeyVisible;
 };

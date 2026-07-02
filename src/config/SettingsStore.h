@@ -8,10 +8,6 @@
 #include <QString>
 #include <QStringList>
 
-namespace KWallet {
-class Wallet;
-}
-
 // ACP provider definition
 struct ACPProvider {
     QString id;           // Stable identifier (e.g. "claude-code", "vibe-mistral", "custom-1")
@@ -47,19 +43,9 @@ public:
     explicit SettingsStore(QObject *parent = nullptr);
     ~SettingsStore() override;
 
-    // API Key (stored in KWallet)
-    void loadApiKey();
-    void saveApiKey(const QString &key);
-    QString apiKey() const { return m_apiKey; }
-    bool hasApiKey() const { return !m_apiKey.isEmpty(); }
-    bool isWalletAvailable() const { return m_walletAvailable; }
-
     // Summary settings (stored in QSettings)
     bool summariesEnabled() const;
     void setSummariesEnabled(bool enable);
-
-    QString summaryModel() const;
-    void setSummaryModel(const QString &model);
 
     // ACP provider used to generate summaries. The sentinel
     // CURRENT_AGENT_PROVIDER_ID means "ask the live session's agent".
@@ -122,34 +108,14 @@ public:
     static QString schemeDisplayName(DiffColorScheme scheme);
 
 Q_SIGNALS:
-    void apiKeyLoaded(bool success);
-    void apiKeySaved(bool success);
     void settingsChanged();
-    void walletError(const QString &message);
-
-private Q_SLOTS:
-    void onWalletOpened(bool success);
 
 private:
-    void openWallet();
-    void closeWallet();
     void migrateOldBackendSettings();
-    void migrateOldSummaryModel();
     void seedDefaultProvidersIfNeeded();
     QList<ACPProvider> defaultProviders() const;
     QList<ACPProvider> storedProviders() const;
     void writeProviders(const QList<ACPProvider> &list);
 
     mutable QSettings m_settings;
-    KWallet::Wallet *m_wallet;
-    QString m_apiKey;
-    bool m_walletAvailable;
-
-    enum class WalletOperation { None, Load, Save };
-    WalletOperation m_pendingOperation;
-    QString m_pendingApiKey;
-
-    static const QString WALLET_FOLDER;
-    static const QString API_KEY_ENTRY;
-    static const QString DEFAULT_SUMMARY_MODEL;
 };

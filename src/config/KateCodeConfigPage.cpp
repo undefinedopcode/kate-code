@@ -101,20 +101,8 @@ KateCodeConfigPage::KateCodeConfigPage(SettingsStore *settings, QWidget *parent)
     : KTextEditor::ConfigPage(parent)
     , m_settings(settings)
     , m_hasChanges(false)
-    , m_apiKeyVisible(false)
 {
     setupUi();
-
-    // Connect settings signals
-    connect(m_settings, &SettingsStore::apiKeyLoaded,
-            this, &KateCodeConfigPage::onApiKeyLoaded);
-    connect(m_settings, &SettingsStore::apiKeySaved,
-            this, &KateCodeConfigPage::onApiKeySaved);
-    connect(m_settings, &SettingsStore::walletError,
-            this, &KateCodeConfigPage::onWalletError);
-
-    // Load current API key
-    m_settings->loadApiKey();
 
     // Load current settings
     reset();
@@ -155,8 +143,6 @@ void KateCodeConfigPage::setupUi()
     m_tabWidget->addTab(advancedTab, i18n("Advanced"));
 
     mainLayout->addWidget(m_tabWidget);
-
-    updateApiKeyStatus();
 }
 
 void KateCodeConfigPage::setupGeneralTab(QWidget *tab)
@@ -265,37 +251,6 @@ void KateCodeConfigPage::setupGeneralTab(QWidget *tab)
 void KateCodeConfigPage::setupAdvancedTab(QWidget *tab)
 {
     auto *tabLayout = new QVBoxLayout(tab);
-
-    // API Key Group
-    auto *apiGroup = new QGroupBox(i18n("Anthropic API Key"), tab);
-    auto *apiLayout = new QVBoxLayout(apiGroup);
-
-    auto *apiKeyLayout = new QHBoxLayout();
-    m_apiKeyEdit = new QLineEdit(tab);
-    m_apiKeyEdit->setEchoMode(QLineEdit::Password);
-    m_apiKeyEdit->setPlaceholderText(i18n("Enter your Anthropic API key"));
-    connect(m_apiKeyEdit, &QLineEdit::textChanged,
-            this, &KateCodeConfigPage::onSettingChanged);
-
-    m_showApiKeyButton = new QPushButton(i18n("Show"), tab);
-    m_showApiKeyButton->setCheckable(true);
-    connect(m_showApiKeyButton, &QPushButton::clicked,
-            this, &KateCodeConfigPage::onShowApiKeyToggled);
-
-    apiKeyLayout->addWidget(m_apiKeyEdit);
-    apiKeyLayout->addWidget(m_showApiKeyButton);
-    apiLayout->addLayout(apiKeyLayout);
-
-    m_apiKeyStatus = new QLabel(tab);
-    m_apiKeyStatus->setWordWrap(true);
-    apiLayout->addWidget(m_apiKeyStatus);
-
-    auto *apiNote = new QLabel(i18n("The API key is stored securely in KWallet and used for generating session summaries."), tab);
-    apiNote->setWordWrap(true);
-    apiNote->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
-    apiLayout->addWidget(apiNote);
-
-    tabLayout->addWidget(apiGroup);
 
     // Session Summaries Group
     auto *summaryGroup = new QGroupBox(i18n("Session Summaries"), tab);
@@ -441,15 +396,7 @@ void KateCodeConfigPage::apply()
         return;
     }
 
-    // Save API key if changed
-    QString newApiKey = m_apiKeyEdit->text();
-    if (newApiKey != m_settings->apiKey()) {
-        if (!newApiKey.isEmpty()) {
-            m_settings->saveApiKey(newApiKey);
-        }
-    }
-
-    // Save other settings
+    // Save settings
     m_settings->setSummariesEnabled(m_enableSummariesCheck->isChecked());
     m_settings->setSummaryProviderId(m_summaryProviderCombo->currentData().toString());
     m_settings->setAutoResumeSessions(m_autoResumeCheck->isChecked());
@@ -476,7 +423,6 @@ void KateCodeConfigPage::apply()
 
 void KateCodeConfigPage::defaults()
 {
-    m_apiKeyEdit->clear();
     m_enableSummariesCheck->setChecked(false);
     m_summaryProviderCombo->setCurrentIndex(0);  // Current agent
     m_autoResumeCheck->setChecked(true);
@@ -520,7 +466,6 @@ void KateCodeConfigPage::reset()
     // Load provider list
     populateProviderList();
 
-    // API key is loaded asynchronously
     m_hasChanges = false;
 }
 
@@ -781,53 +726,8 @@ bool KateCodeConfigPage::editProviderDialog(ACPProvider &provider, const QString
     return false;
 }
 
-void KateCodeConfigPage::onApiKeyLoaded(bool success)
-{
-    if (success && m_settings->hasApiKey()) {
-        // Show placeholder for existing key
-        m_apiKeyEdit->setPlaceholderText(i18n("(API key is stored in KWallet)"));
-        // Don't show actual key, just indicate it exists
-        m_apiKeyEdit->clear();
-    }
-    updateApiKeyStatus();
-}
-
-void KateCodeConfigPage::onApiKeySaved(bool success)
-{
-    if (success) {
-        m_apiKeyEdit->clear();
-        m_apiKeyEdit->setPlaceholderText(i18n("(API key is stored in KWallet)"));
-    }
-    updateApiKeyStatus();
-}
-
-void KateCodeConfigPage::onShowApiKeyToggled()
-{
-    m_apiKeyVisible = m_showApiKeyButton->isChecked();
-    m_apiKeyEdit->setEchoMode(m_apiKeyVisible ? QLineEdit::Normal : QLineEdit::Password);
-    m_showApiKeyButton->setText(m_apiKeyVisible ? i18n("Hide") : i18n("Show"));
-}
-
-void KateCodeConfigPage::onWalletError(const QString &message)
-{
-    m_apiKeyStatus->setText(i18n("<span style='color: red;'>%1</span>", message));
-}
-
 void KateCodeConfigPage::onSettingChanged()
 {
     m_hasChanges = true;
     Q_EMIT changed();
-}
-
-void KateCodeConfigPage::updateApiKeyStatus()
-{
-    // Summaries are generated through ACP agents, so they no longer depend on
-    // the API key; this label only reports on the key itself.
-    if (!m_settings->isWalletAvailable()) {
-        m_apiKeyStatus->setText(i18n("<span style='color: orange;'>KWallet is not available.</span>"));
-    } else if (m_settings->hasApiKey()) {
-        m_apiKeyStatus->setText(i18n("<span style='color: green;'>API key is stored in KWallet</span>"));
-    } else {
-        m_apiKeyStatus->setText(i18n("No API key configured. Enter your key and click Apply to save."));
-    }
 }
