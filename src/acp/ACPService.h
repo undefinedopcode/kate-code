@@ -42,7 +42,9 @@ private:
 
     QProcess *m_process;
     int m_messageId;
-    QString m_buffer;
+    // Raw bytes: split into lines before UTF-8 decoding, so multi-byte
+    // sequences straddling a read boundary are never mangled.
+    QByteArray m_buffer;
     QString m_executable;
     QStringList m_executableArgs;
 };

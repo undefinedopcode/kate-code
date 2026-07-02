@@ -221,19 +221,29 @@ TerminalManager::WaitResult TerminalManager::waitForExit(const QString &terminal
     disconnect(finishedConn);
     timer.stop();
 
-    // Check if we timed out
-    if (data.status == TerminalStatus::Running) {
-        // Timeout occurred
-        qDebug() << "[TerminalManager] waitForExit: timeout for terminal" << terminalId;
-        result.output = QString::fromUtf8(data.outputBuffer);
-        result.truncated = data.truncated;
+    // The nested loop pumps arbitrary events: terminal/release from the agent
+    // or a disconnect (releaseAll) may have removed the entry, so the earlier
+    // `data` reference can dangle. Re-look the terminal up before reading.
+    auto it = m_terminals.find(terminalId);
+    if (it == m_terminals.end()) {
+        qDebug() << "[TerminalManager] waitForExit: terminal released during wait:" << terminalId;
         result.success = false;
         return result;
     }
 
-    result.output = QString::fromUtf8(data.outputBuffer);
-    result.truncated = data.truncated;
-    result.exitStatus = data.exitCode;
+    // Check if we timed out
+    if (it->status == TerminalStatus::Running) {
+        // Timeout occurred
+        qDebug() << "[TerminalManager] waitForExit: timeout for terminal" << terminalId;
+        result.output = QString::fromUtf8(it->outputBuffer);
+        result.truncated = it->truncated;
+        result.success = false;
+        return result;
+    }
+
+    result.output = QString::fromUtf8(it->outputBuffer);
+    result.truncated = it->truncated;
+    result.exitStatus = it->exitCode;
     result.success = true;
     return result;
 }

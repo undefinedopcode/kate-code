@@ -38,6 +38,10 @@ bool ACPService::start(const QString &workingDir)
         stop();
     }
 
+    // A partial line left over from a crashed process must not prepend
+    // itself to the new process's first message.
+    m_buffer.clear();
+
     m_process = new QProcess(this);
     m_process->setWorkingDirectory(workingDir);
 
@@ -187,20 +191,21 @@ void ACPService::onStdout()
         return;
     }
 
-    QByteArray data = m_process->readAllStandardOutput();
-    m_buffer += QString::fromUtf8(data);
+    m_buffer += m_process->readAllStandardOutput();
 
-    // Parse newline-delimited JSON
-    QStringList lines = m_buffer.split(QLatin1Char('\n'));
-    m_buffer = lines.takeLast();  // Keep incomplete line in buffer
+    // Parse newline-delimited JSON, splitting at the byte level so multi-byte
+    // UTF-8 sequences that straddle a chunk boundary decode correctly.
+    int newlineIndex;
+    while ((newlineIndex = m_buffer.indexOf('\n')) >= 0) {
+        const QByteArray line = m_buffer.left(newlineIndex);
+        m_buffer.remove(0, newlineIndex + 1);
 
-    for (const QString &line : lines) {
         if (line.trimmed().isEmpty()) {
             continue;
         }
 
         QJsonParseError parseError;
-        QJsonDocument doc = QJsonDocument::fromJson(line.toUtf8(), &parseError);
+        QJsonDocument doc = QJsonDocument::fromJson(line, &parseError);
 
         if (parseError.error != QJsonParseError::NoError) {
             qWarning() << "[ACPService] Failed to parse JSON:" << parseError.errorString();

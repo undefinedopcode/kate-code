@@ -29,6 +29,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QPixmap>
+#include <QPointer>
 #include <QProcess>
 #include <QProgressDialog>
 #include <QPushButton>
@@ -473,13 +474,17 @@ void ChatWidget::onResumeSessionClicked()
     // them - not the optional AI summaries - as the source of resumable sessions.
     QStringList sessionIds = m_summaryStore->listTranscriptSessions(projectRoot);
     if (sessionIds.isEmpty()) {
-        // No sessions to resume - show message
+        // No sessions to resume - show message. Give the slot back if no
+        // session is running, otherwise other windows stay blocked forever.
         Message sysMsg;
         sysMsg.id = QStringLiteral("sys_no_sessions");
         sysMsg.role = QStringLiteral("system");
         sysMsg.content = QStringLiteral("No previous sessions found for: %1").arg(projectRoot);
         sysMsg.timestamp = QDateTime::currentDateTime();
         m_chatWebView->addMessage(sysMsg);
+        if (!m_session->isConnected() && m_releaseAgentSlot) {
+            m_releaseAgentSlot();
+        }
         return;
     }
 
@@ -488,6 +493,9 @@ void ChatWidget::onResumeSessionClicked()
     if (dialog.exec() != QDialog::Accepted
         || dialog.selectedResult() != SessionSelectionDialog::Result::Resume) {
         // Cancelled or "Start new session" chosen - user can click Connect.
+        if (!m_session->isConnected() && m_releaseAgentSlot) {
+            m_releaseAgentSlot();
+        }
         return;
     }
 
@@ -495,14 +503,29 @@ void ChatWidget::onResumeSessionClicked()
 
     // Resolve the prior-session context to inject (option A). Prefer an existing
     // AI summary; otherwise optionally summarise the raw transcript on demand;
-    // failing that, fall back to the raw transcript text itself.
-    m_pendingSummaryContext = resolveResumeContext(projectRoot, selectedId);
+    // failing that, fall back to the raw transcript text itself. The resolve
+    // can pump events, so re-check that we are still alive afterwards.
+    QPointer<ChatWidget> self(this);
+    const QString resumeContext = resolveResumeContext(projectRoot, selectedId);
+    if (!self) {
+        return;
+    }
+    m_pendingSummaryContext = resumeContext;
 
     // If already connected, stop current session first (like onNewSessionClicked)
     if (m_session->isConnected()) {
         triggerSummaryGeneration();
+        // stop() synchronously emits Disconnected, whose handler calls
+        // triggerSummaryGeneration() again; clearing the flag first stops a
+        // duplicate summary for the same session.
+        m_userSentMessage = false;
         m_session->stop();
         resetWebView();
+        // stop() released the agent slot via the Disconnected handler;
+        // re-acquire before starting the replacement session.
+        if (!ensureAgentSlot()) {
+            return;
+        }
     }
 
     // Reset user message tracking for new session
@@ -541,11 +564,29 @@ QString ChatWidget::resolveResumeContext(const QString &projectRoot, const QStri
     const QString transcript = m_summaryStore->loadTranscript(projectRoot, sessionId);
 
     // Optionally summarise an abandoned (raw) session before resuming, so the
-    // injected context stays small. This blocks briefly on the summary agent.
+    // injected context stays small. The wait pumps the event loop, so block
+    // re-entrant clicks with a modal dialogue and guard against the widget
+    // being destroyed meanwhile.
     if (m_settingsStore && m_settingsStore->summariseOnResume()
         && m_summaryGenerator && !transcript.isEmpty()) {
+        QPointer<ChatWidget> self(this);
+        QPointer<QProgressDialog> dialog(new QProgressDialog(
+            QStringLiteral("Summarising the previous session…"), QString(), 0, 0, this));
+        dialog->setWindowTitle(QStringLiteral("Kate Code"));
+        dialog->setWindowModality(Qt::WindowModal);
+        dialog->setCancelButton(nullptr);
+        dialog->setMinimumDuration(0);
+        dialog->show();
+
         m_summaryGenerator->generateSummary(sessionId, projectRoot, transcript);
         m_summaryGenerator->waitForPendingRequests();
+
+        if (!self) {
+            return QString();  // widget destroyed during the wait
+        }
+        if (dialog) {
+            dialog->deleteLater();
+        }
         if (m_summaryStore->hasSummary(projectRoot, sessionId)) {
             return m_summaryStore->loadSummary(projectRoot, sessionId);
         }
@@ -579,6 +620,12 @@ void ChatWidget::onNewSessionClicked()
 
     // Stop current session
     m_session->stop();
+
+    // stop() released the agent slot via the Disconnected handler; re-acquire
+    // before starting the replacement session so the gate stays accurate.
+    if (!ensureAgentSlot()) {
+        return;
+    }
 
     // Destroy and recreate WebView to reclaim Chromium memory
     resetWebView();
@@ -667,8 +714,11 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         // Close the ACP log file so the next session starts a fresh one.
         m_acpLogger->endSession();
 
-        // Trigger summary generation for the ended session
+        // Trigger summary generation for the ended session (this path covers
+        // unexpected agent deaths). Clear the flag afterwards so a later
+        // New Session/quit does not summarise the same session again.
         triggerSummaryGeneration();
+        m_userSentMessage = false;
         break;
     case ConnectionStatus::Connecting:
         // Configure file logging before the initialize payloads flow.
@@ -702,9 +752,12 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         sysMsg.content = QStringLiteral("Connected! Session ID: %1").arg(m_session->sessionId());
         m_chatWebView->addMessage(sysMsg);
 
-        // Save session ID for future resume and summary generation
+        // Save session ID for future resume and summary generation. Use the
+        // directory the session actually started in (the transcript lives
+        // under it), not a re-query of the provider, which can have changed
+        // during the connect handshake.
         {
-            QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+            const QString projectRoot = m_session->workingDir();
             m_sessionStore->saveSession(projectRoot, m_session->sessionId());
             m_lastSessionId = m_session->sessionId();
             m_lastProjectRoot = projectRoot;
@@ -1192,6 +1245,13 @@ void ChatWidget::triggerSummaryGeneration()
     qDebug() << "[ChatWidget]   m_settingsStore:" << (m_settingsStore ? "set" : "null");
     qDebug() << "[ChatWidget]   m_summaryGenerator:" << (m_summaryGenerator ? "set" : "null");
 
+    // A current-agent summary wait is already pumping events; do not stack a
+    // second trigger (shutdown or the Disconnected handler re-entering).
+    if (m_summaryWaitActive) {
+        qDebug() << "[ChatWidget] Summary wait already active, skipping";
+        return;
+    }
+
     // Skip summary if user didn't send any messages (e.g., resumed but didn't interact)
     if (!m_userSentMessage) {
         qDebug() << "[ChatWidget] No user messages sent, skipping summary";
@@ -1239,21 +1299,34 @@ void ChatWidget::triggerSummaryGeneration()
 
 void ChatWidget::generateSummaryWithCurrentAgent()
 {
+    if (m_summaryWaitActive) {
+        return;  // already waiting; a re-entrant trigger must not stack
+    }
+    m_summaryWaitActive = true;
+
     qDebug() << "[ChatWidget] Requesting summary from the current agent";
 
-    QProgressDialog dialog(QStringLiteral("Generating session summary with the current agent…"),
-                           QStringLiteral("Cancel"), 0, 0, this);
-    dialog.setWindowTitle(QStringLiteral("Kate Code"));
-    dialog.setWindowModality(Qt::WindowModal);
-    dialog.setMinimumDuration(0);
-    dialog.show();
+    // Guards for the local wait loop: the widget (and with it the heap
+    // dialogue) can be destroyed while events are pumped, e.g. when Kate
+    // quits from another window.
+    QPointer<ChatWidget> self(this);
+    QPointer<QProgressDialog> dialog(new QProgressDialog(
+        QStringLiteral("Generating session summary with the current agent…"),
+        QStringLiteral("Cancel"), 0, 0, this));
+    dialog->setWindowTitle(QStringLiteral("Kate Code"));
+    dialog->setWindowModality(Qt::WindowModal);
+    dialog->setMinimumDuration(0);
+    dialog->show();
 
     QString summary;
     QString error;
     bool done = false;
-    const QMetaObject::Connection conn =
-        connect(m_session, &ACPSession::summaryResult, this,
-                [&summary, &error, &done](const QString &s, const QString &e) {
+    // The connection context is this stack object, not `this`, so
+    // prepareForShutdown()'s blanket disconnect of `this` cannot sever it;
+    // it is dropped automatically when the scope exits.
+    QObject connectionGuard;
+    connect(m_session, &ACPSession::summaryResult, &connectionGuard,
+            [&summary, &error, &done](const QString &s, const QString &e) {
         summary = s;
         error = e;
         done = true;
@@ -1261,18 +1334,27 @@ void ChatWidget::generateSummaryWithCurrentAgent()
 
     m_session->requestSummary(SummaryGenerator::buildInSessionPrompt(m_lastProjectRoot));
 
-    // Spin locally until the result arrives, the user cancels, or we give up.
+    // Pump events until the result arrives, the user cancels, we give up, or
+    // the widget dies under us.
     QElapsedTimer timer;
     timer.start();
     QEventLoop loop;
-    while (!done && !dialog.wasCanceled() && timer.elapsed() < 120000) {
-        loop.processEvents(QEventLoop::AllEvents, 100);
+    while (!done && self && dialog && !dialog->wasCanceled() && timer.elapsed() < 120000) {
+        loop.processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 100);
     }
-    disconnect(conn);
+
+    if (!self) {
+        return;  // widget destroyed during the wait; touch nothing
+    }
+    m_summaryWaitActive = false;
+    const bool cancelled = !dialog || dialog->wasCanceled();
+    if (dialog) {
+        dialog->deleteLater();
+    }
 
     if (!done) {
         m_session->cancelSummary();
-        if (!dialog.wasCanceled()) {
+        if (!cancelled) {
             onSummaryError(m_lastSessionId, QStringLiteral("Timed out waiting for the session summary"));
         }
         return;

@@ -157,6 +157,15 @@ void ACPSession::stop()
     // If we set Disconnected first, onDisconnected() sees the state is
     // already Disconnected and skips emitting a duplicate statusChanged.
     m_status = ConnectionStatus::Disconnected;
+    resetSessionState();
+
+    m_service->stop();
+
+    Q_EMIT statusChanged(m_status);
+}
+
+void ACPSession::resetSessionState()
+{
     m_sessionId.clear();
     m_sessionLoadId.clear();
     m_initializeRequestId = -1;
@@ -168,12 +177,17 @@ void ACPSession::stop()
     m_availableConfigOptions = {};
     m_promptRequestId = -1;
     m_promptQueue.clear();
+    m_currentMessageId.clear();
+    m_currentMessageContent.clear();
     m_messageCounter = 0;
-    // Fail any in-flight summary so a caller waiting on summaryResult() returns.
-    if (m_summaryRequestId >= 0) {
+    // Fail any in-flight or parked summary so a caller waiting on
+    // summaryResult() returns.
+    if (isSummaryRunning()) {
         m_summaryRequestId = -1;
+        m_summaryAfterPromptId = -1;
+        m_pendingSummaryPrompt.clear();
         m_summaryCollected.clear();
-        Q_EMIT summaryResult(QString(), QStringLiteral("Session stopped before the summary completed"));
+        Q_EMIT summaryResult(QString(), QStringLiteral("Session ended before the summary completed"));
     }
     // Discard any in-flight or queued interactive mode-change state.
     m_interactiveModeRequestId = -1;
@@ -183,10 +197,6 @@ void ACPSession::stop()
     m_supportsImage = false;
     m_supportsEmbeddedContext = false;
     m_supportsPromptQueueing = false;
-
-    m_service->stop();
-
-    Q_EMIT statusChanged(m_status);
 }
 
 void ACPSession::setTerminalSize(int columns, int rows)
@@ -236,17 +246,31 @@ void ACPSession::requestSummary(const QString &prompt)
         Q_EMIT summaryResult(QString(), QStringLiteral("No connected session to summarise"));
         return;
     }
-    if (m_summaryRequestId >= 0) {
+    if (isSummaryRunning()) {
         Q_EMIT summaryResult(QString(), QStringLiteral("A summary request is already running"));
         return;
     }
 
     // The session is about to end, so a running task loses to the summary.
+    // Cancellation is only a notification: the cancelled turn keeps streaming
+    // chunks until its session/prompt response arrives, and chunks carry no
+    // request id. Park the summary prompt until that response so stale text
+    // cannot leak into the summary (and so agents that reject concurrent
+    // prompts are not sent one).
     if (isPromptRunning()) {
         qDebug() << "[ACPSession] requestSummary: cancelling the running prompt first";
+        const int cancelledId = m_promptRequestId;
         cancelPrompt();
+        m_summaryAfterPromptId = cancelledId;
+        m_pendingSummaryPrompt = prompt;
+        return;
     }
 
+    sendSummaryPrompt(prompt);
+}
+
+void ACPSession::sendSummaryPrompt(const QString &prompt)
+{
     QJsonObject textBlock;
     textBlock[QStringLiteral("type")] = QStringLiteral("text");
     textBlock[QStringLiteral("text")] = prompt;
@@ -267,14 +291,15 @@ void ACPSession::requestSummary(const QString &prompt)
 
 void ACPSession::cancelSummary()
 {
-    if (m_summaryRequestId < 0) {
-        return;
+    if (m_summaryRequestId >= 0) {
+        qDebug() << "[ACPSession] Cancelling summary request:" << m_summaryRequestId;
+        QJsonObject params;
+        params[QStringLiteral("id")] = m_summaryRequestId;
+        m_service->sendNotification(QStringLiteral("$/cancel_request"), params);
     }
-    qDebug() << "[ACPSession] Cancelling summary request:" << m_summaryRequestId;
-    QJsonObject params;
-    params[QStringLiteral("id")] = m_summaryRequestId;
-    m_service->sendNotification(QStringLiteral("$/cancel_request"), params);
     m_summaryRequestId = -1;
+    m_summaryAfterPromptId = -1;
+    m_pendingSummaryPrompt.clear();
     m_summaryCollected.clear();
 }
 
@@ -846,18 +871,33 @@ void ACPSession::onDisconnected(int exitCode)
     qDebug() << "[ACPSession] Disconnected with exit code:" << exitCode;
     bool wasAlreadyDisconnected = (m_status == ConnectionStatus::Disconnected);
     m_status = ConnectionStatus::Disconnected;
-    m_sessionId.clear();
-    // Fail any in-flight summary so a caller waiting on summaryResult() returns.
-    if (m_summaryRequestId >= 0) {
-        m_summaryRequestId = -1;
-        m_summaryCollected.clear();
-        Q_EMIT summaryResult(QString(),
-                             QStringLiteral("Agent disconnected before the summary completed (exit code %1)")
-                                 .arg(exitCode));
+
+    if (wasAlreadyDisconnected) {
+        // Deliberate stop(): state was already reset there.
+        m_sessionId.clear();
+        return;
     }
-    if (!wasAlreadyDisconnected) {
-        Q_EMIT statusChanged(m_status);
+
+    // Unexpected agent death: record what was streamed, finalise the message
+    // and mirror stop()'s cleanup so a reconnect starts from a clean slate
+    // (a stale m_promptRequestId would queue every future prompt forever).
+    const QString unfinishedMessageId = m_currentMessageId;
+    if (!unfinishedMessageId.isEmpty() && !m_currentMessageContent.isEmpty()) {
+        Message assistantMsg;
+        assistantMsg.id = unfinishedMessageId;
+        assistantMsg.role = QStringLiteral("assistant");
+        assistantMsg.content = m_currentMessageContent;
+        assistantMsg.timestamp = m_currentMessageTimestamp;
+        m_transcript->recordMessage(assistantMsg);
     }
+    m_transcript->finishSession();
+    m_terminalManager->releaseAll();
+    resetSessionState();  // also fails any in-flight summary
+
+    if (!unfinishedMessageId.isEmpty()) {
+        Q_EMIT messageFinished(unfinishedMessageId);
+    }
+    Q_EMIT statusChanged(m_status);
 }
 
 void ACPSession::onNotification(const QString &method, const QJsonObject &params, int requestId)
@@ -904,6 +944,17 @@ void ACPSession::onResponse(int id, const QJsonObject &result, const QJsonObject
         return;
     }
 
+    // A prompt cancelled on behalf of requestSummary() has now fully finished
+    // (this is its response), so no further chunks from the old turn can
+    // arrive: it is safe to send the parked summary prompt.
+    if (id == m_summaryAfterPromptId) {
+        m_summaryAfterPromptId = -1;
+        const QString prompt = m_pendingSummaryPrompt;
+        m_pendingSummaryPrompt.clear();
+        sendSummaryPrompt(prompt);
+        return;
+    }
+
     // Silent summary prompt (requestSummary): resolve it without touching the
     // chat state, and before the generic error handling below.
     if (id == m_summaryRequestId) {
@@ -924,6 +975,28 @@ void ACPSession::onResponse(int id, const QJsonObject &result, const QJsonObject
     if (!error.isEmpty()) {
         qWarning() << "[ACPSession] Error response for id" << id << ":" << error;
         Q_EMIT errorOccurred(error[QStringLiteral("message")].toString());
+
+        // A failed session/prompt must still finalise the turn, otherwise
+        // isPromptRunning() stays true and every future prompt queues forever.
+        if (id == m_promptRequestId) {
+            if (!m_currentMessageId.isEmpty()) {
+                Q_EMIT messageFinished(m_currentMessageId);
+                m_currentMessageId.clear();
+                m_currentMessageContent.clear();
+            }
+            m_promptRequestId = -1;
+            if (!m_promptQueue.isEmpty()) {
+                const QueuedPrompt next = m_promptQueue.takeFirst();
+                dispatchPrompt(next.content, next.filePath, next.selection, next.contextChunks, next.images, false);
+            }
+        } else if (id == m_initializeRequestId || id == m_sessionNewRequestId) {
+            // Failed session setup would otherwise leave the UI stuck on
+            // "Connecting" with every button disabled.
+            m_initializeRequestId = -1;
+            m_sessionNewRequestId = -1;
+            m_status = ConnectionStatus::Error;
+            Q_EMIT statusChanged(m_status);
+        }
         return;
     }
 
@@ -1906,6 +1979,19 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
 
 void ACPSession::handlePermissionRequest(const QJsonObject &params, int requestId)
 {
+    // A summary turn must not run tools; decline immediately (mirroring the
+    // headless summariser) so the agent finishes its turn instead of hanging
+    // behind the modal wait dialogue until the timeout.
+    if (isSummaryRunning()) {
+        QJsonObject outcome;
+        outcome[QStringLiteral("outcome")] = QStringLiteral("cancelled");
+        QJsonObject result;
+        result[QStringLiteral("outcome")] = outcome;
+        m_service->sendResponse(requestId, result);
+        qDebug() << "[ACPSession] Declined a tool permission request during summary generation";
+        return;
+    }
+
     qDebug() << "[ACPSession] Permission request params:" << params;
 
     PermissionRequest request;
@@ -1997,12 +2083,6 @@ void ACPSession::handleTerminalCreate(const QJsonObject &params, int requestId)
 
     qDebug() << "[ACPSession] terminal/create - command:" << command << "cwd:" << cwd;
 
-    // Build the full command string including any args
-    QString fullCommand = command;
-    for (const QJsonValue &v : argsArray) {
-        fullCommand += QLatin1Char(' ') + v.toString();
-    }
-
     // Build environment from base system environment plus any overrides
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
     env.insert(QStringLiteral("GIT_PAGER"), QStringLiteral("cat"));  // Prevent git from using pager
@@ -2016,12 +2096,23 @@ void ACPSession::handleTerminalCreate(const QJsonObject &params, int requestId)
         cwd = m_workingDir;
     }
 
-    // Run command through shell - QProcess needs executable separate from args,
-    // but ACP sends full command strings like "git status"
+    // With an explicit args array, run the executable directly so argument
+    // boundaries and shell metacharacters survive. Only a bare command string
+    // (e.g. "git status") goes through the shell for word splitting.
+    QString program;
+    QStringList arguments;
+    if (!argsArray.isEmpty()) {
+        program = command;
+        for (const QJsonValue &v : argsArray) {
+            arguments.append(v.toString());
+        }
+    } else {
+        program = QStringLiteral("/bin/bash");
+        arguments = QStringList{QStringLiteral("-c"), command};
+    }
+
     QString terminalId = m_terminalManager->createTerminal(
-        QStringLiteral("/bin/bash"),
-        QStringList{QStringLiteral("-c"), fullCommand},
-        env, cwd, outputByteLimit);
+        program, arguments, env, cwd, outputByteLimit);
 
     if (terminalId.isEmpty()) {
         // Failed to create terminal

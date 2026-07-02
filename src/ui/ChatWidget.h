@@ -215,6 +215,10 @@ private:
     // Track whether user has sent a message (for summary generation decision)
     bool m_userSentMessage = false;
 
+    // True while generateSummaryWithCurrentAgent() pumps its local wait loop;
+    // blocks re-entrant summary triggers (shutdown, Disconnected handler).
+    bool m_summaryWaitActive = false;
+
     // Set to true by prepareForShutdown() so a second call is a no-op.
     bool m_shutdownDone = false;
 };

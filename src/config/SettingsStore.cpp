@@ -252,35 +252,50 @@ void SettingsStore::setActiveProviderId(const QString &id)
     Q_EMIT settingsChanged();
 }
 
+// The mutators below start from providers() rather than storedProviders() so
+// they also work when the displayed list came from the defaults fallback
+// (empty or corrupted storage); writeProviders() then persists that list.
+
 void SettingsStore::addCustomProvider(const ACPProvider &provider)
 {
-    auto list = storedProviders();
+    auto list = providers();
     list.append(provider);
     writeProviders(list);
 }
 
 void SettingsStore::updateCustomProvider(const QString &id, const ACPProvider &provider)
 {
-    auto list = storedProviders();
+    auto list = providers();
+    bool found = false;
     for (int i = 0; i < list.size(); ++i) {
         if (list[i].id == id) {
             list[i] = provider;
+            found = true;
             break;
         }
+    }
+    if (!found) {
+        list.append(provider);
     }
     writeProviders(list);
 }
 
 void SettingsStore::removeCustomProvider(const QString &id)
 {
-    auto list = storedProviders();
+    auto list = providers();
     list.removeIf([&id](const ACPProvider &p) { return p.id == id; });
     writeProviders(list);
+
+    // A stored summary provider that no longer exists would silently break
+    // summaries; fall back to the current agent.
+    if (summaryProviderId() == id) {
+        setSummaryProviderId(CURRENT_AGENT_PROVIDER_ID);
+    }
 }
 
 void SettingsStore::setProviderOrder(const QStringList &providerIds)
 {
-    const QList<ACPProvider> current = storedProviders();
+    const QList<ACPProvider> current = providers();
     QList<ACPProvider> reordered;
     reordered.reserve(current.size());
 

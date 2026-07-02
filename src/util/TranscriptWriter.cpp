@@ -291,12 +291,17 @@ QString TranscriptWriter::escapeMarkdown(const QString &text)
 
 QString TranscriptWriter::projectPathToFolderName(const QString &projectRoot)
 {
-    if (projectRoot.isEmpty()) {
-        return QStringLiteral("_unknown_");
-    }
+    // Must stay identical to SummaryStore::projectPathToFolderName, or
+    // transcripts are written where the resume/summary code never looks.
     QString folder = projectRoot;
+    if (folder.endsWith(QLatin1Char('/'))) {
+        folder.chop(1);
+    }
     if (folder.startsWith(QLatin1Char('/'))) {
         folder = folder.mid(1);
+    }
+    if (folder.isEmpty()) {
+        return QStringLiteral("_unknown_");
     }
     folder.replace(QLatin1Char('/'), QLatin1Char('_'));
     return folder;

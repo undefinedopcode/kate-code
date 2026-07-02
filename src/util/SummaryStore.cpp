@@ -111,17 +111,19 @@ QString SummaryStore::loadTranscript(const QString &projectRoot, const QString &
 QString SummaryStore::projectPathToFolderName(const QString &projectRoot) const
 {
     // Convert path like /home/april/projects/kate-code
-    // to folder name like home_april_projects_kate-code
+    // to folder name like home_april_projects_kate-code.
+    // Must stay identical to TranscriptWriter::projectPathToFolderName.
     QString normalized = projectRoot;
 
-    // Remove leading slash
+    // Remove trailing then leading slash
+    if (normalized.endsWith(QLatin1Char('/'))) {
+        normalized.chop(1);
+    }
     if (normalized.startsWith(QLatin1Char('/'))) {
         normalized = normalized.mid(1);
     }
-
-    // Remove trailing slash
-    if (normalized.endsWith(QLatin1Char('/'))) {
-        normalized.chop(1);
+    if (normalized.isEmpty()) {
+        return QStringLiteral("_unknown_");
     }
 
     // Replace slashes with underscores

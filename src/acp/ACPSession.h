@@ -44,6 +44,8 @@ public:
     bool isPromptRunning() const { return m_promptRequestId >= 0; }
     ConnectionStatus status() const { return m_status; }
     QString sessionId() const { return m_sessionId; }
+    // The directory the session was started in (empty before first start).
+    QString workingDir() const { return m_workingDir; }
 
     // Passthrough to the TranscriptWriter — empty if no session has started.
     QString transcriptFilePath() const;
@@ -60,7 +62,7 @@ public:
     // about to end). The outcome arrives via summaryResult().
     void requestSummary(const QString &prompt);
     void cancelSummary();
-    bool isSummaryRunning() const { return m_summaryRequestId >= 0; }
+    bool isSummaryRunning() const { return m_summaryRequestId >= 0 || m_summaryAfterPromptId >= 0; }
 
     QJsonArray availableModes() const { return m_availableModes; }
     QString currentMode() const { return m_currentMode; }
@@ -135,6 +137,12 @@ private:
                         const QList<ImageAttachment> &images,
                         bool isFirstMessage);
 
+    // Send the silent summary session/prompt now (requestSummary defers this
+    // while a cancelled prompt's response is outstanding).
+    void sendSummaryPrompt(const QString &prompt);
+    // Clear per-session protocol state; shared by stop() and unexpected
+    // disconnects so a reconnect always starts clean.
+    void resetSessionState();
     void handleInitializeResponse(int id, const QJsonObject &result);
     void handleSessionNewResponse(int id, const QJsonObject &result);
     void handleSessionLoadResponse(int id, const QJsonObject &result, const QJsonObject &error);
@@ -188,7 +196,12 @@ private:
 
     // In-flight silent summary prompt (requestSummary): while m_summaryRequestId
     // is set, agent_message_chunk text accumulates here instead of the chat.
+    // When a prompt had to be cancelled first, the summary prompt is parked in
+    // m_pendingSummaryPrompt until the cancelled request's response arrives
+    // (m_summaryAfterPromptId) so stale chunks cannot leak into the summary.
     int m_summaryRequestId = -1;
+    int m_summaryAfterPromptId = -1;
+    QString m_pendingSummaryPrompt;
     QString m_summaryCollected;
 
     // Interactive mode-change state (separate from the startup config flow).

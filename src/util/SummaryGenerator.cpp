@@ -6,7 +6,13 @@
 #include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QPointer>
 #include <QProcess>
+#include <QTimer>
+
+// Hard ceiling per headless job so a silent or wedged agent cannot leak a
+// subprocess per session end (and stall shutdown).
+static const int SUMMARY_JOB_TIMEOUT_MS = 120000;
 
 SummaryGenerator::SummaryGenerator(SettingsStore *settings, QObject *parent)
     : QObject(parent)
@@ -35,9 +41,15 @@ void SummaryGenerator::waitForPendingRequests(int timeoutMs)
     QElapsedTimer timer;
     timer.start();
 
+    // Guard against this generator being destroyed by a slot that runs while
+    // events are pumped (e.g. the owning widget closing).
+    QPointer<SummaryGenerator> self(this);
     QEventLoop loop;
-    while (!m_jobs.isEmpty() && timer.elapsed() < timeoutMs) {
-        loop.processEvents(QEventLoop::AllEvents, 100);
+    while (self && !m_jobs.isEmpty() && timer.elapsed() < timeoutMs) {
+        loop.processEvents(QEventLoop::AllEvents | QEventLoop::WaitForMoreEvents, 100);
+    }
+    if (!self) {
+        return;
     }
 
     if (!m_jobs.isEmpty()) {
@@ -64,13 +76,19 @@ void SummaryGenerator::generateSummary(const QString &sessionId,
     }
 
     // The current-agent sentinel reaches this headless path when the live
-    // session is unavailable; run the active provider instead.
+    // session is unavailable; run the active provider instead. A stale id
+    // (e.g. the chosen provider was deleted) also falls back to the active
+    // provider so summaries keep working.
     QString providerId = m_settings->summaryProviderId();
-    if (providerId == SettingsStore::CURRENT_AGENT_PROVIDER_ID) {
+    ACPProvider provider = m_settings->providerById(providerId);
+    if (providerId == SettingsStore::CURRENT_AGENT_PROVIDER_ID || provider.executable.isEmpty()) {
+        if (provider.executable.isEmpty() && providerId != SettingsStore::CURRENT_AGENT_PROVIDER_ID) {
+            qWarning() << "[SummaryGenerator] Summary provider" << providerId
+                       << "not found; falling back to the active provider";
+        }
         providerId = m_settings->activeProviderId();
+        provider = m_settings->providerById(providerId);
     }
-
-    const ACPProvider provider = m_settings->providerById(providerId);
     if (provider.executable.isEmpty()) {
         Q_EMIT summaryError(sessionId,
                             QStringLiteral("No summariser agent configured (provider \"%1\" not found)")
@@ -119,6 +137,12 @@ void SummaryGenerator::generateSummary(const QString &sessionId,
     });
     connect(svc, &ACPService::disconnected, this, [this, svc](int exitCode) {
         failJob(svc, QStringLiteral("Summariser agent exited before replying (exit code %1)").arg(exitCode));
+    });
+
+    // Hard per-job timeout; the timer dies with svc, so a finished job never
+    // sees a late timeout (failJob is also a no-op once the job is gone).
+    QTimer::singleShot(SUMMARY_JOB_TIMEOUT_MS, svc, [this, svc]() {
+        failJob(svc, QStringLiteral("Summariser agent timed out"));
     });
 
     qDebug() << "[SummaryGenerator] Starting summariser agent:" << provider.executable
