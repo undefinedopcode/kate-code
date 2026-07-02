@@ -11,7 +11,7 @@
         "Id": "katecode",
         "License": "MIT",
         "Name": "Kate Code",
-        "Version": "1.4.1",
+        "Version": "1.5.0",
         "Website": "https://github.com/anthropics/claude-code"
     }
 }

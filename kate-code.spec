@@ -1,5 +1,5 @@
 Name:           kate-code
-Version:        1.4.1
+Version:        1.5.0
 Release:        1%{?dist}
 Summary:        Claude Code integration for Kate text editor
 
@@ -15,7 +15,6 @@ BuildRequires:  kf6-ki18n-devel
 BuildRequires:  kf6-kcoreaddons-devel
 BuildRequires:  kf6-kxmlgui-devel
 BuildRequires:  kf6-syntax-highlighting-devel
-BuildRequires:  kf6-kwallet-devel
 BuildRequires:  kf6-kpty-devel
 BuildRequires:  qt6-webenginewidgets-devel
 
@@ -44,6 +43,25 @@ execution with permission controls, and session management.
 %{_libexecdir}/kate-mcp-server
 
 %changelog
+* Thu Jul 02 2026 Ben <ben@localhost> - 1.5.0-1
+- Generate session summaries with a configured ACP agent chosen from a
+  provider dropdown, replacing the hard-coded Anthropic-API models; the
+  default "Current agent" asks the live session to summarise itself
+  before disconnect/quit, behind a cancellable progress dialogue
+- Frame injected resume context as a session restore so agents no longer
+  re-run the previous session's last task, and have the agent reply with
+  a one-sentence overview confirming the restore
+- Remove the now-unused Anthropic API key settings and KWallet plumbing
+- Fix a review sweep of bugs: summary-vs-cancelled-prompt race, chat
+  wedged after a session/prompt error response, broken reconnect after
+  an agent crash, single-agent gate leaks and bypass, terminal-wait
+  use-after-free, terminal args quoting, UTF-8 corruption on chunked
+  agent output, duplicate summaries, and transcript/summary folder-name
+  mismatches
+- Stop kate-mcp-server dying intermittently ("MCP error -32000:
+  Connection closed"): survive interrupted reads, answer MCP pings,
+  ignore SIGPIPE and complete partial writes
+
 * Wed Jul 01 2026 Ben <ben@localhost> - 1.4.1-1
 - Surface Codex systemError and genuine ACP errors as distinct chat
   messages instead of dropping them or disguising them as normal output
