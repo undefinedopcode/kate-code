@@ -1,5 +1,5 @@
 Name:           kate-code
-Version:        1.5.0
+Version:        1.5.1
 Release:        1%{?dist}
 Summary:        Claude Code integration for Kate text editor
 
@@ -43,6 +43,15 @@ execution with permission controls, and session management.
 %{_libexecdir}/kate-mcp-server
 
 %changelog
+* Thu Jul 02 2026 Ben <ben@localhost> - 1.5.1-1
+- Fix kate-mcp-server crashing with SIGABRT ("has encountered a fatal
+  error and was closed") on every kate MCP tool call: the per-process
+  editor D-Bus name ended in an all-digit pid element, which is an
+  invalid bus name and made libdbus abort the process. The pid element
+  is now prefixed ("...editor.p<pid>"), and the MCP server validates
+  the name before use so a malformed name degrades to an error instead
+  of a crash
+
 * Thu Jul 02 2026 Ben <ben@localhost> - 1.5.0-1
 - Generate session summaries with a configured ACP agent chosen from a
   provider dropdown, replacing the hard-coded Anthropic-API models; the
