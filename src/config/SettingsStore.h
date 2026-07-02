@@ -61,6 +61,11 @@ public:
     QString summaryModel() const;
     void setSummaryModel(const QString &model);
 
+    // ACP provider used to generate summaries. The sentinel
+    // CURRENT_AGENT_PROVIDER_ID means "ask the live session's agent".
+    QString summaryProviderId() const;
+    void setSummaryProviderId(const QString &id);
+
     // Session settings
     bool autoResumeSessions() const;
     void setAutoResumeSessions(bool enable);
@@ -82,6 +87,12 @@ public:
     ACPProvider activeProvider() const;
     QString activeProviderId() const;
     void setActiveProviderId(const QString &id);
+    // Returns the provider with the given id, or a default-constructed
+    // (empty-executable) provider when the id is unknown.
+    ACPProvider providerById(const QString &id) const;
+
+    // Sentinel summary-provider id meaning "use the currently connected agent".
+    static const QString CURRENT_AGENT_PROVIDER_ID;
 
     void addCustomProvider(const ACPProvider &provider);
     void updateCustomProvider(const QString &id, const ACPProvider &provider);

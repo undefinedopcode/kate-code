@@ -16,6 +16,8 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFileDialog>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -28,6 +30,7 @@
 #include <QLabel>
 #include <QPixmap>
 #include <QProcess>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QStandardItemModel>
@@ -403,10 +406,6 @@ void ChatWidget::setSettingsStore(SettingsStore *settings)
         connect(m_summaryGenerator, &SummaryGenerator::summaryError,
                 this, &ChatWidget::onSummaryError);
 
-        // Connect API key loaded signal for deferred summary generation
-        connect(m_settingsStore, &SettingsStore::apiKeyLoaded,
-                this, &ChatWidget::onApiKeyLoadedForSummary);
-
         // Connect settings changes for diff colors
         connect(m_settingsStore, &SettingsStore::settingsChanged,
                 this, &ChatWidget::onSettingsChanged);
@@ -415,15 +414,17 @@ void ChatWidget::setSettingsStore(SettingsStore *settings)
         applyDiffColors();
         populateProviderCombo();
         applyACPBackend();
-
-        // Try to load API key from KWallet (async)
-        m_settingsStore->loadApiKey();
     }
 }
 
 void ChatWidget::onConnectClicked()
 {
     if (m_session->isConnected()) {
+        // Summarise BEFORE stopping so the current-agent option can ask the
+        // live session. Resetting m_userSentMessage stops the Disconnected
+        // handler from triggering a second summary for the same session.
+        triggerSummaryGeneration();
+        m_userSentMessage = false;
         m_session->stop();
         return;
     }
@@ -540,17 +541,13 @@ QString ChatWidget::resolveResumeContext(const QString &projectRoot, const QStri
     const QString transcript = m_summaryStore->loadTranscript(projectRoot, sessionId);
 
     // Optionally summarise an abandoned (raw) session before resuming, so the
-    // injected context stays small. This blocks briefly on the summary model.
+    // injected context stays small. This blocks briefly on the summary agent.
     if (m_settingsStore && m_settingsStore->summariseOnResume()
         && m_summaryGenerator && !transcript.isEmpty()) {
-        if (m_settingsStore->hasApiKey()) {
-            m_summaryGenerator->generateSummary(sessionId, projectRoot, transcript);
-            m_summaryGenerator->waitForPendingRequests();
-            if (m_summaryStore->hasSummary(projectRoot, sessionId)) {
-                return m_summaryStore->loadSummary(projectRoot, sessionId);
-            }
-        } else {
-            qWarning() << "[ChatWidget] summariseOnResume enabled but no API key; using raw transcript";
+        m_summaryGenerator->generateSummary(sessionId, projectRoot, transcript);
+        m_summaryGenerator->waitForPendingRequests();
+        if (m_summaryStore->hasSummary(projectRoot, sessionId)) {
+            return m_summaryStore->loadSummary(projectRoot, sessionId);
         }
     }
 
@@ -1202,46 +1199,78 @@ void ChatWidget::triggerSummaryGeneration()
     }
 
     qDebug() << "[ChatWidget]   summariesEnabled:" << m_settingsStore->summariesEnabled();
-    qDebug() << "[ChatWidget]   hasApiKey:" << m_settingsStore->hasApiKey();
 
     if (!m_settingsStore->summariesEnabled()) {
         qDebug() << "[ChatWidget] Summaries disabled in settings";
         return;
     }
 
-    if (!m_settingsStore->hasApiKey()) {
-        qDebug() << "[ChatWidget] No API key loaded yet, triggering load from KWallet";
-        m_pendingSummaryAfterKeyLoad = true;
-        m_settingsStore->loadApiKey();
+    // The current-agent option asks the live session while it is still up;
+    // otherwise (other provider selected, or the session already died) run
+    // the configured provider headlessly over the saved transcript.
+    if (m_settingsStore->summaryProviderId() == SettingsStore::CURRENT_AGENT_PROVIDER_ID
+        && m_session && m_session->isConnected()
+        && m_session->sessionId() == m_lastSessionId) {
+        generateSummaryWithCurrentAgent();
         return;
     }
 
-    // Read transcript content
-    QString transcriptPath = QDir::homePath() +
-        QStringLiteral("/.kate-code/transcripts/") +
-        m_lastProjectRoot.mid(1).replace(QLatin1Char('/'), QLatin1Char('_')) +
-        QStringLiteral("/") + m_lastSessionId + QStringLiteral(".md");
-
-    qDebug() << "[ChatWidget] Looking for transcript at:" << transcriptPath;
-
-    QFile transcriptFile(transcriptPath);
-    if (!transcriptFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        qWarning() << "[ChatWidget] Could not read transcript:" << transcriptPath;
-        return;
-    }
-
-    QString transcriptContent = QString::fromUtf8(transcriptFile.readAll());
-    transcriptFile.close();
-
-    qDebug() << "[ChatWidget] Transcript length:" << transcriptContent.length();
-
+    const QString transcriptContent =
+        m_summaryStore->loadTranscript(m_lastProjectRoot, m_lastSessionId);
     if (transcriptContent.isEmpty()) {
-        qDebug() << "[ChatWidget] Empty transcript, skipping summary";
+        qWarning() << "[ChatWidget] No transcript found for session" << m_lastSessionId;
         return;
     }
 
     qDebug() << "[ChatWidget] Generating summary for session:" << m_lastSessionId;
     m_summaryGenerator->generateSummary(m_lastSessionId, m_lastProjectRoot, transcriptContent);
+}
+
+void ChatWidget::generateSummaryWithCurrentAgent()
+{
+    qDebug() << "[ChatWidget] Requesting summary from the current agent";
+
+    QProgressDialog dialog(QStringLiteral("Generating session summary with the current agent…"),
+                           QStringLiteral("Cancel"), 0, 0, this);
+    dialog.setWindowTitle(QStringLiteral("Kate Code"));
+    dialog.setWindowModality(Qt::WindowModal);
+    dialog.setMinimumDuration(0);
+    dialog.show();
+
+    QString summary;
+    QString error;
+    bool done = false;
+    const QMetaObject::Connection conn =
+        connect(m_session, &ACPSession::summaryResult, this,
+                [&summary, &error, &done](const QString &s, const QString &e) {
+        summary = s;
+        error = e;
+        done = true;
+    });
+
+    m_session->requestSummary(SummaryGenerator::buildInSessionPrompt(m_lastProjectRoot));
+
+    // Spin locally until the result arrives, the user cancels, or we give up.
+    QElapsedTimer timer;
+    timer.start();
+    QEventLoop loop;
+    while (!done && !dialog.wasCanceled() && timer.elapsed() < 120000) {
+        loop.processEvents(QEventLoop::AllEvents, 100);
+    }
+    disconnect(conn);
+
+    if (!done) {
+        m_session->cancelSummary();
+        if (!dialog.wasCanceled()) {
+            onSummaryError(m_lastSessionId, QStringLiteral("Timed out waiting for the session summary"));
+        }
+        return;
+    }
+    if (!error.isEmpty()) {
+        onSummaryError(m_lastSessionId, error);
+        return;
+    }
+    onSummaryReady(m_lastSessionId, m_lastProjectRoot, summary);
 }
 
 void ChatWidget::onSummaryReady(const QString &sessionId, const QString &projectRoot, const QString &summary)
@@ -1270,24 +1299,6 @@ void ChatWidget::onSummaryError(const QString &sessionId, const QString &error)
     sysMsg.content = QStringLiteral("Summary generation failed: %1").arg(error);
     sysMsg.timestamp = QDateTime::currentDateTime();
     m_chatWebView->addMessage(sysMsg);
-}
-
-void ChatWidget::onApiKeyLoadedForSummary(bool success)
-{
-    qDebug() << "[ChatWidget] API key loaded for summary, success:" << success;
-
-    if (!m_pendingSummaryAfterKeyLoad) {
-        return;
-    }
-    m_pendingSummaryAfterKeyLoad = false;
-
-    if (!success) {
-        qWarning() << "[ChatWidget] Failed to load API key from KWallet, skipping summary";
-        return;
-    }
-
-    // Now that we have the API key, retry summary generation
-    triggerSummaryGeneration();
 }
 
 void ChatWidget::onSettingsChanged()

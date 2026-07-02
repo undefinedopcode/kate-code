@@ -121,7 +121,6 @@ private Q_SLOTS:
     // Summary generation
     void onSummaryReady(const QString &sessionId, const QString &projectRoot, const QString &summary);
     void onSummaryError(const QString &sessionId, const QString &error);
-    void onApiKeyLoadedForSummary(bool success);
     void onSettingsChanged();
 
     // User question handling
@@ -129,6 +128,9 @@ private Q_SLOTS:
 
 private:
     void triggerSummaryGeneration();
+    // Ask the live session's agent for the summary, showing a cancellable
+    // progress dialogue while it runs. Only valid while connected.
+    void generateSummaryWithCurrentAgent();
     // Resolve prior-session context for resuming (summary, on-demand summary, or raw transcript).
     QString resolveResumeContext(const QString &projectRoot, const QString &sessionId);
     void applyDiffColors();
@@ -212,9 +214,6 @@ private:
 
     // Track whether user has sent a message (for summary generation decision)
     bool m_userSentMessage = false;
-
-    // Track pending summary generation waiting for API key
-    bool m_pendingSummaryAfterKeyLoad = false;
 
     // Set to true by prepareForShutdown() so a second call is a no-op.
     bool m_shutdownDone = false;

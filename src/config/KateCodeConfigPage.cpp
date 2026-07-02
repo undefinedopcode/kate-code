@@ -306,14 +306,15 @@ void KateCodeConfigPage::setupAdvancedTab(QWidget *tab)
             this, &KateCodeConfigPage::onSettingChanged);
     summaryLayout->addRow(m_enableSummariesCheck);
 
-    m_summaryModelCombo = new QComboBox(tab);
-    m_summaryModelCombo->addItem(QStringLiteral("claude-haiku-4-5-20251001"), QStringLiteral("claude-haiku-4-5-20251001"));
-    m_summaryModelCombo->addItem(QStringLiteral("claude-sonnet-4-5-20250514"), QStringLiteral("claude-sonnet-4-5-20250514"));
-    connect(m_summaryModelCombo, &QComboBox::currentIndexChanged,
+    m_summaryProviderCombo = new QComboBox(tab);
+    connect(m_summaryProviderCombo, &QComboBox::currentIndexChanged,
             this, &KateCodeConfigPage::onSettingChanged);
-    summaryLayout->addRow(i18n("Summary model:"), m_summaryModelCombo);
+    summaryLayout->addRow(i18n("Summary agent:"), m_summaryProviderCombo);
 
-    auto *summaryNote = new QLabel(i18n("Summaries are stored in ~/.kate-code/summaries/ and can be used as context when resuming sessions."), tab);
+    auto *summaryNote = new QLabel(i18n("The selected agent generates the summary when a session ends. "
+                                        "\"Current agent\" asks the live session to summarise itself before it disconnects; "
+                                        "other agents run briefly in the background. "
+                                        "Summaries are stored in ~/.kate-code/summaries/ and can be used as context when resuming sessions."), tab);
     summaryNote->setWordWrap(true);
     summaryNote->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
     summaryLayout->addRow(summaryNote);
@@ -334,7 +335,7 @@ void KateCodeConfigPage::setupAdvancedTab(QWidget *tab)
             this, &KateCodeConfigPage::onSettingChanged);
     sessionLayout->addWidget(m_summariseOnResumeCheck);
 
-    auto *resumeNote = new QLabel(i18n("When resuming a session that has no summary yet, generate one with the summary model first (requires an API key). Otherwise the raw transcript is used as context."), tab);
+    auto *resumeNote = new QLabel(i18n("When resuming a session that has no summary yet, generate one with the summary agent first. Otherwise the raw transcript is used as context."), tab);
     resumeNote->setWordWrap(true);
     resumeNote->setStyleSheet(QStringLiteral("color: gray; font-size: small;"));
     sessionLayout->addWidget(resumeNote);
@@ -414,6 +415,24 @@ void KateCodeConfigPage::populateProviderList()
         m_providerList->setCurrentRow(0);
     }
     updateProviderButtons();
+
+    // The summary-agent dropdown mirrors the provider set, so refresh it too,
+    // keeping the on-screen (possibly unapplied) selection.
+    populateSummaryProviderCombo(m_summaryProviderCombo->currentData().toString());
+}
+
+void KateCodeConfigPage::populateSummaryProviderCombo(const QString &selectedId)
+{
+    const QSignalBlocker blocker(m_summaryProviderCombo);
+    m_summaryProviderCombo->clear();
+    m_summaryProviderCombo->addItem(i18n("Current agent"), SettingsStore::CURRENT_AGENT_PROVIDER_ID);
+    const auto providerList = m_settings->providers();
+    for (const auto &p : providerList) {
+        m_summaryProviderCombo->addItem(p.description, p.id);
+    }
+
+    const int index = m_summaryProviderCombo->findData(selectedId);
+    m_summaryProviderCombo->setCurrentIndex(index >= 0 ? index : 0);
 }
 
 void KateCodeConfigPage::apply()
@@ -432,7 +451,7 @@ void KateCodeConfigPage::apply()
 
     // Save other settings
     m_settings->setSummariesEnabled(m_enableSummariesCheck->isChecked());
-    m_settings->setSummaryModel(m_summaryModelCombo->currentData().toString());
+    m_settings->setSummaryProviderId(m_summaryProviderCombo->currentData().toString());
     m_settings->setAutoResumeSessions(m_autoResumeCheck->isChecked());
     m_settings->setSummariseOnResume(m_summariseOnResumeCheck->isChecked());
     m_settings->setAcpLogEnabled(m_acpLogEnableCheck->isChecked());
@@ -459,7 +478,7 @@ void KateCodeConfigPage::defaults()
 {
     m_apiKeyEdit->clear();
     m_enableSummariesCheck->setChecked(false);
-    m_summaryModelCombo->setCurrentIndex(0);
+    m_summaryProviderCombo->setCurrentIndex(0);  // Current agent
     m_autoResumeCheck->setChecked(true);
     m_summariseOnResumeCheck->setChecked(false);
     m_acpLogEnableCheck->setChecked(false);
@@ -476,12 +495,7 @@ void KateCodeConfigPage::reset()
 {
     // Load current settings
     m_enableSummariesCheck->setChecked(m_settings->summariesEnabled());
-
-    QString currentModel = m_settings->summaryModel();
-    int modelIndex = m_summaryModelCombo->findData(currentModel);
-    if (modelIndex >= 0) {
-        m_summaryModelCombo->setCurrentIndex(modelIndex);
-    }
+    populateSummaryProviderCombo(m_settings->summaryProviderId());
 
     m_autoResumeCheck->setChecked(m_settings->autoResumeSessions());
     m_summariseOnResumeCheck->setChecked(m_settings->summariseOnResume());
@@ -807,17 +821,13 @@ void KateCodeConfigPage::onSettingChanged()
 
 void KateCodeConfigPage::updateApiKeyStatus()
 {
+    // Summaries are generated through ACP agents, so they no longer depend on
+    // the API key; this label only reports on the key itself.
     if (!m_settings->isWalletAvailable()) {
-        m_apiKeyStatus->setText(i18n("<span style='color: orange;'>KWallet is not available. Session summaries will be disabled.</span>"));
-        m_enableSummariesCheck->setEnabled(false);
-        m_summaryModelCombo->setEnabled(false);
+        m_apiKeyStatus->setText(i18n("<span style='color: orange;'>KWallet is not available.</span>"));
     } else if (m_settings->hasApiKey()) {
         m_apiKeyStatus->setText(i18n("<span style='color: green;'>API key is stored in KWallet</span>"));
-        m_enableSummariesCheck->setEnabled(true);
-        m_summaryModelCombo->setEnabled(true);
     } else {
         m_apiKeyStatus->setText(i18n("No API key configured. Enter your key and click Apply to save."));
-        m_enableSummariesCheck->setEnabled(false);
-        m_summaryModelCombo->setEnabled(false);
     }
 }

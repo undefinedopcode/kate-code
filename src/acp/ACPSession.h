@@ -54,6 +54,14 @@ public:
     bool supportsPromptQueueing() const { return m_supportsPromptQueueing; }
 
     void cancelPrompt();
+
+    // Ask the live agent for a session summary without touching the chat UI or
+    // the transcript. Any running prompt is cancelled first (the session is
+    // about to end). The outcome arrives via summaryResult().
+    void requestSummary(const QString &prompt);
+    void cancelSummary();
+    bool isSummaryRunning() const { return m_summaryRequestId >= 0; }
+
     QJsonArray availableModes() const { return m_availableModes; }
     QString currentMode() const { return m_currentMode; }
     QList<SlashCommand> availableCommands() const { return m_availableCommands; }
@@ -93,6 +101,9 @@ Q_SIGNALS:
 
     // Emitted if session/load fails (caller should fall back to createNewSession)
     void sessionLoadFailed(const QString &error);
+
+    // Outcome of requestSummary(); error is empty on success.
+    void summaryResult(const QString &summary, const QString &error);
 
     // Terminal signals for UI updates
     void terminalOutputUpdated(const QString &terminalId, const QString &output, bool finished);
@@ -174,6 +185,11 @@ private:
 
     // Follow-up prompts queued while a session/prompt round-trip is in flight.
     QList<QueuedPrompt> m_promptQueue;
+
+    // In-flight silent summary prompt (requestSummary): while m_summaryRequestId
+    // is set, agent_message_chunk text accumulates here instead of the chat.
+    int m_summaryRequestId = -1;
+    QString m_summaryCollected;
 
     // Interactive mode-change state (separate from the startup config flow).
     // m_interactiveModeRequestId: id of the in-flight session/set_config_option or

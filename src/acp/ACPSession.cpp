@@ -169,6 +169,12 @@ void ACPSession::stop()
     m_promptRequestId = -1;
     m_promptQueue.clear();
     m_messageCounter = 0;
+    // Fail any in-flight summary so a caller waiting on summaryResult() returns.
+    if (m_summaryRequestId >= 0) {
+        m_summaryRequestId = -1;
+        m_summaryCollected.clear();
+        Q_EMIT summaryResult(QString(), QStringLiteral("Session stopped before the summary completed"));
+    }
     // Discard any in-flight or queued interactive mode-change state.
     m_interactiveModeRequestId = -1;
     m_pendingModeValue.clear();
@@ -222,6 +228,54 @@ void ACPSession::cancelPrompt()
         m_promptQueue.clear();
     }
     Q_EMIT promptCancelled();
+}
+
+void ACPSession::requestSummary(const QString &prompt)
+{
+    if (m_status != ConnectionStatus::Connected || m_sessionId.isEmpty()) {
+        Q_EMIT summaryResult(QString(), QStringLiteral("No connected session to summarise"));
+        return;
+    }
+    if (m_summaryRequestId >= 0) {
+        Q_EMIT summaryResult(QString(), QStringLiteral("A summary request is already running"));
+        return;
+    }
+
+    // The session is about to end, so a running task loses to the summary.
+    if (isPromptRunning()) {
+        qDebug() << "[ACPSession] requestSummary: cancelling the running prompt first";
+        cancelPrompt();
+    }
+
+    QJsonObject textBlock;
+    textBlock[QStringLiteral("type")] = QStringLiteral("text");
+    textBlock[QStringLiteral("text")] = prompt;
+    QJsonArray promptBlocks;
+    promptBlocks.append(textBlock);
+
+    QJsonObject params;
+    params[QStringLiteral("sessionId")] = m_sessionId;
+    params[QStringLiteral("prompt")] = promptBlocks;
+
+    m_summaryCollected.clear();
+    m_summaryRequestId = m_service->sendRequest(QStringLiteral("session/prompt"), params);
+    qDebug() << "[ACPSession] Sent summary session/prompt request, id:" << m_summaryRequestId;
+    if (m_summaryRequestId < 0) {
+        Q_EMIT summaryResult(QString(), QStringLiteral("Failed to send the summary prompt"));
+    }
+}
+
+void ACPSession::cancelSummary()
+{
+    if (m_summaryRequestId < 0) {
+        return;
+    }
+    qDebug() << "[ACPSession] Cancelling summary request:" << m_summaryRequestId;
+    QJsonObject params;
+    params[QStringLiteral("id")] = m_summaryRequestId;
+    m_service->sendNotification(QStringLiteral("$/cancel_request"), params);
+    m_summaryRequestId = -1;
+    m_summaryCollected.clear();
 }
 
 void ACPSession::sendPermissionResponse(int requestId, const QJsonObject &outcome)
@@ -793,6 +847,14 @@ void ACPSession::onDisconnected(int exitCode)
     bool wasAlreadyDisconnected = (m_status == ConnectionStatus::Disconnected);
     m_status = ConnectionStatus::Disconnected;
     m_sessionId.clear();
+    // Fail any in-flight summary so a caller waiting on summaryResult() returns.
+    if (m_summaryRequestId >= 0) {
+        m_summaryRequestId = -1;
+        m_summaryCollected.clear();
+        Q_EMIT summaryResult(QString(),
+                             QStringLiteral("Agent disconnected before the summary completed (exit code %1)")
+                                 .arg(exitCode));
+    }
     if (!wasAlreadyDisconnected) {
         Q_EMIT statusChanged(m_status);
     }
@@ -839,6 +901,23 @@ void ACPSession::onResponse(int id, const QJsonObject &result, const QJsonObject
     // Interactive mode-change response (distinct from the startup config flow).
     if (id == m_interactiveModeRequestId) {
         handleInteractiveModeResponse(result, error);
+        return;
+    }
+
+    // Silent summary prompt (requestSummary): resolve it without touching the
+    // chat state, and before the generic error handling below.
+    if (id == m_summaryRequestId) {
+        const QString collected = m_summaryCollected.trimmed();
+        m_summaryRequestId = -1;
+        m_summaryCollected.clear();
+        if (!error.isEmpty()) {
+            Q_EMIT summaryResult(QString(),
+                                 error[QStringLiteral("message")].toString(QStringLiteral("agent error")));
+        } else if (collected.isEmpty()) {
+            Q_EMIT summaryResult(QString(), QStringLiteral("Agent returned an empty summary"));
+        } else {
+            Q_EMIT summaryResult(collected, QString());
+        }
         return;
     }
 
@@ -1201,7 +1280,11 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
         qDebug() << "[ACPSession] Chunk received - messageId:" << m_currentMessageId
                  << "text length:" << text.length() << "text:" << text.left(50);
 
-        if (!text.isEmpty() && !m_currentMessageId.isEmpty()) {
+        if (m_summaryRequestId >= 0) {
+            // Silent summary in flight: collect the text away from the chat
+            // view and the transcript.
+            m_summaryCollected += text;
+        } else if (!text.isEmpty() && !m_currentMessageId.isEmpty()) {
             m_currentMessageContent += text;  // Accumulate for transcript
             Q_EMIT messageUpdated(m_currentMessageId, text);
         }
@@ -1222,6 +1305,8 @@ void ACPSession::handleSessionUpdate(const QJsonObject &params)
             Q_EMIT messageFinished(m_currentMessageId);
             m_currentMessageId.clear();
             m_currentMessageContent.clear();
+        } else if (m_summaryRequestId >= 0) {
+            qDebug() << "[ACPSession] agent_message_end for the silent summary prompt";
         } else {
             qWarning() << "[ACPSession] agent_message_end but no current message ID!";
         }

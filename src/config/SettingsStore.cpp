@@ -15,6 +15,7 @@
 const QString SettingsStore::WALLET_FOLDER = QStringLiteral("KateCode");
 const QString SettingsStore::API_KEY_ENTRY = QStringLiteral("AnthropicApiKey");
 const QString SettingsStore::DEFAULT_SUMMARY_MODEL = QStringLiteral("claude-haiku-4-5-20251001");
+const QString SettingsStore::CURRENT_AGENT_PROVIDER_ID = QStringLiteral("__current__");
 
 SettingsStore::SettingsStore(QObject *parent)
     : QObject(parent)
@@ -179,6 +180,21 @@ QString SettingsStore::summaryModel() const
 void SettingsStore::setSummaryModel(const QString &model)
 {
     m_settings.setValue(QStringLiteral("Summaries/model"), model);
+    m_settings.sync();
+    Q_EMIT settingsChanged();
+}
+
+QString SettingsStore::summaryProviderId() const
+{
+    // Default to the current agent: it already holds the session context, so
+    // summaries work without any extra configuration.
+    return m_settings.value(QStringLiteral("Summaries/providerId"),
+                            CURRENT_AGENT_PROVIDER_ID).toString();
+}
+
+void SettingsStore::setSummaryProviderId(const QString &id)
+{
+    m_settings.setValue(QStringLiteral("Summaries/providerId"), id);
     m_settings.sync();
     Q_EMIT settingsChanged();
 }
@@ -364,6 +380,17 @@ ACPProvider SettingsStore::activeProvider() const
 QString SettingsStore::activeProviderId() const
 {
     return m_settings.value(QStringLiteral("ACP/activeProvider"), QStringLiteral("claude-code")).toString();
+}
+
+ACPProvider SettingsStore::providerById(const QString &id) const
+{
+    const auto all = providers();
+    for (const auto &p : all) {
+        if (p.id == id) {
+            return p;
+        }
+    }
+    return {};
 }
 
 void SettingsStore::setActiveProviderId(const QString &id)

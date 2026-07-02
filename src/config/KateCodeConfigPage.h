@@ -52,6 +52,7 @@ private:
     void setupAdvancedTab(QWidget *tab);
     void updateApiKeyStatus();
     void populateProviderList();
+    void populateSummaryProviderCombo(const QString &selectedId);
     bool editProviderDialog(ACPProvider &provider, const QString &title);
     ACPProvider providerForItem(const QListWidgetItem *item) const;
     void updateProviderButtons();
@@ -80,7 +81,7 @@ private:
 
     // Advanced tab - Summary options
     QCheckBox *m_enableSummariesCheck;
-    QComboBox *m_summaryModelCombo;
+    QComboBox *m_summaryProviderCombo;
 
     // Advanced tab - Session resume
     QCheckBox *m_autoResumeCheck;
