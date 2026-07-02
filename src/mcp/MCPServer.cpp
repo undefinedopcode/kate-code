@@ -39,6 +39,10 @@ QJsonObject MCPServer::handleMessage(const QJsonObject &msg)
         return handleToolsList(id, params);
     } else if (method == QStringLiteral("tools/call")) {
         return handleToolsCall(id, params);
+    } else if (method == QStringLiteral("ping")) {
+        // MCP health check: must answer with an empty result, not an error —
+        // clients may treat a failed ping as a dead connection and close it.
+        return makeResponse(id, QJsonObject());
     }
 
     return makeErrorResponse(id, -32601, QStringLiteral("Method not found: %1").arg(method));
