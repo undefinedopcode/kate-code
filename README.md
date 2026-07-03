@@ -1,19 +1,19 @@
 # Kate Code
 
-A plugin for the Kate text editor that integrates Claude Code (an AI coding assistant) directly into the editor's interface. It provides an interactive chat panel where you can converse with Claude to get help with coding tasks—all without leaving your KDE development environment.
+A plugin for the Kate text editor that integrates ACP-compatible coding agents directly into the editor's interface. It provides an interactive chat panel where you can work with Claude Code, Vibe, or any other configured ACP provider without leaving your KDE development environment.
 
 ![Kate Code Screenshot](Screenshot.png)
 
 ## Features
 
 ### Chat Interface
-- **Real-time Streaming**: Messages stream in as Claude generates them with markdown formatting via marked.js
+- **Real-time Streaming**: Messages stream in as the selected agent responds, with markdown formatting via marked.js
 - **Syntax Highlighting**: Language-aware code highlighting via highlight.js supporting 50+ languages
 - **Theme Integration**: Automatically adapts to your Kate/KDE color scheme (dark/light)
 - **Copy Buttons**: One-click clipboard copy on all code blocks
 
 ### Tool Visualization
-See what Claude is doing with inline tool call displays:
+See what the active agent is doing with inline tool call displays:
 - **Bash**: Command preview in header, full command and output in expandable details
 - **Edit**: Unified diffs with syntax-highlighted code showing exactly what changed
 - **Write**: Syntax-highlighted file content with copy button
@@ -35,11 +35,11 @@ See what Claude is doing with inline tool call displays:
 - Automatic color scheme extraction from `~/.config/kdeglobals`
 - Kate theme colors applied to highlight.js syntax highlighting
 - Seamless side panel integration
-- Context-aware: passes current file, selection, and project root to Claude
+- Context-aware: passes the current file, selection, and project root to the active agent
 - Image paste support: paste images from clipboard directly into chat messages
 
 ### Architecture
-- **ACP Protocol**: JSON-RPC 2.0 over stdin/stdout with `claude-code-acp` subprocess
+- **ACP Protocol**: JSON-RPC 2.0 over stdin/stdout with the selected ACP provider process
 - **Qt WebChannel**: Bidirectional C++/JavaScript bridge for real-time UI updates
 - **Web UI**: HTML/CSS/JS rendered in Qt WebEngineView for rich formatting
 
@@ -47,26 +47,28 @@ See what Claude is doing with inline tool call displays:
 
 ### System Requirements
 - KDE Plasma / Kate text editor
-- Qt 6 (Core, Widgets, WebEngineWidgets, WebChannel)
+- Qt 6 (Core, DBus, Widgets, WebEngineWidgets, WebChannel)
 - KDE Frameworks 6 (KF6):
   - KTextEditor
   - KI18n
   - KCoreAddons
   - KXmlGui
+  - SyntaxHighlighting
+  - Pty
 - CMake 3.16 or higher
 - C++17 compatible compiler
 
 ### Runtime Dependencies
-- `claude-code-acp` binary installed and available in PATH
-  - Install from: https://github.com/zed-industries/claude-code-acp
+- At least one ACP-compatible agent executable installed and available in `PATH`
+- Kate Code seeds editable provider entries for Claude Code (`claude-code-acp`) and Vibe (`vibe-acp`), and supports custom ACP providers
 
 ## Installation
 
-### Install claude-code-acp
+### Install an ACP provider
 
-Follow the instructions at https://github.com/zed-industries/claude-code-acp to install the ACP binary.
+Install the ACP-compatible agent you want to use and ensure its executable is available in `PATH`. For example, follow the [claude-code-acp installation instructions](https://github.com/zed-industries/claude-code-acp) for Claude Code.
 
-Verify installation:
+Verify the executable, for example:
 ```bash
 which claude-code-acp
 ```
@@ -122,6 +124,14 @@ sudo dnf install cmake extra-cmake-modules gcc-c++ qt6-qtwebengine-devel \
   kf6-kxmlgui-devel kf6-syntax-highlighting-devel
 ```
 
+**openSUSE Tumbleweed:**
+```bash
+sudo zypper install cmake kf6-extra-cmake-modules gcc-c++ \
+  qt6-base-devel qt6-webchannel-devel qt6-webenginewidgets-devel \
+  kf6-ktexteditor-devel kf6-ki18n-devel kf6-kcoreaddons-devel \
+  kf6-kxmlgui-devel kf6-syntax-highlighting-devel kf6-kpty-devel
+```
+
 #### Build and Install
 
 ```bash
@@ -156,34 +166,31 @@ The plugin will be installed to:
 ### Starting a Session
 
 1. The Kate Code panel appears in Kate's side panel area (left or right sidebar)
-2. Click the **Connect** button to start a claude-code-acp session
-3. The plugin will initialize using your current project's directory as the working directory
+2. Choose a configured ACP provider from the provider dropdown
+3. Click **Connect** to start a session using the current project's directory as its working directory
 
 ### Sending Messages
 
 - Type your message in the input field at the bottom
 - Press **Enter** to send (Shift+Enter for newline)
-- Claude's response will stream in real-time with markdown formatting
+- The agent's response will stream in real time with markdown formatting
 
 ### Agent Mode
 
-Use the dropdown next to the input field to select Claude's operating mode:
-- **Default**: Standard interactive mode with tool permission prompts
-- **Plan Mode**: Claude will create a plan before executing tasks
-- Additional modes may be available depending on your claude-code configuration
+Use the mode dropdown next to the input field to select an operating mode exposed by the active ACP provider. Available modes and their behavior depend on that provider; common examples include default and plan modes.
 
 ### Code Blocks
 
-When Claude shows code in responses:
+When the agent shows code in responses:
 - **Syntax highlighting** is applied automatically based on the language
 - Click the **📋 copy button** in the top-right corner of any code block to copy to clipboard
 - Highlighting theme automatically matches your KDE color scheme (light/dark)
 
 ### Context Awareness
 
-The plugin automatically provides context to Claude:
-- **Current File**: If you have a file open, Claude knows which file you're working on
-- **Selection**: If you have text selected, it's passed to Claude as context
+The plugin automatically provides context to the active agent:
+- **Current File**: If you have a file open, the agent knows which file you're working on
+- **Selection**: If you have text selected, it is passed to the agent as context
 - **Project Root**: Automatically detected from:
   - Kate's project plugin (if available)
   - VCS markers (`.git`, `.hg`, `.svn`)
@@ -192,14 +199,14 @@ The plugin automatically provides context to Claude:
 
 ### Tool Calls
 
-When Claude uses tools, they appear inline in the conversation:
+When the agent uses tools, they appear inline in the conversation:
 - **Collapsed view**: Shows tool name and key info (command for Bash, filename for file ops)
 - **Expanded view**: Click to see full command/input and complete output
 - **Status indicators**: Visual feedback for pending, running, completed, or failed operations
 
 ### Task List
 
-- Appears at the bottom of the chat when Claude is working on multi-step tasks
+- Appears at the bottom of the chat when the agent is working on multi-step tasks
 - Click the header to collapse/expand (state persists across sessions)
 - Shows progress counter: "Tasks (3/5)" means 3 completed out of 5 total
 - **Icons**:
@@ -209,7 +216,7 @@ When Claude uses tools, they appear inline in the conversation:
 
 ### Permissions
 
-When Claude needs approval to run certain tools:
+When the agent needs approval to run certain tools:
 - A permission dialog appears inline in the chat
 - Shows the tool name, input details, and available options
 - Options typically include: "Always Allow", "Allow", "Reject"
@@ -217,17 +224,22 @@ When Claude needs approval to run certain tools:
 
 ### Session Summarization & Resume (Experimental)
 
-Kate Code includes experimental support for session summarization and context re-seeding:
+Kate Code includes optional session summarization and context re-seeding:
 
-- **Automatic Summarization**: When a session ends, the conversation is summarized and stored locally
-- **Context Resume**: Starting a new session can optionally re-seed context from the previous summary
-- **Continuity**: Helps maintain context across editor restarts or when switching between tasks
+- **Configurable Summary Agent**: Use the current live agent or select any configured ACP provider as the summary agent
+- **Background Summaries**: A provider other than “Current agent” runs briefly in the background against the saved transcript
+- **Context Resume**: A new session can be seeded from a stored summary; abandoned raw sessions can be summarized before resuming
+- **Local Storage**: Summaries are stored under `~/.kate-code/summaries/`
 
-**Setup**: This feature requires an Anthropic API key, which can be configured in the plugin settings (Settings → Configure Kate → Kate Code). The API key is securely stored in KWallet.
+Enable summaries and choose the summary agent under **Settings → Configure Kate → Kate Code → Advanced**. Kate Code does not store a separate API key or use KWallet for summaries; each ACP provider uses its own authentication and configuration.
 
 This feature is experimental and behavior may change in future releases.
 
 ## Configuration
+
+### ACP Providers
+
+Manage providers under **Settings → Configure Kate → Kate Code → General**. Providers can be added, edited, removed, and reordered. Each entry can configure its executable, command-line options, MCP configuration, ACP session settings, and resume capability. The seeded Claude Code and Vibe entries are ordinary editable providers.
 
 ### Color Scheme
 
@@ -241,7 +253,7 @@ The plugin automatically adapts to your KDE color scheme by reading `~/.config/k
 - Restart Kate completely (close all windows)
 
 ### Connection fails
-- Verify `claude-code-acp` is in PATH: `which claude-code-acp`
+- Verify the selected provider executable is installed and available in `PATH`
 - Look for error messages in terminal when launching Kate from command line: `kate`
 
 ### Messages not displaying
@@ -321,5 +333,5 @@ Contributions welcome! Please:
 ## Acknowledgments
 
 - Built with Qt 6 and KDE Frameworks 6
-- Integrates with [claude-code-acp](https://github.com/zed-industries/claude-code-acp) by Zed Industries
+- Supports ACP-compatible agents, with seeded providers for [claude-code-acp](https://github.com/zed-industries/claude-code-acp) and Vibe
 - Markdown rendering by [marked.js](https://marked.js.org/)
