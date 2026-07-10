@@ -12,8 +12,9 @@
 #include "../util/SummaryGenerator.h"
 #include "../util/SummaryStore.h"
 
-#include <QComboBox>
 #include <QDir>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
@@ -26,7 +27,7 @@
 #include <QProcess>
 #include <QPushButton>
 #include <QResizeEvent>
-#include <QStandardItemModel>
+#include <QMenu>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -55,20 +56,16 @@ ChatWidget::ChatWidget(QWidget *parent)
     headerLayout->addWidget(m_titleLabel);
     headerLayout->addStretch();
 
-    // ACP Provider selector
-    m_providerCombo = new QComboBox(this);
-    m_providerCombo->setToolTip(QStringLiteral("Select ACP Provider"));
-    m_providerCombo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    headerLayout->addWidget(m_providerCombo);
-    connect(m_providerCombo, &QComboBox::currentIndexChanged, this, &ChatWidget::onProviderComboChanged);
-
-    // Resume Session button (icon only)
-    m_resumeSessionButton = new QToolButton(this);
-    m_resumeSessionButton->setIcon(QIcon::fromTheme(QStringLiteral("view-history")));
-    m_resumeSessionButton->setToolTip(QStringLiteral("Resume Session"));
-    m_resumeSessionButton->setAutoRaise(true);
-    m_resumeSessionButton->setEnabled(false);
-    headerLayout->addWidget(m_resumeSessionButton);
+    // ACP Provider button — icon that opens a QMenu to switch providers
+    m_providerButton = new QToolButton(this);
+    m_providerButton->setIcon(QIcon::fromTheme(QStringLiteral("configure")));
+    m_providerButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    m_providerButton->setPopupMode(QToolButton::InstantPopup);
+    m_providerButton->setAutoRaise(true);
+    m_providerButton->setStyleSheet(QStringLiteral("QToolButton::menu-indicator { width: 0; }"));
+    m_providerButton->setToolTip(QStringLiteral("ACP Provider — click to change"));
+    m_providerButton->setVisible(false); // shown by populateProviderCombo() if >1 provider
+    headerLayout->addWidget(m_providerButton);
 
     // New Session button (icon only)
     m_newSessionButton = new QToolButton(this);
@@ -77,6 +74,15 @@ ChatWidget::ChatWidget(QWidget *parent)
     m_newSessionButton->setAutoRaise(true);
     m_newSessionButton->setEnabled(false);
     headerLayout->addWidget(m_newSessionButton);
+
+    // Flag concern button (icon only) — signals Claude to pause at next step
+    m_flagConcernButton = new QToolButton(this);
+    m_flagConcernButton->setIcon(QIcon::fromTheme(QStringLiteral("flag-red")));
+    m_flagConcernButton->setToolTip(QStringLiteral("Flag concern — Claude will pause at next step"));
+    m_flagConcernButton->setAutoRaise(true);
+    m_flagConcernButton->setCheckable(true);
+    m_flagConcernButton->setEnabled(false);
+    headerLayout->addWidget(m_flagConcernButton);
 
     // Connect/Disconnect button (icon only)
     m_connectButton = new QToolButton(this);
@@ -116,8 +122,8 @@ ChatWidget::ChatWidget(QWidget *parent)
 
     // Connect signals
     connect(m_connectButton, &QPushButton::clicked, this, &ChatWidget::onConnectClicked);
-    connect(m_resumeSessionButton, &QPushButton::clicked, this, &ChatWidget::onResumeSessionClicked);
     connect(m_newSessionButton, &QPushButton::clicked, this, &ChatWidget::onNewSessionClicked);
+    connect(m_flagConcernButton, &QToolButton::clicked, this, &ChatWidget::onFlagConcernClicked);
     connect(m_inputWidget, &ChatInputWidget::messageSubmitted, this, &ChatWidget::onMessageSubmitted);
     connect(m_inputWidget, &ChatInputWidget::imageAttached, this, &ChatWidget::onImageAttached);
     connect(m_inputWidget, &ChatInputWidget::permissionModeChanged, this, &ChatWidget::onPermissionModeChanged);
@@ -130,6 +136,7 @@ ChatWidget::ChatWidget(QWidget *parent)
     connect(m_session, &ACPSession::messageFinished, this, &ChatWidget::onMessageFinished);
     connect(m_session, &ACPSession::toolCallAdded, this, &ChatWidget::onToolCallAdded);
     connect(m_session, &ACPSession::toolCallUpdated, this, &ChatWidget::onToolCallUpdated);
+    connect(m_session, &ACPSession::fsEditApplied, this, &ChatWidget::onEditApplied);
     connect(m_session, &ACPSession::todosUpdated, this, &ChatWidget::onTodosUpdated);
     connect(m_session, &ACPSession::permissionRequested, this, &ChatWidget::onPermissionRequested);
     connect(m_session, &ACPSession::modesAvailable, this, &ChatWidget::onModesAvailable);
@@ -235,82 +242,45 @@ void ChatWidget::onConnectClicked()
         return;
     }
 
-    // Reset user message tracking for new session
+    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+    m_pendingSummaryContext.clear();
     m_userSentMessage = false;
 
-    // Get current project root
-    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+    // Always show the session picker so the user can change the working directory
+    SessionSelectionDialog dialog(projectRoot, m_sessionStore, m_summaryStore, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return; // cancelled
+    }
 
-    // Clear any pending summary from previous attempt
-    m_pendingSummaryContext.clear();
+    QString cwd = dialog.selectedCwd().isEmpty() ? projectRoot : dialog.selectedCwd();
+    m_pendingCwd = cwd;
 
-    m_pendingAction = PendingAction::CreateSession;
+    if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
+        m_pendingAction = PendingAction::LoadSession;
+        m_pendingSessionId = dialog.selectedSessionId();
+        m_pendingSessionName.clear();
+        m_pendingSessionNote.clear();
 
-    // Add system message
-    Message sysMsg;
-    sysMsg.id = QStringLiteral("sys_connect");
-    sysMsg.role = QStringLiteral("system");
-    sysMsg.timestamp = QDateTime::currentDateTime();
-    sysMsg.content = QStringLiteral("Starting new session in: %1").arg(projectRoot);
-    m_chatWebView->addMessage(sysMsg);
-
-    m_session->start(projectRoot);
-}
-
-void ChatWidget::onResumeSessionClicked()
-{
-    // Get current project root
-    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
-
-    // Check if any sessions with summaries exist
-    QStringList sessionIds = m_summaryStore->listSessionSummaries(projectRoot);
-    if (sessionIds.isEmpty()) {
-        // No sessions to resume - show message
         Message sysMsg;
-        sysMsg.id = QStringLiteral("sys_no_sessions");
+        sysMsg.id = QStringLiteral("sys_connect");
         sysMsg.role = QStringLiteral("system");
-        sysMsg.content = QStringLiteral("No previous sessions found for: %1").arg(projectRoot);
         sysMsg.timestamp = QDateTime::currentDateTime();
+        sysMsg.content = QStringLiteral("Resuming session in: %1").arg(cwd);
         m_chatWebView->addMessage(sysMsg);
-        return;
+    } else {
+        m_pendingAction = PendingAction::CreateSession;
+        m_pendingSessionName = dialog.selectedSessionName();
+        m_pendingSessionNote = dialog.selectedSessionNote();
+
+        Message sysMsg;
+        sysMsg.id = QStringLiteral("sys_connect");
+        sysMsg.role = QStringLiteral("system");
+        sysMsg.timestamp = QDateTime::currentDateTime();
+        sysMsg.content = QStringLiteral("Starting new session in: %1").arg(cwd);
+        m_chatWebView->addMessage(sysMsg);
     }
 
-    // Show dialog to let user select a session to resume
-    SessionSelectionDialog dialog(projectRoot, m_summaryStore, this);
-    if (dialog.exec() == QDialog::Accepted) {
-        if (dialog.selectedResult() == SessionSelectionDialog::Result::Resume) {
-            // Store summary of selected session to send after session connects
-            QString selectedId = dialog.selectedSessionId();
-            m_pendingSummaryContext = m_summaryStore->loadSummary(projectRoot, selectedId);
-
-            // If already connected, stop current session first (like onNewSessionClicked)
-            if (m_session->isConnected()) {
-                // Trigger summary generation for current session before stopping
-                triggerSummaryGeneration();
-
-                // Stop current session and reset WebView to reclaim memory
-                m_session->stop();
-                resetWebView();
-            }
-
-            // Reset user message tracking for new session
-            m_userSentMessage = false;
-
-            m_pendingAction = PendingAction::CreateSession;
-
-            // Add system message
-            Message sysMsg;
-            sysMsg.id = QStringLiteral("sys_connect");
-            sysMsg.role = QStringLiteral("system");
-            sysMsg.timestamp = QDateTime::currentDateTime();
-            sysMsg.content = QStringLiteral("Resuming session with prior context in: %1").arg(projectRoot);
-            m_chatWebView->addMessage(sysMsg);
-
-            m_session->start(projectRoot);
-        }
-        // If NewSession was selected in the dialog, do nothing (user can click Connect)
-    }
-    // Cancelled - do nothing
+    m_session->start(cwd);
 }
 
 void ChatWidget::onNewSessionClicked()
@@ -326,8 +296,7 @@ void ChatWidget::onNewSessionClicked()
     // Get current project root
     QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
 
-    // Clear stored session and any pending summary context
-    m_sessionStore->clearSession(projectRoot);
+    // Clear any pending summary context
     m_pendingSummaryContext.clear();
 
     // Stop current session
@@ -397,9 +366,11 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
         m_connectButton->setToolTip(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
-        m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(false);
-        m_providerCombo->setEnabled(true);
+        m_flagConcernButton->setEnabled(false);
+        m_flagConcernButton->setChecked(false);
+        m_concernFlagged = false;
+        m_providerButton->setEnabled(true);
         m_inputWidget->setEnabled(false);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #888888; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Disconnected"));
@@ -408,14 +379,34 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         sysMsg.content = QStringLiteral("Disconnected from %1").arg(m_settingsStore->activeProvider().description);
         m_chatWebView->addMessage(sysMsg);
 
+        // Clear task list from previous session
+        m_chatWebView->clearTodos();
+
         // Trigger summary generation for the ended session
         triggerSummaryGeneration();
+
+        // Offer rename if there was an actual conversation
+        if (m_userSentMessage && !m_lastSessionId.isEmpty() && !m_lastProjectRoot.isEmpty()) {
+            QList<SessionEntry> sessions = m_sessionStore->listSessions(m_lastProjectRoot);
+            QString currentName;
+            for (const SessionEntry &e : sessions) {
+                if (e.id == m_lastSessionId) {
+                    currentName = e.name;
+                    break;
+                }
+            }
+            bool ok = false;
+            QString newName = QInputDialog::getText(this, tr("Rename Session"),
+                                                    tr("Session name:"), QLineEdit::Normal,
+                                                    currentName, &ok);
+            if (ok && !newName.trimmed().isEmpty() && newName.trimmed() != currentName)
+                m_sessionStore->renameSession(m_lastProjectRoot, m_lastSessionId, newName.trimmed());
+        }
         break;
     case ConnectionStatus::Connecting:
         m_connectButton->setEnabled(false);
-        m_resumeSessionButton->setEnabled(false);
         m_newSessionButton->setEnabled(false);
-        m_providerCombo->setEnabled(false);
+        m_providerButton->setEnabled(false);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #f0ad4e; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Connecting..."));
         sysMsg.id = QStringLiteral("sys_connecting");
@@ -426,23 +417,40 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-disconnect")));
         m_connectButton->setToolTip(QStringLiteral("Disconnect"));
         m_connectButton->setEnabled(true);
-        m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(true);
-        m_providerCombo->setEnabled(false);
+        m_flagConcernButton->setEnabled(true);
+        m_providerButton->setEnabled(false);
         m_inputWidget->setEnabled(true);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #5cb85c; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Connected"));
-        m_titleLabel->setText(QStringLiteral("Kate Code - Session"));
         sysMsg.id = QStringLiteral("sys_connected");
         sysMsg.content = QStringLiteral("Connected! Session ID: %1").arg(m_session->sessionId());
         m_chatWebView->addMessage(sysMsg);
 
         // Save session ID for future resume and summary generation
         {
-            QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
-            m_sessionStore->saveSession(projectRoot, m_session->sessionId());
+            QString projectRoot = m_pendingCwd.isEmpty()
+                ? (m_projectRootProvider ? m_projectRootProvider() : QDir::homePath())
+                : m_pendingCwd;
+            m_sessionStore->addSession(projectRoot, m_session->sessionId(), m_pendingSessionName, m_pendingSessionNote);
+            m_pendingSessionName.clear();
+            m_pendingSessionNote.clear();
             m_lastSessionId = m_session->sessionId();
             m_lastProjectRoot = projectRoot;
+            Q_EMIT sessionIdChanged(m_lastSessionId);
+
+            // Show session name in title if one is set
+            QList<SessionEntry> sessions = m_sessionStore->listSessions(projectRoot);
+            QString sessionName;
+            for (const SessionEntry &e : sessions) {
+                if (e.id == m_lastSessionId) {
+                    sessionName = e.name;
+                    break;
+                }
+            }
+            m_titleLabel->setText(sessionName.isEmpty()
+                ? QStringLiteral("Kate Code")
+                : QStringLiteral("Kate Code — %1").arg(sessionName));
         }
 
         // Populate file list for @-completion
@@ -463,9 +471,8 @@ void ChatWidget::onStatusChanged(ConnectionStatus status)
         m_connectButton->setIcon(QIcon::fromTheme(QStringLiteral("network-connect")));
         m_connectButton->setToolTip(QStringLiteral("Connect"));
         m_connectButton->setEnabled(true);
-        m_resumeSessionButton->setEnabled(true);
         m_newSessionButton->setEnabled(false);
-        m_providerCombo->setEnabled(true);
+        m_providerButton->setEnabled(true);
         m_statusIndicator->setStyleSheet(QStringLiteral("QLabel { color: #d9534f; font-size: 14px; }"));
         m_statusIndicator->setToolTip(QStringLiteral("Error"));
         break;
@@ -493,6 +500,27 @@ void ChatWidget::onMessageFinished(const QString &messageId)
 
     // Prompt finished - update running state
     m_inputWidget->setPromptRunning(false);
+
+    // If user flagged a concern, send pause message now that Claude is between steps
+    if (m_concernFlagged) {
+        m_concernFlagged = false;
+        m_flagConcernButton->setChecked(false);
+        m_session->sendMessage(
+            QStringLiteral("The user has flagged a concern or question about the current task. "
+                           "Please pause here and ask them what they'd like to clarify before continuing."),
+            QString(), QString(), {});
+    }
+}
+
+void ChatWidget::onFlagConcernClicked()
+{
+    m_concernFlagged = m_flagConcernButton->isChecked();
+}
+
+void ChatWidget::onConcernFlaggedFromWeb()
+{
+    m_concernFlagged = true;
+    m_flagConcernButton->setChecked(true);
 }
 
 void ChatWidget::onToolCallAdded(const QString &messageId, const ToolCall &toolCall)
@@ -505,9 +533,24 @@ void ChatWidget::onToolCallAdded(const QString &messageId, const ToolCall &toolC
     }
 }
 
+void ChatWidget::onEditApplied(const QString &filePath, const QString &oldText, const QString &newText)
+{
+    m_recentEdits.append({filePath, oldText, newText});
+}
+
 void ChatWidget::onToolCallUpdated(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath, const QString &toolName)
 {
     Q_UNUSED(messageId);
+
+    // If this is an edit tool completion and we have captured D-Bus edit data, update the diff display
+    bool isEditTool = toolName == QStringLiteral("Edit")
+                   || toolName.endsWith(QStringLiteral("_katecode_edit"))
+                   || toolName == QStringLiteral("mcp__acp__Edit");
+    if (isEditTool && !m_recentEdits.isEmpty()) {
+        RecentEditData edit = m_recentEdits.takeFirst();
+        m_chatWebView->setToolCallDiff(messageId, toolCallId, edit.filePath, edit.oldText, edit.newText);
+    }
+
     m_chatWebView->updateToolCall(messageId, toolCallId, status, result, filePath, toolName);
 
     // Clear highlights when tool call completes or fails
@@ -560,9 +603,9 @@ void ChatWidget::onSessionLoadFailed(const QString &error)
 {
     qWarning() << "[ChatWidget] Session load failed, creating new:" << error;
 
-    // Clear stale session from storage
+    // Remove stale session entry from history
     QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
-    m_sessionStore->clearSession(projectRoot);
+    m_sessionStore->removeSession(projectRoot, m_pendingSessionId);
 
     // Show system message
     Message sysMsg;
@@ -1003,8 +1046,10 @@ void ChatWidget::applyDiffColors()
 
     QString removeBackground = colorToRgba(colors.deletionBackground);
     QString addBackground = colorToRgba(colors.additionBackground);
+    QString removeForeground = colorToRgba(colors.deletionForeground);
+    QString addForeground = colorToRgba(colors.additionForeground);
 
-    m_chatWebView->updateDiffColors(removeBackground, addBackground);
+    m_chatWebView->updateDiffColors(removeBackground, addBackground, removeForeground, addForeground);
 }
 
 void ChatWidget::applyACPBackend()
@@ -1024,56 +1069,41 @@ void ChatWidget::applyACPBackend()
 
 void ChatWidget::populateProviderCombo()
 {
-    if (!m_settingsStore || !m_providerCombo) {
+    if (!m_settingsStore || !m_providerButton) {
         return;
     }
 
-    // Block signals to avoid triggering onProviderComboChanged during population
-    m_providerCombo->blockSignals(true);
-    m_providerCombo->clear();
-
     const auto providerList = m_settingsStore->providers();
     QString activeId = m_settingsStore->activeProviderId();
-    int activeIndex = 0;
 
-    for (int i = 0; i < providerList.size(); ++i) {
-        const auto &p = providerList[i];
+    auto *menu = new QMenu(m_providerButton);
+
+    for (const auto &p : providerList) {
         bool available = SettingsStore::isExecutableAvailable(p.executable);
-
         QString displayText = p.description;
         if (!available) {
             displayText += QStringLiteral(" (not found)");
         }
 
-        m_providerCombo->addItem(displayText, p.id);
+        QAction *action = menu->addAction(displayText);
+        action->setData(p.id);
+        action->setEnabled(available);
+        action->setCheckable(true);
+        action->setChecked(p.id == activeId);
 
-        // Gray out unavailable providers
-        if (!available) {
-            auto *model = qobject_cast<QStandardItemModel *>(m_providerCombo->model());
-            if (model) {
-                QStandardItem *item = model->item(i);
-                item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
-            }
-        }
-
-        if (p.id == activeId) {
-            activeIndex = i;
-        }
+        connect(action, &QAction::triggered, this, [this, id = p.id]() {
+            m_settingsStore->setActiveProviderId(id);
+            applyACPBackend();
+            populateProviderCombo();
+        });
     }
 
-    m_providerCombo->setCurrentIndex(activeIndex);
-    m_providerCombo->blockSignals(false);
-}
+    // Replace existing menu
+    delete m_providerButton->menu();
+    m_providerButton->setMenu(menu);
 
-void ChatWidget::onProviderComboChanged(int index)
-{
-    if (!m_settingsStore || index < 0) {
-        return;
-    }
-
-    QString providerId = m_providerCombo->itemData(index).toString();
-    m_settingsStore->setActiveProviderId(providerId);
-    applyACPBackend();
+    // Only show button when there is a real choice
+    m_providerButton->setVisible(providerList.size() > 1);
 }
 
 void ChatWidget::resizeEvent(QResizeEvent *event)
@@ -1120,6 +1150,13 @@ void ChatWidget::removeUserQuestion(const QString &requestId)
     m_chatWebView->removeUserQuestion(requestId);
 }
 
+void ChatWidget::setSessionNote(const QString &sessionId, const QString &note)
+{
+    QString projectRoot = m_projectRootProvider ? m_projectRootProvider() : QDir::homePath();
+    m_sessionStore->setSessionNote(projectRoot, sessionId, note);
+    qDebug() << "[ChatWidget] Session note updated for" << sessionId;
+}
+
 void ChatWidget::onUserQuestionAnswered(const QString &requestId, const QJsonObject &answers)
 {
     qDebug() << "[ChatWidget] onUserQuestionAnswered, requestId:" << requestId;
@@ -1143,6 +1180,9 @@ void ChatWidget::connectWebViewSignals()
 
     // Connect web view user question responses (MCP AskUserQuestion tool)
     connect(m_chatWebView, &ChatWebView::userQuestionAnswered, this, &ChatWidget::onUserQuestionAnswered);
+
+    // Connect concern flag from web view (permission dialog button)
+    connect(m_chatWebView, &ChatWebView::concernFlagged, this, &ChatWidget::onConcernFlaggedFromWeb);
 
     // Edit tracking: connect EditTracker to ChatWebView
     connect(m_session->editTracker(), &EditTracker::editRecorded, m_chatWebView, &ChatWebView::addTrackedEdit);

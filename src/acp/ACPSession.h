@@ -83,6 +83,9 @@ Q_SIGNALS:
     void terminalOutputUpdated(const QString &terminalId, const QString &output, bool finished);
     void toolCallTerminalIdSet(const QString &messageId, const QString &toolCallId, const QString &terminalId);
 
+    // Emitted when a built-in Edit/Write tool writes a file, with old and new content for diff display
+    void fsEditApplied(const QString &filePath, const QString &oldText, const QString &newText);
+
 private Q_SLOTS:
     void onConnected();
     void onDisconnected(int exitCode);

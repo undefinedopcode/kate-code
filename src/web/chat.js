@@ -537,6 +537,25 @@ function updateToolCall(messageId, toolCallId, status, base64Result, filePath, t
     updateMessageDOM(messageId);
 }
 
+// Update tool call diff data after D-Bus edit parameters become available
+// oldText and newText are base64-encoded to safely pass multiline content
+function setToolCallDiff(messageId, toolCallId, filePath, b64OldText, b64NewText) {
+    if (!messages[messageId]) return;
+    let toolCall = messages[messageId].toolCalls.find(tc => tc.id === toolCallId);
+    if (!toolCall) return;
+
+    if (filePath) toolCall.filePath = filePath;
+    try {
+        toolCall.oldText = b64OldText ? decodeURIComponent(escape(atob(b64OldText))) : '';
+        toolCall.newText = b64NewText ? decodeURIComponent(escape(atob(b64NewText))) : '';
+    } catch (e) {
+        console.error('setToolCallDiff decode error:', e);
+        return;
+    }
+
+    updateMessageDOM(messageId);
+}
+
 // Render a message to DOM
 function renderMessage(message) {
     const container = document.getElementById('messages');
@@ -1075,19 +1094,27 @@ function updateTodos(todosJson) {
         return;
     }
 
+    // Count completed vs total
+    const completedCount = todos.filter(t => t.status === 'completed').length;
+    const totalCount = todos.length;
+
+    // Auto-hide when all tasks are completed
+    if (completedCount === totalCount) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
     container.style.display = 'block';
 
     // Check if collapsed state is stored
     const isCollapsed = localStorage.getItem('todos-collapsed') === 'true';
 
-    // Count completed vs total
-    const completedCount = todos.filter(t => t.status === 'completed').length;
-    const totalCount = todos.length;
-
     let html = `
         <div class="todos-header" onclick="toggleTodos()">
             <span class="todos-title">Tasks (${completedCount}/${totalCount})</span>
             <span class="todos-toggle">${materialIcon(isCollapsed ? 'expand_less' : 'expand_more', 'material-icon-sm')}</span>
+            <span class="todos-close" onclick="event.stopPropagation(); clearTodos();" title="Dismiss">${materialIcon('close', 'material-icon-sm')}</span>
         </div>
         <div class="todos-content ${isCollapsed ? 'collapsed' : ''}">
             <div class="todos-list">
@@ -1321,6 +1348,8 @@ function showPermissionRequest(requestId, toolName, input, options) {
         html += `<div class="permission-option" onclick="respondToPermission(${requestId}, '${escapeHtml(optionId)}')"><span class="permission-option-label">${escapeHtml(label)}</span></div>`;
     });
 
+    html += `<div class="permission-flag-concern" onclick="flagConcernFromPermission(this)" title="Flag a concern — Claude will pause after this step to address it">⚠️ I have a concern</div>`;
+
     html += `
             </div>
         </div>
@@ -1337,6 +1366,14 @@ function showPermissionRequest(requestId, toolName, input, options) {
     container.appendChild(permEl.firstElementChild);
     console.log('Permission request added to DOM');
     scrollToBottom();
+}
+
+// Flag a concern from the permission request UI
+function flagConcernFromPermission(el) {
+    el.classList.toggle('permission-flag-active');
+    if (window.bridge) {
+        window.bridge.flagConcern();
+    }
 }
 
 // Respond to permission request

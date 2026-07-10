@@ -100,6 +100,17 @@ body {
     color: var(--fg-secondary);
 }
 
+.todos-close {
+    font-size: 10px;
+    color: var(--fg-secondary);
+    margin-left: 4px;
+    opacity: 0.6;
+}
+
+.todos-close:hover {
+    opacity: 1;
+}
+
 .todos-content {
     padding: 8px 16px 12px 16px;
     max-height: 300px;
@@ -756,21 +767,26 @@ pre.diff .diff-context {
 
 pre.diff .diff-remove {
     background-color: var(--diff-remove-bg, #7a4347);
-    /* Don't set color - let syntax highlighting show through */
+    color: var(--diff-remove-fg, #e0e0e0);
 }
 
 pre.diff .diff-add {
     background-color: var(--diff-add-bg, #275850);
-    /* Don't set color - let syntax highlighting show through */
+    color: var(--diff-add-fg, #e0e0e0);
 }
 
-/* Ensure hljs spans inside diff lines are inline, not block */
+/* Ensure hljs spans inside diff lines are inline, not block.
+   Also override any hljs colours so the explicit diff foreground shows through. */
 pre.diff .diff-context span,
 pre.diff .diff-remove span,
 pre.diff .diff-add span {
     display: inline;
     padding: 0;
 }
+
+/* Override hljs colours inside add/remove lines so explicit diff-fg wins */
+pre.diff .diff-remove span { color: var(--diff-remove-fg, #e0e0e0); }
+pre.diff .diff-add span { color: var(--diff-add-fg, #e0e0e0); }
 
 /* Multiple edits styling */
 .edit-section {
@@ -986,6 +1002,27 @@ pre.diff .diff-add span {
 
 .permission-option-label {
     font-weight: 500;
+}
+
+.permission-flag-concern {
+    padding: 4px 10px;
+    border: 1px solid var(--text-muted);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+.permission-flag-concern:hover {
+    border-color: #f0ad4e;
+    color: #f0ad4e;
+}
+
+.permission-flag-active {
+    border-color: #f0ad4e;
+    color: #f0ad4e;
+    background-color: rgba(240, 173, 78, 0.1);
 }
 
 .permission-content {

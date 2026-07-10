@@ -48,6 +48,7 @@ target_link_libraries(katecode
     KF6::SyntaxHighlighting
     KF6::Wallet
     KF6::Pty
+    KF6::Parts
     Qt6::Core
     Qt6::DBus
     Qt6::Widgets

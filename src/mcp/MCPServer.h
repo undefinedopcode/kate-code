@@ -28,6 +28,16 @@ private:
     QJsonObject executeEdit(const QJsonObject &arguments);
     QJsonObject executeWrite(const QJsonObject &arguments);
     QJsonObject executeAskUserQuestion(const QJsonObject &arguments);
+    QJsonObject executeActiveDocument(const QJsonObject &arguments);
+    QJsonObject executeOpen(const QJsonObject &arguments);
+    QJsonObject executeClose(const QJsonObject &arguments);
+    QJsonObject executeSave(const QJsonObject &arguments);
+    QJsonObject executeStatus(const QJsonObject &arguments);
+    QJsonObject executeRevert(const QJsonObject &arguments);
+    QJsonObject executeSetSessionNote(const QJsonObject &arguments);
+    QJsonObject executeGetSessionId(const QJsonObject &arguments);
+    QJsonObject executeReadClipboard(const QJsonObject &arguments);
+    QJsonObject executePasteToTerminal(const QJsonObject &arguments);
 
     QJsonObject makeResponse(int id, const QJsonObject &result);
     QJsonObject makeErrorResponse(int id, int code, const QString &message);

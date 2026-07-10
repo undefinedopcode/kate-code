@@ -1,20 +1,23 @@
 #pragma once
 
+#include "../util/SessionStore.h"
 #include <QDialog>
 
-class QRadioButton;
+class QComboBox;
+class QListWidget;
+class QLineEdit;
 class QLabel;
 class QPushButton;
+class QStackedWidget;
 class QTextEdit;
-class QComboBox;
 class SummaryStore;
 
 /**
- * SessionSelectionDialog - Asks user whether to resume or start new session.
+ * SessionSelectionDialog - Shown on Connect when saved sessions exist.
  *
- * Shown when connecting to a project that has stored session summaries.
- * Shows a dropdown of available sessions (up to 10, most recent first)
- * and displays the selected session's summary.
+ * Lists saved sessions most-recent-first. "New Session" is always at the top.
+ * Selecting an existing session shows an editable note and a Rename button.
+ * Selecting "New Session" shows name + note input fields.
  */
 class SessionSelectionDialog : public QDialog
 {
@@ -28,23 +31,51 @@ public:
     };
 
     explicit SessionSelectionDialog(const QString &projectRoot,
+                                    SessionStore *sessionStore,
                                     SummaryStore *summaryStore,
                                     QWidget *parent = nullptr);
     ~SessionSelectionDialog() override = default;
 
     Result selectedResult() const { return m_result; }
-    QString selectedSessionId() const;
+    QString selectedSessionId() const { return m_selectedSessionId; }
+    QString selectedSessionName() const { return m_selectedSessionName; }
+    QString selectedSessionNote() const { return m_selectedSessionNote; }
+    QString selectedCwd() const { return m_selectedCwd; }
 
 private Q_SLOTS:
+    void onItemChanged(int row);
     void onContinueClicked();
-    void onSessionChanged(int index);
+    void onRenameClicked();
+    void onDeleteClicked();
+    void onBrowseClicked();
+    void onRootChanged(const QString &root);
+    void saveCurrentNote();
 
 private:
     QString m_projectRoot;
-    SummaryStore *m_summaryStore;
-    QComboBox *m_sessionCombo;
-    QRadioButton *m_resumeRadio;
-    QRadioButton *m_newRadio;
-    QTextEdit *m_summaryPreview;
+    SessionStore *m_sessionStore;
+
+    QComboBox *m_rootCombo;
+    QListWidget *m_sessionList;
+    QStackedWidget *m_detailStack;
+
+    // New session page widgets
+    QLineEdit *m_nameEdit;
+    QTextEdit *m_newNoteEdit;
+
+    // Existing session page widgets
+    QTextEdit *m_existingNoteEdit;
+    QPushButton *m_renameButton;
+    QPushButton *m_deleteButton;
+
+    // Manual ID page widgets
+    QLineEdit *m_idEdit;
+
+    QString m_lastExistingSessionId; // tracks which session's note is loaded
+
     Result m_result;
+    QString m_selectedSessionId;
+    QString m_selectedSessionName;
+    QString m_selectedSessionNote;
+    QString m_selectedCwd;
 };

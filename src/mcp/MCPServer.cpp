@@ -268,8 +268,224 @@ QJsonObject MCPServer::handleToolsList(int id, const QJsonObject &params)
     askUserAnnotations[QStringLiteral("destructiveHint")] = false;
     askUserTool[QStringLiteral("annotations")] = askUserAnnotations;
 
+    // katecode_active_document tool definition
+    QJsonObject activeDocTool;
+    activeDocTool[QStringLiteral("name")] = QStringLiteral("katecode_active_document");
+    activeDocTool[QStringLiteral("description")] =
+        QStringLiteral("Returns the file currently active in Kate, with cursor position and any selected text. "
+                       "Use this to understand what the user is looking at without them having to tell you.");
+    QJsonObject activeDocSchema;
+    activeDocSchema[QStringLiteral("type")] = QStringLiteral("object");
+    activeDocSchema[QStringLiteral("properties")] = QJsonObject();
+    activeDocTool[QStringLiteral("inputSchema")] = activeDocSchema;
+    QJsonObject activeDocAnnotations;
+    activeDocAnnotations[QStringLiteral("readOnlyHint")] = true;
+    activeDocAnnotations[QStringLiteral("destructiveHint")] = false;
+    activeDocTool[QStringLiteral("annotations")] = activeDocAnnotations;
+
+    // katecode_open tool definition
+    QJsonObject openTool;
+    openTool[QStringLiteral("name")] = QStringLiteral("katecode_open");
+    openTool[QStringLiteral("description")] =
+        QStringLiteral("Opens a file in Kate. Optionally jumps to a specific line and column "
+                       "so the user can see the relevant code.");
+    QJsonObject openFilePathProp;
+    openFilePathProp[QStringLiteral("type")] = QStringLiteral("string");
+    openFilePathProp[QStringLiteral("description")] = QStringLiteral("Absolute path to the file to open");
+    QJsonObject openLineProp;
+    openLineProp[QStringLiteral("type")] = QStringLiteral("integer");
+    openLineProp[QStringLiteral("description")] = QStringLiteral("Line to jump to (1-based). Omit to open at current position.");
+    QJsonObject openColProp;
+    openColProp[QStringLiteral("type")] = QStringLiteral("integer");
+    openColProp[QStringLiteral("description")] = QStringLiteral("Column to jump to (1-based). Only used if line is provided.");
+    QJsonObject openProps;
+    openProps[QStringLiteral("file_path")] = openFilePathProp;
+    openProps[QStringLiteral("line")] = openLineProp;
+    openProps[QStringLiteral("column")] = openColProp;
+    QJsonObject openSchema;
+    openSchema[QStringLiteral("type")] = QStringLiteral("object");
+    openSchema[QStringLiteral("properties")] = openProps;
+    openSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("file_path")};
+    openTool[QStringLiteral("inputSchema")] = openSchema;
+    QJsonObject openAnnotations;
+    openAnnotations[QStringLiteral("readOnlyHint")] = false;
+    openAnnotations[QStringLiteral("destructiveHint")] = false;
+    openTool[QStringLiteral("annotations")] = openAnnotations;
+
+    // katecode_close tool definition
+    QJsonObject closeTool;
+    closeTool[QStringLiteral("name")] = QStringLiteral("katecode_close");
+    closeTool[QStringLiteral("description")] = QStringLiteral("Closes an open document in Kate.");
+    QJsonObject closeFilePathProp;
+    closeFilePathProp[QStringLiteral("type")] = QStringLiteral("string");
+    closeFilePathProp[QStringLiteral("description")] = QStringLiteral("Absolute path of the open document to close");
+    QJsonObject closeProps;
+    closeProps[QStringLiteral("file_path")] = closeFilePathProp;
+    QJsonObject closeSchema;
+    closeSchema[QStringLiteral("type")] = QStringLiteral("object");
+    closeSchema[QStringLiteral("properties")] = closeProps;
+    closeSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("file_path")};
+    closeTool[QStringLiteral("inputSchema")] = closeSchema;
+    QJsonObject closeAnnotations;
+    closeAnnotations[QStringLiteral("readOnlyHint")] = false;
+    closeAnnotations[QStringLiteral("destructiveHint")] = false;
+    closeTool[QStringLiteral("annotations")] = closeAnnotations;
+
+    // katecode_save tool definition
+    QJsonObject saveTool;
+    saveTool[QStringLiteral("name")] = QStringLiteral("katecode_save");
+    saveTool[QStringLiteral("description")] =
+        QStringLiteral("Saves a document. If file_path is omitted, saves all modified documents.");
+    QJsonObject saveFilePathProp;
+    saveFilePathProp[QStringLiteral("type")] = QStringLiteral("string");
+    saveFilePathProp[QStringLiteral("description")] =
+        QStringLiteral("Absolute path of document to save. Omit to save all modified documents.");
+    QJsonObject saveProps;
+    saveProps[QStringLiteral("file_path")] = saveFilePathProp;
+    QJsonObject saveSchema;
+    saveSchema[QStringLiteral("type")] = QStringLiteral("object");
+    saveSchema[QStringLiteral("properties")] = saveProps;
+    saveTool[QStringLiteral("inputSchema")] = saveSchema;
+    QJsonObject saveAnnotations;
+    saveAnnotations[QStringLiteral("readOnlyHint")] = false;
+    saveAnnotations[QStringLiteral("destructiveHint")] = false;
+    saveTool[QStringLiteral("annotations")] = saveAnnotations;
+
+    // katecode_status tool definition
+    QJsonObject statusTool;
+    statusTool[QStringLiteral("name")] = QStringLiteral("katecode_status");
+    statusTool[QStringLiteral("description")] =
+        QStringLiteral("Returns the status of an open document: whether it has unsaved changes and whether it is read-only.");
+    QJsonObject statusFilePathProp;
+    statusFilePathProp[QStringLiteral("type")] = QStringLiteral("string");
+    statusFilePathProp[QStringLiteral("description")] = QStringLiteral("Absolute path of the open document");
+    QJsonObject statusProps;
+    statusProps[QStringLiteral("file_path")] = statusFilePathProp;
+    QJsonObject statusSchema;
+    statusSchema[QStringLiteral("type")] = QStringLiteral("object");
+    statusSchema[QStringLiteral("properties")] = statusProps;
+    statusSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("file_path")};
+    statusTool[QStringLiteral("inputSchema")] = statusSchema;
+    QJsonObject statusAnnotations;
+    statusAnnotations[QStringLiteral("readOnlyHint")] = true;
+    statusAnnotations[QStringLiteral("destructiveHint")] = false;
+    statusTool[QStringLiteral("annotations")] = statusAnnotations;
+
+    // katecode_revert tool definition
+    QJsonObject revertTool;
+    revertTool[QStringLiteral("name")] = QStringLiteral("katecode_revert");
+    revertTool[QStringLiteral("description")] =
+        QStringLiteral("Reverts a document to its on-disk state, discarding any unsaved changes.");
+    QJsonObject revertFilePathProp;
+    revertFilePathProp[QStringLiteral("type")] = QStringLiteral("string");
+    revertFilePathProp[QStringLiteral("description")] = QStringLiteral("Absolute path of the open document to revert");
+    QJsonObject revertProps;
+    revertProps[QStringLiteral("file_path")] = revertFilePathProp;
+    QJsonObject revertSchema;
+    revertSchema[QStringLiteral("type")] = QStringLiteral("object");
+    revertSchema[QStringLiteral("properties")] = revertProps;
+    revertSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("file_path")};
+    revertTool[QStringLiteral("inputSchema")] = revertSchema;
+    QJsonObject revertAnnotations;
+    revertAnnotations[QStringLiteral("readOnlyHint")] = false;
+    revertAnnotations[QStringLiteral("destructiveHint")] = true;
+    revertTool[QStringLiteral("annotations")] = revertAnnotations;
+
+    // katecode_set_session_note tool definition
+    QJsonObject setNoteTool;
+    setNoteTool[QStringLiteral("name")] = QStringLiteral("katecode_set_session_note");
+    setNoteTool[QStringLiteral("description")] =
+        QStringLiteral("Updates the note stored against the current kate-code session. "
+                       "Use this at the end of a session (or whenever useful) to record a brief "
+                       "summary of what was accomplished, so it is visible in the session picker "
+                       "when resuming later.");
+
+    QJsonObject noteSessionIdProp;
+    noteSessionIdProp[QStringLiteral("type")] = QStringLiteral("string");
+    noteSessionIdProp[QStringLiteral("description")] = QStringLiteral("The session ID to update (visible in the 'Connected! Session ID:' message)");
+
+    QJsonObject noteNoteProp;
+    noteNoteProp[QStringLiteral("type")] = QStringLiteral("string");
+    noteNoteProp[QStringLiteral("description")] = QStringLiteral("Brief note summarising what was done this session (a few sentences at most)");
+
+    QJsonObject noteProps;
+    noteProps[QStringLiteral("session_id")] = noteSessionIdProp;
+    noteProps[QStringLiteral("note")] = noteNoteProp;
+
+    QJsonObject noteSchema;
+    noteSchema[QStringLiteral("type")] = QStringLiteral("object");
+    noteSchema[QStringLiteral("properties")] = noteProps;
+    noteSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("session_id"), QStringLiteral("note")};
+    setNoteTool[QStringLiteral("inputSchema")] = noteSchema;
+
+    QJsonObject noteAnnotations;
+    noteAnnotations[QStringLiteral("readOnlyHint")] = false;
+    noteAnnotations[QStringLiteral("destructiveHint")] = false;
+    noteAnnotations[QStringLiteral("idempotentHint")] = true;
+    setNoteTool[QStringLiteral("annotations")] = noteAnnotations;
+
+    // katecode_get_session_id tool definition
+    QJsonObject getSessionIdTool;
+    getSessionIdTool[QStringLiteral("name")] = QStringLiteral("katecode_get_session_id");
+    getSessionIdTool[QStringLiteral("description")] =
+        QStringLiteral("Returns the ID of the currently active kate-code session. "
+                       "Use this to obtain the session_id required by katecode_set_session_note.");
+    QJsonObject getSessionIdSchema;
+    getSessionIdSchema[QStringLiteral("type")] = QStringLiteral("object");
+    getSessionIdSchema[QStringLiteral("properties")] = QJsonObject{};
+    getSessionIdTool[QStringLiteral("inputSchema")] = getSessionIdSchema;
+    QJsonObject getSessionIdAnnotations;
+    getSessionIdAnnotations[QStringLiteral("readOnlyHint")] = true;
+    getSessionIdAnnotations[QStringLiteral("destructiveHint")] = false;
+    getSessionIdTool[QStringLiteral("annotations")] = getSessionIdAnnotations;
+
+    // katecode_read_clipboard tool definition
+    QJsonObject readClipboardTool;
+    readClipboardTool[QStringLiteral("name")] = QStringLiteral("katecode_read_clipboard");
+    readClipboardTool[QStringLiteral("description")] =
+        QStringLiteral("Returns the current clipboard text content. "
+                       "Useful for reading text the user has copied or selected (e.g. from the terminal).");
+    QJsonObject readClipboardSchema;
+    readClipboardSchema[QStringLiteral("type")] = QStringLiteral("object");
+    readClipboardSchema[QStringLiteral("properties")] = QJsonObject();
+    readClipboardTool[QStringLiteral("inputSchema")] = readClipboardSchema;
+    QJsonObject readClipboardAnnotations;
+    readClipboardAnnotations[QStringLiteral("readOnlyHint")] = true;
+    readClipboardAnnotations[QStringLiteral("destructiveHint")] = false;
+    readClipboardTool[QStringLiteral("annotations")] = readClipboardAnnotations;
+
+    // katecode_paste_to_terminal tool definition
+    QJsonObject pasteTerminalTool;
+    pasteTerminalTool[QStringLiteral("name")] = QStringLiteral("katecode_paste_to_terminal");
+    pasteTerminalTool[QStringLiteral("description")] =
+        QStringLiteral("Sends text to Kate's embedded terminal without executing it (no Enter key). "
+                       "The user can review the text and press Enter themselves. "
+                       "Requires Kate's terminal plugin to be enabled.");
+
+    QJsonObject pasteTextProp;
+    pasteTextProp[QStringLiteral("type")] = QStringLiteral("string");
+    pasteTextProp[QStringLiteral("description")] = QStringLiteral("The text to paste into the terminal");
+
+    QJsonObject pasteTerminalProps;
+    pasteTerminalProps[QStringLiteral("text")] = pasteTextProp;
+
+    QJsonObject pasteTerminalSchema;
+    pasteTerminalSchema[QStringLiteral("type")] = QStringLiteral("object");
+    pasteTerminalSchema[QStringLiteral("properties")] = pasteTerminalProps;
+    pasteTerminalSchema[QStringLiteral("required")] = QJsonArray{QStringLiteral("text")};
+    pasteTerminalTool[QStringLiteral("inputSchema")] = pasteTerminalSchema;
+
+    QJsonObject pasteTerminalAnnotations;
+    pasteTerminalAnnotations[QStringLiteral("readOnlyHint")] = false;
+    pasteTerminalAnnotations[QStringLiteral("destructiveHint")] = false;
+    pasteTerminalTool[QStringLiteral("annotations")] = pasteTerminalAnnotations;
+
     QJsonObject result;
-    result[QStringLiteral("tools")] = QJsonArray{docsTool, readTool, editTool, writeTool, askUserTool};
+    result[QStringLiteral("tools")] = QJsonArray{
+        docsTool, readTool, editTool, writeTool, askUserTool,
+        activeDocTool, openTool, closeTool, saveTool, statusTool, revertTool,
+        setNoteTool, getSessionIdTool, readClipboardTool, pasteTerminalTool
+    };
 
     return makeResponse(id, result);
 }
@@ -289,6 +505,26 @@ QJsonObject MCPServer::handleToolsCall(int id, const QJsonObject &params)
         return makeResponse(id, executeWrite(arguments));
     } else if (toolName == QStringLiteral("katecode_ask_user")) {
         return makeResponse(id, executeAskUserQuestion(arguments));
+    } else if (toolName == QStringLiteral("katecode_active_document")) {
+        return makeResponse(id, executeActiveDocument(arguments));
+    } else if (toolName == QStringLiteral("katecode_open")) {
+        return makeResponse(id, executeOpen(arguments));
+    } else if (toolName == QStringLiteral("katecode_close")) {
+        return makeResponse(id, executeClose(arguments));
+    } else if (toolName == QStringLiteral("katecode_save")) {
+        return makeResponse(id, executeSave(arguments));
+    } else if (toolName == QStringLiteral("katecode_status")) {
+        return makeResponse(id, executeStatus(arguments));
+    } else if (toolName == QStringLiteral("katecode_revert")) {
+        return makeResponse(id, executeRevert(arguments));
+    } else if (toolName == QStringLiteral("katecode_set_session_note")) {
+        return makeResponse(id, executeSetSessionNote(arguments));
+    } else if (toolName == QStringLiteral("katecode_get_session_id")) {
+        return makeResponse(id, executeGetSessionId(arguments));
+    } else if (toolName == QStringLiteral("katecode_read_clipboard")) {
+        return makeResponse(id, executeReadClipboard(arguments));
+    } else if (toolName == QStringLiteral("katecode_paste_to_terminal")) {
+        return makeResponse(id, executePasteToTerminal(arguments));
     }
 
     return makeErrorResponse(id, -32602, QStringLiteral("Unknown tool: %1").arg(toolName));
@@ -488,10 +724,10 @@ QJsonObject MCPServer::executeEdit(const QJsonObject &arguments)
     const QString oldString = arguments[QStringLiteral("old_string")].toString();
     const QString newString = arguments[QStringLiteral("new_string")].toString();
 
-    if (filePath.isEmpty() || oldString.isEmpty()) {
+    if (filePath.isEmpty()) {
         QJsonObject textContent;
         textContent[QStringLiteral("type")] = QStringLiteral("text");
-        textContent[QStringLiteral("text")] = QStringLiteral("Error: file_path and old_string are required");
+        textContent[QStringLiteral("text")] = QStringLiteral("Error: file_path is required");
         QJsonObject result;
         result[QStringLiteral("content")] = QJsonArray{textContent};
         result[QStringLiteral("isError")] = true;
@@ -604,6 +840,249 @@ QJsonObject MCPServer::makeErrorResult(const QString &message)
     QJsonObject result;
     result[QStringLiteral("content")] = QJsonArray{textContent};
     result[QStringLiteral("isError")] = true;
+    return result;
+}
+
+QJsonObject MCPServer::executeActiveDocument(const QJsonObject &arguments)
+{
+    Q_UNUSED(arguments);
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("getActiveDocument"));
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString response = reply.value();
+    if (response.startsWith(QStringLiteral("ERROR:")))
+        return makeErrorResult(response);
+
+    // Parse JSON and format as human-readable text
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        QJsonObject textContent;
+        textContent[QStringLiteral("type")] = QStringLiteral("text");
+        textContent[QStringLiteral("text")] = response;
+        QJsonObject result;
+        result[QStringLiteral("content")] = QJsonArray{textContent};
+        return result;
+    }
+
+    QJsonObject obj = doc.object();
+    QString text = QStringLiteral("Active document: %1\nCursor: line %2, column %3\nModified: %4")
+        .arg(obj[QStringLiteral("path")].toString())
+        .arg(obj[QStringLiteral("line")].toInt())
+        .arg(obj[QStringLiteral("column")].toInt())
+        .arg(obj[QStringLiteral("isModified")].toBool() ? QStringLiteral("yes") : QStringLiteral("no"));
+    if (obj.contains(QStringLiteral("selection")))
+        text += QStringLiteral("\nSelection: \"%1\"").arg(obj[QStringLiteral("selection")].toString());
+
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = text;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    return result;
+}
+
+QJsonObject MCPServer::executeOpen(const QJsonObject &arguments)
+{
+    const QString filePath = arguments[QStringLiteral("file_path")].toString();
+    if (filePath.isEmpty())
+        return makeErrorResult(QStringLiteral("Error: file_path is required"));
+
+    const int line = arguments[QStringLiteral("line")].toInt(0);
+    const int column = arguments[QStringLiteral("column")].toInt(0);
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("openDocument"), filePath, line, column);
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString response = reply.value();
+    bool isError = response.startsWith(QStringLiteral("ERROR:"));
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = response;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    if (isError)
+        result[QStringLiteral("isError")] = true;
+    return result;
+}
+
+QJsonObject MCPServer::executeClose(const QJsonObject &arguments)
+{
+    const QString filePath = arguments[QStringLiteral("file_path")].toString();
+    if (filePath.isEmpty())
+        return makeErrorResult(QStringLiteral("Error: file_path is required"));
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("closeDocument"), filePath);
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString response = reply.value();
+    bool isError = response.startsWith(QStringLiteral("ERROR:"));
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = response;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    if (isError)
+        result[QStringLiteral("isError")] = true;
+    return result;
+}
+
+QJsonObject MCPServer::executeSave(const QJsonObject &arguments)
+{
+    // file_path is optional — empty string means save all
+    const QString filePath = arguments[QStringLiteral("file_path")].toString();
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("saveDocument"), filePath);
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString response = reply.value();
+    bool isError = response.startsWith(QStringLiteral("ERROR:"));
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = response;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    if (isError)
+        result[QStringLiteral("isError")] = true;
+    return result;
+}
+
+QJsonObject MCPServer::executeStatus(const QJsonObject &arguments)
+{
+    const QString filePath = arguments[QStringLiteral("file_path")].toString();
+    if (filePath.isEmpty())
+        return makeErrorResult(QStringLiteral("Error: file_path is required"));
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("getDocumentStatus"), filePath);
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString response = reply.value();
+    if (response.startsWith(QStringLiteral("ERROR:")))
+        return makeErrorResult(response);
+
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(response.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
+        QJsonObject textContent;
+        textContent[QStringLiteral("type")] = QStringLiteral("text");
+        textContent[QStringLiteral("text")] = response;
+        QJsonObject result;
+        result[QStringLiteral("content")] = QJsonArray{textContent};
+        return result;
+    }
+
+    QJsonObject obj = doc.object();
+    QString text = QStringLiteral("Document: %1\nModified: %2\nRead-only: %3")
+        .arg(obj[QStringLiteral("path")].toString())
+        .arg(obj[QStringLiteral("isModified")].toBool() ? QStringLiteral("yes") : QStringLiteral("no"))
+        .arg(obj[QStringLiteral("isReadOnly")].toBool() ? QStringLiteral("yes") : QStringLiteral("no"));
+
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = text;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    return result;
+}
+
+QJsonObject MCPServer::executeRevert(const QJsonObject &arguments)
+{
+    const QString filePath = arguments[QStringLiteral("file_path")].toString();
+    if (filePath.isEmpty())
+        return makeErrorResult(QStringLiteral("Error: file_path is required"));
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("revertDocument"), filePath);
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString response = reply.value();
+    bool isError = response.startsWith(QStringLiteral("ERROR:"));
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = response;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    if (isError)
+        result[QStringLiteral("isError")] = true;
+    return result;
+}
+
+QJsonObject MCPServer::executeSetSessionNote(const QJsonObject &arguments)
+{
+    const QString sessionId = arguments[QStringLiteral("session_id")].toString();
+    const QString note = arguments[QStringLiteral("note")].toString();
+
+    if (sessionId.isEmpty())
+        return makeErrorResult(QStringLiteral("Error: session_id is required"));
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("setSessionNote"), sessionId, note);
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString response = reply.value();
+    bool isError = response.startsWith(QStringLiteral("ERROR:"));
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = response;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    if (isError)
+        result[QStringLiteral("isError")] = true;
     return result;
 }
 
@@ -720,5 +1199,86 @@ QJsonObject MCPServer::executeAskUserQuestion(const QJsonObject &arguments)
 
     QJsonObject result;
     result[QStringLiteral("content")] = QJsonArray{textContent};
+    return result;
+}
+
+QJsonObject MCPServer::executeGetSessionId(const QJsonObject &arguments)
+{
+    Q_UNUSED(arguments);
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("getSessionId"));
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString sessionId = reply.value();
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = sessionId.isEmpty()
+        ? QStringLiteral("No active session")
+        : sessionId;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    return result;
+}
+
+QJsonObject MCPServer::executeReadClipboard(const QJsonObject &arguments)
+{
+    Q_UNUSED(arguments);
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("getClipboardText"));
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString text = reply.value();
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = text.isEmpty()
+        ? QStringLiteral("(clipboard is empty)")
+        : text;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    return result;
+}
+
+QJsonObject MCPServer::executePasteToTerminal(const QJsonObject &arguments)
+{
+    const QString text = arguments[QStringLiteral("text")].toString();
+    if (text.isEmpty())
+        return makeErrorResult(QStringLiteral("Error: text is required"));
+
+    QDBusInterface iface(QStringLiteral("org.kde.katecode.editor"),
+                         QStringLiteral("/KateCode/Editor"),
+                         QStringLiteral("org.kde.katecode.Editor"),
+                         QDBusConnection::sessionBus());
+    if (!iface.isValid())
+        return makeErrorResult(QStringLiteral("Error: Could not connect to Kate editor DBus service."));
+
+    QDBusReply<QString> reply = iface.call(QStringLiteral("pasteToTerminal"), text);
+    if (!reply.isValid())
+        return makeErrorResult(QStringLiteral("Error: DBus call failed: %1").arg(reply.error().message()));
+
+    const QString response = reply.value();
+    bool isError = response.startsWith(QStringLiteral("ERROR:"));
+    QJsonObject textContent;
+    textContent[QStringLiteral("type")] = QStringLiteral("text");
+    textContent[QStringLiteral("text")] = response;
+    QJsonObject result;
+    result[QStringLiteral("content")] = QJsonArray{textContent};
+    if (isError)
+        result[QStringLiteral("isError")] = true;
     return result;
 }

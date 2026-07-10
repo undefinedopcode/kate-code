@@ -18,9 +18,11 @@ public:
     void finishMessage(const QString &messageId);
     void addToolCall(const QString &messageId, const ToolCall &toolCall);
     void updateToolCall(const QString &messageId, const QString &toolCallId, const QString &status, const QString &result, const QString &filePath = QString(), const QString &toolName = QString());
+    void setToolCallDiff(const QString &messageId, const QString &toolCallId, const QString &filePath, const QString &oldText, const QString &newText);
     void showPermissionRequest(const PermissionRequest &request);
     void updateTodos(const QList<TodoItem> &todos);
     void clearMessages();
+    void clearTodos();
 
     // Terminal support
     void updateTerminalOutput(const QString &terminalId, const QString &output, bool finished);
@@ -35,13 +37,15 @@ public:
     void clearEditSummary();
 
     // Diff color scheme support
-    void updateDiffColors(const QString &removeBackground, const QString &addBackground);
+    void updateDiffColors(const QString &removeBackground, const QString &addBackground,
+                          const QString &removeForeground, const QString &addForeground);
 
 Q_SIGNALS:
     void permissionResponseReady(int requestId, const QString &optionId);
     void jumpToEditRequested(const QString &filePath, int startLine, int endLine);
     void webViewReady();
     void userQuestionAnswered(const QString &requestId, const QJsonObject &answers);
+    void concernFlagged();
 
 private Q_SLOTS:
     void onLoadFinished(bool ok);
@@ -69,9 +73,11 @@ public Q_SLOTS:
     Q_INVOKABLE void logFromJS(const QString &message);
     Q_INVOKABLE void jumpToEdit(const QString &filePath, int startLine, int endLine);
     Q_INVOKABLE void submitQuestionAnswers(const QString &requestId, const QString &answersJson);
+    Q_INVOKABLE void flagConcern();
 
 Q_SIGNALS:
     void permissionResponse(int requestId, const QString &optionId);
     void jumpToEditRequested(const QString &filePath, int startLine, int endLine);
     void questionAnswersSubmitted(const QString &requestId, const QString &answersJson);
+    void concernFlagged();
 };

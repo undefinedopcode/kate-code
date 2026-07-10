@@ -10,7 +10,7 @@ ACPService::ACPService(QObject *parent)
     : QObject(parent)
     , m_process(nullptr)
     , m_messageId(0)
-    , m_executable(QStringLiteral("claude-code-acp"))
+    , m_executable(QStringLiteral("claude-agent-acp"))
 {
 }
 

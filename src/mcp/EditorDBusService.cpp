@@ -5,18 +5,22 @@
 
 #include "EditorDBusService.h"
 
+#include <kde_terminal_interface.h>
 #include <KTextEditor/Application>
 #include <KTextEditor/Document>
 #include <KTextEditor/Editor>
 #include <KTextEditor/MainWindow>
 #include <KTextEditor/View>
+#include <QClipboard>
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusError>
 #include <QDebug>
 #include <QFile>
+#include <QGuiApplication>
 #include <QTimer>
 #include <QUrl>
+#include <QWidget>
 
 EditorDBusService::EditorDBusService(QObject *parent)
     : QObject(parent)
@@ -114,6 +118,15 @@ QString EditorDBusService::editDocument(const QString &filePath, const QString &
         doc = view->document();
     }
 
+    // Handle empty oldText: only allowed if the document is empty
+    if (oldText.isEmpty()) {
+        if (!doc->text().isEmpty()) {
+            return QStringLiteral("ERROR: old_string is empty but document is not — use a non-empty old_string to make a targeted edit");
+        }
+        bool success = doc->setText(newText);
+        return success ? QStringLiteral("OK") : QStringLiteral("ERROR: Failed to write to document");
+    }
+
     // Find and replace the text
     QString content = doc->text();
     int pos = content.indexOf(oldText);
@@ -154,6 +167,7 @@ QString EditorDBusService::editDocument(const QString &filePath, const QString &
         return QStringLiteral("ERROR: Edit succeeded but failed to save document");
     }
 
+    Q_EMIT editApplied(filePath, oldText, newText);
     return QStringLiteral("OK");
 }
 
@@ -263,6 +277,194 @@ QString EditorDBusService::askUserQuestion(const QString &questionsJson)
     }
 
     return response;
+}
+
+QString EditorDBusService::getActiveDocument()
+{
+    KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+    if (!app)
+        return QStringLiteral("ERROR: KTextEditor application not available");
+    KTextEditor::MainWindow *mainWindow = app->activeMainWindow();
+    if (!mainWindow)
+        return QStringLiteral("ERROR: No active main window");
+    KTextEditor::View *view = mainWindow->activeView();
+    if (!view)
+        return QStringLiteral("ERROR: No active view");
+    KTextEditor::Document *doc = view->document();
+
+    QString path = doc->url().toLocalFile();
+    KTextEditor::Cursor cursor = view->cursorPosition();
+    QString selText = view->selectionText();
+
+    QJsonObject result;
+    result[QStringLiteral("path")] = path.isEmpty()
+        ? QStringLiteral("untitled:") + doc->documentName()
+        : path;
+    result[QStringLiteral("line")] = cursor.line() + 1;
+    result[QStringLiteral("column")] = cursor.column() + 1;
+    result[QStringLiteral("isModified")] = doc->isModified();
+    if (!selText.isEmpty())
+        result[QStringLiteral("selection")] = selText;
+
+    return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+QString EditorDBusService::openDocument(const QString &filePath, int line, int column)
+{
+    KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+    if (!app)
+        return QStringLiteral("ERROR: KTextEditor application not available");
+    KTextEditor::MainWindow *mainWindow = app->activeMainWindow();
+    if (!mainWindow)
+        return QStringLiteral("ERROR: No active main window");
+
+    QUrl url = QUrl::fromLocalFile(filePath);
+    KTextEditor::View *view = mainWindow->openUrl(url);
+    if (!view)
+        return QStringLiteral("ERROR: Could not open file: %1").arg(filePath);
+
+    if (line > 0) {
+        int col = column > 0 ? column - 1 : 0;
+        view->setCursorPosition(KTextEditor::Cursor(line - 1, col));
+    }
+    return QStringLiteral("OK");
+}
+
+QString EditorDBusService::closeDocument(const QString &filePath)
+{
+    KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+    if (!app)
+        return QStringLiteral("ERROR: KTextEditor application not available");
+
+    QUrl url = QUrl::fromLocalFile(filePath);
+    KTextEditor::Document *doc = app->findUrl(url);
+    if (!doc)
+        return QStringLiteral("ERROR: Document not open: %1").arg(filePath);
+    if (!app->closeDocument(doc))
+        return QStringLiteral("ERROR: Failed to close document (user may have cancelled)");
+    return QStringLiteral("OK");
+}
+
+QString EditorDBusService::saveDocument(const QString &filePath)
+{
+    KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+    if (!app)
+        return QStringLiteral("ERROR: KTextEditor application not available");
+
+    if (filePath.isEmpty()) {
+        QStringList failed;
+        for (KTextEditor::Document *doc : app->documents()) {
+            if (doc->isModified() && !doc->save())
+                failed.append(doc->url().toLocalFile());
+        }
+        if (!failed.isEmpty())
+            return QStringLiteral("ERROR: Failed to save: %1").arg(failed.join(QStringLiteral(", ")));
+        return QStringLiteral("OK");
+    }
+
+    QUrl url = QUrl::fromLocalFile(filePath);
+    KTextEditor::Document *doc = app->findUrl(url);
+    if (!doc)
+        return QStringLiteral("ERROR: Document not open: %1").arg(filePath);
+    if (!doc->save())
+        return QStringLiteral("ERROR: Failed to save document");
+    return QStringLiteral("OK");
+}
+
+QString EditorDBusService::getDocumentStatus(const QString &filePath)
+{
+    KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+    if (!app)
+        return QStringLiteral("ERROR: KTextEditor application not available");
+
+    QUrl url = QUrl::fromLocalFile(filePath);
+    KTextEditor::Document *doc = app->findUrl(url);
+    if (!doc)
+        return QStringLiteral("ERROR: Document not open: %1").arg(filePath);
+
+    QJsonObject result;
+    result[QStringLiteral("path")] = filePath;
+    result[QStringLiteral("isModified")] = doc->isModified();
+    result[QStringLiteral("isReadOnly")] = !doc->isReadWrite();
+    return QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));
+}
+
+QString EditorDBusService::revertDocument(const QString &filePath)
+{
+    KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+    if (!app)
+        return QStringLiteral("ERROR: KTextEditor application not available");
+
+    QUrl url = QUrl::fromLocalFile(filePath);
+    KTextEditor::Document *doc = app->findUrl(url);
+    if (!doc)
+        return QStringLiteral("ERROR: Document not open: %1").arg(filePath);
+    if (!doc->documentReload())
+        return QStringLiteral("ERROR: Failed to revert document");
+    return QStringLiteral("OK");
+}
+
+QString EditorDBusService::setSessionNote(const QString &sessionId, const QString &note)
+{
+    if (sessionId.isEmpty()) {
+        return QStringLiteral("ERROR: sessionId is required");
+    }
+    Q_EMIT sessionNoteUpdateRequested(sessionId, note);
+    return QStringLiteral("OK");
+}
+
+QString EditorDBusService::getSessionId()
+{
+    return m_currentSessionId;
+}
+
+void EditorDBusService::updateCurrentSessionId(const QString &sessionId)
+{
+    m_currentSessionId = sessionId;
+}
+
+QString EditorDBusService::getClipboardText()
+{
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard)
+        return QStringLiteral("ERROR: Clipboard not available");
+    return clipboard->text();
+}
+
+QString EditorDBusService::pasteToTerminal(const QString &text)
+{
+    KTextEditor::Application *app = KTextEditor::Editor::instance()->application();
+    if (!app)
+        return QStringLiteral("ERROR: KTextEditor application not available");
+
+    KTextEditor::MainWindow *mainWindow = app->activeMainWindow();
+    if (!mainWindow)
+        return QStringLiteral("ERROR: No active main window");
+
+    // Kate's terminal plugin registers itself as "katekonsoleplugin"
+    QObject *terminalView = mainWindow->pluginView(QStringLiteral("katekonsoleplugin"));
+    if (!terminalView)
+        return QStringLiteral("ERROR: Kate terminal plugin not available or not enabled");
+
+    // The KonsolePart may not be a direct Qt-child of the plugin view — it is often
+    // parented to a container widget deeper in the hierarchy.  Search the entire main
+    // window widget tree so we find it wherever it lives.
+    TerminalInterface *terminal = nullptr;
+    QWidget *win = mainWindow->window();
+    if (win) {
+        const auto allObjs = win->findChildren<QObject *>(QString(), Qt::FindChildrenRecursively);
+        for (QObject *obj : allObjs) {
+            terminal = qobject_cast<TerminalInterface *>(obj);
+            if (terminal)
+                break;
+        }
+    }
+
+    if (!terminal)
+        return QStringLiteral("ERROR: Could not find TerminalInterface in terminal plugin");
+
+    terminal->sendInput(text);
+    return QStringLiteral("OK");
 }
 
 void EditorDBusService::provideQuestionResponse(const QString &requestId, const QString &responseJson)

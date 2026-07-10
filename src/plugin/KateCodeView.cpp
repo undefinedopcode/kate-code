@@ -147,6 +147,10 @@ void KateCodeView::createToolView()
     // Connect edit navigation
     connect(m_chatWidget, &ChatWidget::jumpToEditRequested, this, &KateCodeView::jumpToEdit);
 
+    // EditorDBusService -> ChatWidget: edit data for diff display
+    connect(m_plugin->dbusService(), &EditorDBusService::editApplied,
+            m_chatWidget, &ChatWidget::onEditApplied);
+
     // Connect user question signals (MCP AskUserQuestion tool)
     // EditorDBusService -> ChatWidget: show question UI
     connect(m_plugin->dbusService(), &EditorDBusService::questionRequested,
@@ -157,6 +161,14 @@ void KateCodeView::createToolView()
     // ChatWidget -> EditorDBusService: return user's answer
     connect(m_chatWidget, &ChatWidget::userQuestionAnswered,
             m_plugin->dbusService(), &EditorDBusService::provideQuestionResponse);
+
+    // EditorDBusService -> ChatWidget: update session note
+    connect(m_plugin->dbusService(), &EditorDBusService::sessionNoteUpdateRequested,
+            m_chatWidget, &ChatWidget::setSessionNote);
+
+    // ChatWidget -> EditorDBusService: keep current session ID up to date
+    connect(m_chatWidget, &ChatWidget::sessionIdChanged,
+            m_plugin->dbusService(), &EditorDBusService::updateCurrentSessionId);
 
     // Connect debug log output to Kate's Output panel
     connect(m_chatWidget, &ChatWidget::debugLogMessage, this, [this](const QString &message) {

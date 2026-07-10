@@ -1,10 +1,10 @@
 # Maintainer: Your Name <your.email@example.com>
 pkgname=kate-code
-pkgver=1.0.0
+pkgver=1.0.1
 pkgrel=1
 pkgdesc="Claude Code integration for Kate text editor"
 arch=('x86_64')
-url="https://github.com/undefinedopcode/kate-code"
+url="https://github.com/molove/kate-code"
 license=('MIT')
 depends=(
     'ktexteditor'
@@ -15,6 +15,7 @@ depends=(
     'kwallet'
     'kpty'
     'qt6-webengine'
+    'ttf-material-symbols-variable'
 )
 makedepends=(
     'cmake'
@@ -24,7 +25,7 @@ makedepends=(
 optdepends=(
     'claude-code-acp: Required for Claude Code functionality'
 )
-source=("${pkgname}::git+https://github.com/undefinedopcode/kate-code.git")
+source=("${pkgname}::git+https://github.com/molove/kate-code.git")
 sha256sums=('SKIP')
 
 build() {

@@ -39,7 +39,7 @@ See what Claude is doing with inline tool call displays:
 - Image paste support: paste images from clipboard directly into chat messages
 
 ### Architecture
-- **ACP Protocol**: JSON-RPC 2.0 over stdin/stdout with `claude-code-acp` subprocess
+- **ACP Protocol**: JSON-RPC 2.0 over stdin/stdout with `claude-agent-acp` subprocess
 - **Qt WebChannel**: Bidirectional C++/JavaScript bridge for real-time UI updates
 - **Web UI**: HTML/CSS/JS rendered in Qt WebEngineView for rich formatting
 
@@ -57,18 +57,18 @@ See what Claude is doing with inline tool call displays:
 - C++17 compatible compiler
 
 ### Runtime Dependencies
-- `claude-code-acp` binary installed and available in PATH
-  - Install from: https://github.com/zed-industries/claude-code-acp
+- `claude-agent-acp` binary installed and available in PATH
+  - Install from: https://github.com/agentclientprotocol/claude-agent-acp
 
 ## Installation
 
-### Install claude-code-acp
+### Install claude-agent-acp
 
-Follow the instructions at https://github.com/zed-industries/claude-code-acp to install the ACP binary.
+Follow the instructions at https://github.com/agentclientprotocol/claude-agent-acp to install the ACP binary (the installed binary is named `claude-agent-acp`).
 
 Verify installation:
 ```bash
-which claude-code-acp
+which claude-agent-acp
 ```
 
 ### Option 1: Install from Package (Recommended)
@@ -131,8 +131,8 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 # Build
 cmake --build build
 
-# Install to system (requires sudo)
-sudo cmake --install build
+# Install to system (requires sudo) - Arch/Fedora/most distros need --prefix /usr
+sudo cmake --install build --prefix /usr
 
 # Or install to user directory
 cmake --install build --prefix ~/.local
@@ -156,7 +156,7 @@ The plugin will be installed to:
 ### Starting a Session
 
 1. The Kate Code panel appears in Kate's side panel area (left or right sidebar)
-2. Click the **Connect** button to start a claude-code-acp session
+2. Click the **Connect** button to start a claude-agent-acp session
 3. The plugin will initialize using your current project's directory as the working directory
 
 ### Sending Messages
@@ -241,7 +241,7 @@ The plugin automatically adapts to your KDE color scheme by reading `~/.config/k
 - Restart Kate completely (close all windows)
 
 ### Connection fails
-- Verify `claude-code-acp` is in PATH: `which claude-code-acp`
+- Verify `claude-agent-acp` is in PATH: `which claude-agent-acp`
 - Look for error messages in terminal when launching Kate from command line: `kate`
 
 ### Messages not displaying
@@ -321,5 +321,5 @@ Contributions welcome! Please:
 ## Acknowledgments
 
 - Built with Qt 6 and KDE Frameworks 6
-- Integrates with [claude-code-acp](https://github.com/zed-industries/claude-code-acp) by Zed Industries
+- Integrates with [claude-agent-acp](https://github.com/agentclientprotocol/claude-agent-acp) by Zed Industries
 - Markdown rendering by [marked.js](https://marked.js.org/)

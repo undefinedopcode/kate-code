@@ -2,6 +2,10 @@
 build/
 bin/
 
+# Development tooling
+.clangd
+compile_commands.json
+
 # CMake files
 CMakeCache.txt
 CMakeFiles/
@@ -33,6 +37,12 @@ ui_*.h
 
 # Kate session files
 *.kate-swp
+
+# Claude session summaries
+kate-code-summary.md
+
+# Personal notes
+NOTES.md
 
 # Backup files
 *~
